@@ -2,8 +2,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-# Database URL - matches your docker-compose.yml settings
-SQLALCHEMY_DATABASE_URL = "postgresql://postgres:password@172.19.0.2:5432/taskroute"
+# Database URL - using port 5433 to avoid conflicts
+SQLALCHEMY_DATABASE_URL = "postgresql://postgres:password@localhost:5433/taskroute"
 
 # Create SQLAlchemy engine
 engine = create_engine(SQLALCHEMY_DATABASE_URL)

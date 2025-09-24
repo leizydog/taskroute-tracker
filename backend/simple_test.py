@@ -3,7 +3,7 @@ import psycopg2
 # Test connection parameters
 connection_params = {
     'host': 'localhost',
-    'port': 5432,
+    'port': 5433,
     'database': 'taskroute',
     'user': 'postgres',
     'password': 'password'
@@ -34,7 +34,7 @@ except Exception as e:
     try:
         conn_no_pass = psycopg2.connect(
             host='localhost',
-            port=5432,
+            port=5433,
             database='taskroute',
             user='postgres'
         )
@@ -47,7 +47,7 @@ except Exception as e:
     try:
         conn_127 = psycopg2.connect(
             host='127.0.0.1',
-            port=5432,
+            port=5433,
             database='taskroute',
             user='postgres',
             password='password'

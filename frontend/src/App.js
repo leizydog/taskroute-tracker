@@ -1,35 +1,83 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { Toaster } from 'react-hot-toast';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import ProtectedRoute from './components/ProtectedRoute';
+import Login from './components/auth/Login';
+import Register from './components/auth/Register';
+import Dashboard from './components/Dashboard';
 import './App.css';
 
-function App() {
-  const [message, setMessage] = useState('Loading...');
-  const [error, setError] = useState(null);
+// Landing page for non-authenticated users
+const LandingPage = () => {
+  return (
+    <div className="min-h-screen bg-gradient-to-r from-blue-400 to-purple-600 flex items-center justify-center">
+      <div className="text-center text-white">
+        <h1 className="text-6xl font-bold mb-4">TaskRoute Tracker</h1>
+        <p className="text-xl mb-8">GPS-enabled task management with ML-powered performance analytics</p>
+        <div className="space-x-4">
+          <a
+            href="/login"
+            className="bg-white text-blue-600 px-6 py-3 rounded-lg font-semibold hover:bg-gray-100 transition duration-200"
+          >
+            Sign In
+          </a>
+          <a
+            href="/register"
+            className="border-2 border-white text-white px-6 py-3 rounded-lg font-semibold hover:bg-white hover:text-blue-600 transition duration-200"
+          >
+            Get Started
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+};
 
-  useEffect(() => {
-    axios.get('http://localhost:8000/')
-      .then(response => {
-        setMessage(response.data.message);
-      })
-      .catch(error => {
-        console.error('Error:', error);
-        setError('Failed to connect to backend');
-      });
-  }, []);
+// Component to handle authenticated/non-authenticated routing
+const AppRoutes = () => {
+  const { isAuthenticated, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-indigo-600"></div>
+      </div>
+    );
+  }
 
   return (
-    <div className="App">
-      <header className="App-header">
-        <h1>TaskRoute Tracker</h1>
-        {error ? (
-          <p style={{color: 'red'}}>{error}</p>
-        ) : (
-          <p>{message}</p>
-        )}
-        <p>Frontend is running on port 3000</p>
-        <p>Backend should be running on port 8000</p>
-      </header>
-    </div>
+    <Routes>
+      <Route 
+        path="/" 
+        element={isAuthenticated ? <Navigate to="/dashboard" /> : <LandingPage />} 
+      />
+      <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
+      <Route 
+        path="/dashboard" 
+        element={
+          <ProtectedRoute>
+            <Dashboard />
+          </ProtectedRoute>
+        } 
+      />
+      {/* Redirect any unknown routes */}
+      <Route path="*" element={<Navigate to="/" />} />
+    </Routes>
+  );
+};
+
+function App() {
+  return (
+    <AuthProvider>
+      <Router>
+        <div className="App">
+          <AppRoutes />
+          <Toaster position="top-right" />
+        </div>
+      </Router>
+    </AuthProvider>
   );
 }
 

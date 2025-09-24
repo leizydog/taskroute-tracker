@@ -1,5 +1,7 @@
 from app.database import engine, Base
 from app.models.user import User
+from app.models.task import Task
+
 
 def create_tables():
     """Create all database tables"""

@@ -1,14 +1,25 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import auth
-from app.core.dependencies import get_current_user
-from app.models.user import User
+from app.database import engine
+from app.models import user, task  # Import both models
+from app.routers import auth, tasks  # Import both routers
 
-app = FastAPI(title="TaskRoute Tracker API", version="1.0.0")
 
+# Create database tables
+user.Base.metadata.create_all(bind=engine)
+task.Base.metadata.create_all(bind=engine)
+
+# Create FastAPI app
+app = FastAPI(
+    title="TaskRoute Tracker API",
+    description="GPS-enabled task management with ML predictions",
+    version="1.0.0"
+)
+
+# Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:3000"],  # React dev server
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -16,19 +27,20 @@ app.add_middleware(
 
 # Include routers
 app.include_router(auth.router)
+app.include_router(tasks.router)
 
+
+# Root endpoint
 @app.get("/")
-async def root():
-    return {"message": "TaskRoute Tracker API is running!"}
-
-@app.get("/health")
-async def health_check():
-    return {"status": "healthy", "version": "1.0.0"}
-
-@app.get("/protected")
-async def protected_route(current_user: User = Depends(get_current_user)):
+def read_root():
     return {
-        "message": f"Hello, {current_user.full_name}!",
-        "user_id": current_user.id,
-        "role": current_user.role.value
+        "message": "TaskRoute Tracker API",
+        "version": "1.0.0",
+        "status": "running",
+        "docs": "/docs"
     }
+
+# Health check endpoint
+@app.get("/health")
+def health_check():
+    return {"status": "healthy"}
