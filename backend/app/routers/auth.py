@@ -79,9 +79,9 @@ def login_user(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = D
     return {"access_token": access_token, "token_type": "bearer"}
 
 
-@router.post("/login-json", response_model=Token)
+@router.post("/login-json")
 def login_user_json(user_credentials: UserLogin, db: Session = Depends(get_db)):
-    """Login user with JSON payload and return JWT token."""
+    """Login user with JSON payload and return JWT token with user data."""
     
     # Authenticate user
     user = authenticate_user(db, user_credentials.email, user_credentials.password)
@@ -104,7 +104,21 @@ def login_user_json(user_credentials: UserLogin, db: Session = Depends(get_db)):
         data={"sub": user.email}, expires_delta=access_token_expires
     )
     
-    return {"access_token": access_token, "token_type": "bearer"}
+    # Return token AND user data for mobile app
+    return {
+        "access_token": access_token, 
+        "token_type": "bearer",
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "username": user.username,
+            "full_name": user.full_name,
+            "is_active": user.is_active,
+            "role": user.role,
+            "created_at": user.created_at.isoformat(),
+            "updated_at": user.updated_at.isoformat() if user.updated_at else None
+        }
+    }
 
 
 @router.get("/me", response_model=UserResponse)

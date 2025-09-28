@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine
 from app.models import user, task  # Import both models
-from app.routers import auth, tasks  # Import both routers
+from app.routers import auth, tasks, analytics, locations  # Import both routers
 
 
 # Create database tables
@@ -28,6 +28,8 @@ app.add_middleware(
 # Include routers
 app.include_router(auth.router)
 app.include_router(tasks.router)
+app.include_router(analytics.router)  # Add this line
+app.include_router(locations.router)  # Add this line
 
 
 # Root endpoint
