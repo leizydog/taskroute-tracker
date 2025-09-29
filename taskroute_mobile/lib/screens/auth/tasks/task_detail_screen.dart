@@ -31,7 +31,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     exportBackgroundColor: Colors.white,
   );
   
-  List<File> _photos = [];
+  final List<File> _photos = [];
   bool _isLoading = false;
   int _qualityRating = 5;
   Position? _currentPosition;
@@ -152,13 +152,16 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
         );
 
         // Navigate to TaskMapScreen (pass the four required params)
-        Navigator.of(context).pushReplacement(
+        Navigator.of(context).push(
           MaterialPageRoute(
             builder: (_) => TaskMapScreen(
-              taskLat: widget.task.latitude!, // safe - we checked hasLocation
+              key: UniqueKey(), // 👈 forces Flutter to rebuild fresh state
+              taskLat: widget.task.latitude!,
               taskLng: widget.task.longitude!,
               taskTitle: widget.task.title,
-              taskDescription: widget.task.description ?? '',
+              taskDescription: widget.task.description ?? 'No description provided.',
+              userLat: _currentPosition?.latitude,
+              userLng: _currentPosition?.longitude,
             ),
           ),
         );
@@ -522,11 +525,24 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                 ),
               ),
               const SizedBox(height: 12),
+              // --- NEW: Conditionally show the button only if a location exists ---
+            if (widget.task.latitude != null && widget.task.longitude != null)
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
                   onPressed: () {
-                    // TODO: Open in maps app
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => TaskMapScreen(
+                          // Safely use the '!' because we've already checked for null
+                          taskLat: widget.task.latitude!,
+                          taskLng: widget.task.longitude!,
+                          taskTitle: widget.task.title,
+                          // Use '??' to provide a default value if description is null
+                          taskDescription: widget.task.description ?? 'No description provided.',
+                        ),
+                      ),
+                    );
                   },
                   icon: const Icon(Icons.map),
                   label: const Text('View on Map'),

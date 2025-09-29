@@ -53,6 +53,7 @@ dependencies:
   location: ^6.0.2
   flutter_polyline_points: ^2.1.0
   sliding_up_panel: ^2.0.0+1
+  flutter_dotenv: ^5.2.1
 
 dev_dependencies:
   flutter_test:
@@ -77,6 +78,11 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+  assets:
+    - .env
+
+
+
 
   # To add assets to your application, add an assets section, like this:
   # assets:

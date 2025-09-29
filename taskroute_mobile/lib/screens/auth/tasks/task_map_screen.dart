@@ -1,23 +1,28 @@
-import 'dart:math'; // Added for calculating map bounds
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:location/location.dart';
 import 'package:sliding_up_panel/sliding_up_panel.dart';
 import 'package:flutter_polyline_points/flutter_polyline_points.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class TaskMapScreen extends StatefulWidget {
   final double taskLat;
   final double taskLng;
   final String taskTitle;
   final String taskDescription;
+  final double? userLat;
+  final double? userLng;
 
   const TaskMapScreen({
-    Key? key,
+    super.key,
     required this.taskLat,
     required this.taskLng,
     required this.taskTitle,
     required this.taskDescription,
-  }) : super(key: key);
+    this.userLat,
+    this.userLng,
+  });
 
   @override
   State<TaskMapScreen> createState() => _TaskMapScreenState();
@@ -30,9 +35,9 @@ class _TaskMapScreenState extends State<TaskMapScreen> {
 
   final PolylinePoints _polylinePoints = PolylinePoints();
   final Set<Polyline> _polylines = {};
+  final Set<Marker> _markers = {}; // <-- now we manage markers here
 
-  // IMPORTANT: For production, load this key securely (e.g., from environment variables)
-  final String _googleApiKey = "YOUR_GOOGLE_API_KEY_HERE";
+  late final String _googleApiKey = dotenv.env['DIRECTIONS_API_KEY'] ?? '';
 
   @override
   void initState() {
@@ -45,10 +50,31 @@ class _TaskMapScreenState extends State<TaskMapScreen> {
       final loc = await _location.getLocation();
       setState(() {
         _currentLocation = loc;
+
+        // Refresh markers every time
+        _markers.clear();
+        _markers.add(
+          Marker(
+            markerId: const MarkerId("task"),
+            position: LatLng(widget.taskLat, widget.taskLng),
+            infoWindow: const InfoWindow(title: "Task Destination"),
+            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+          ),
+        );
+        _markers.add(
+          Marker(
+            markerId: const MarkerId("user"),
+            position: LatLng(
+              _currentLocation!.latitude!,
+              _currentLocation!.longitude!,
+            ),
+            infoWindow: const InfoWindow(title: "You are here"),
+            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+          ),
+        );
       });
-      _getRoute(); // Load route once location is ready
+      _getRoute();
     } catch (e) {
-      // Handle location permission errors, etc.
       debugPrint("Error fetching location: $e");
     }
   }
@@ -71,6 +97,9 @@ class _TaskMapScreenState extends State<TaskMapScreen> {
       ),
     );
 
+    debugPrint('Polyline Status: ${result.status}');
+    debugPrint('Polyline Error: ${result.errorMessage}');
+
     if (result.points.isNotEmpty) {
       _setPolylines(result.points);
     }
@@ -81,9 +110,7 @@ class _TaskMapScreenState extends State<TaskMapScreen> {
       polylineId: const PolylineId("route"),
       color: Colors.indigo,
       width: 6,
-      points: points
-          .map((p) => LatLng(p.latitude, p.longitude))
-          .toList(),
+      points: points.map((p) => LatLng(p.latitude, p.longitude)).toList(),
     );
 
     setState(() {
@@ -92,15 +119,13 @@ class _TaskMapScreenState extends State<TaskMapScreen> {
     });
   }
 
-  // --- NEW: Method to animate camera ---
-  /// Animates the camera to fit both the user's location and the task marker.
   void _zoomToFitRoute() {
     if (_mapController == null || _currentLocation == null) return;
 
-    final userLocation = LatLng(_currentLocation!.latitude!, _currentLocation!.longitude!);
+    final userLocation =
+        LatLng(_currentLocation!.latitude!, _currentLocation!.longitude!);
     final taskLocation = LatLng(widget.taskLat, widget.taskLng);
 
-    // Calculate the bounds
     final southwestLat = min(userLocation.latitude, taskLocation.latitude);
     final southwestLng = min(userLocation.longitude, taskLocation.longitude);
     final northeastLat = max(userLocation.latitude, taskLocation.latitude);
@@ -111,9 +136,8 @@ class _TaskMapScreenState extends State<TaskMapScreen> {
       northeast: LatLng(northeastLat, northeastLng),
     );
 
-    // Animate the camera to the calculated bounds with padding
     _mapController!.animateCamera(
-      CameraUpdate.newLatLngBounds(bounds, 80.0), // 80.0 provides padding
+      CameraUpdate.newLatLngBounds(bounds, 80.0),
     );
   }
 
@@ -128,8 +152,8 @@ class _TaskMapScreenState extends State<TaskMapScreen> {
       body: _currentLocation == null
           ? const Center(child: CircularProgressIndicator())
           : SlidingUpPanel(
-              minHeight: 150, // Set a minimum height for the panel
-              maxHeight: 250, // Set a maximum height for the panel
+              minHeight: 150,
+              maxHeight: 250,
               borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
               panel: _buildTaskDetails(),
               body: GoogleMap(
@@ -140,24 +164,19 @@ class _TaskMapScreenState extends State<TaskMapScreen> {
                   ),
                   zoom: 14,
                 ),
-                myLocationEnabled: true,
+                myLocationEnabled: false, // disable blue dot (avoid overlap)
                 myLocationButtonEnabled: true,
-                onMapCreated: (controller) => _mapController = controller,
-                markers: {
-                  Marker(
-                    markerId: const MarkerId("task"),
-                    position: LatLng(widget.taskLat, widget.taskLng),
-                    infoWindow: InfoWindow(title: "Task Destination"),
-                    icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
-                  ),
+                onMapCreated: (controller) {
+                  _mapController = controller;
+                  _zoomToFitRoute();
                 },
+                markers: _markers,
                 polylines: _polylines,
               ),
             ),
     );
   }
 
-  // --- UPDATED: Task details panel with the "Start Task" button ---
   Widget _buildTaskDetails() {
     return Container(
       padding: const EdgeInsets.all(24),
@@ -175,14 +194,14 @@ class _TaskMapScreenState extends State<TaskMapScreen> {
             style: TextStyle(fontSize: 16, color: Colors.grey[700]),
             textAlign: TextAlign.center,
           ),
-          const Spacer(), // Pushes buttons to the bottom
+          const Spacer(),
           Row(
             children: [
               Expanded(
                 child: ElevatedButton.icon(
                   icon: const Icon(Icons.navigation),
                   label: const Text("Start Task"),
-                  onPressed: _zoomToFitRoute, // Triggers the camera animation
+                  onPressed: _zoomToFitRoute,
                   style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     shape: RoundedRectangleBorder(
@@ -197,12 +216,12 @@ class _TaskMapScreenState extends State<TaskMapScreen> {
                   icon: const Icon(Icons.check_circle_outline),
                   label: const Text("Complete"),
                   onPressed: () {
-                    // TODO: Implement task completion logic
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text("Completion logic not yet implemented.")),
+                      const SnackBar(
+                          content: Text("Completion logic not yet implemented.")),
                     );
                   },
-                   style: OutlinedButton.styleFrom(
+                  style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),

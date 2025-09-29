@@ -8,12 +8,17 @@ import 'screens/auth/login_screen.dart';
 import 'screens/home/home_screen.dart';
 import 'services/storage_service.dart';
 import 'utils/app_theme.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
   // Initialize storage service
   await StorageService.instance.init();
+
+// Tell dotenv to load the correct file based on the environment
+  await dotenv.load(fileName: ".env");
+
   
   // Set system UI overlay style
   SystemChrome.setSystemUIOverlayStyle(
@@ -72,6 +77,11 @@ class _AuthWrapperState extends State<AuthWrapper> {
       _isLoading = false;
     });
   }
+
+  Future<void> main() async {
+  await dotenv.load(fileName: ".env");
+  runApp(const TaskRouteApp());
+}
 
   @override
   Widget build(BuildContext context) {

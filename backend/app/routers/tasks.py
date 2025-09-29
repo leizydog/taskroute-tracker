@@ -186,10 +186,6 @@ def start_task(
     task.status = TaskStatus.IN_PROGRESS
     task.started_at = datetime.utcnow()
 
-    if start_data.latitude is not None:
-        task.latitude = start_data.latitude
-    if start_data.longitude is not None:
-        task.longitude = start_data.longitude
 
     db.commit()
     db.refresh(task)

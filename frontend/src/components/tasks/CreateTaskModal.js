@@ -67,7 +67,7 @@ const CreateTaskModal = ({ onClose, onSuccess }) => {
   const [mapCenter, setMapCenter] = useState(defaultCenter);
   const { isLoaded, loadError } = useJsApiLoader({
     id: 'google-map-script',
-    googleMapsApiKey: process.env.REACT_APP_GOOGLE_MAPS_API_KEY
+    googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY
   });
 
   const handleClose = useCallback(() => {
