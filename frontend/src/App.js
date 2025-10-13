@@ -11,7 +11,7 @@ import './App.css';
 // Landing page for non-authenticated users
 const LandingPage = () => {
   return (
-    <div className="min-h-screen bg-gradient-to-r from-blue-400 to-purple-600 flex items-center justify-center">
+    <div className="min-h-screen bg-gradient-to-r from-blue-900 to-white- flex items-center justify-center">
       <div className="text-center text-white">
         <h1 className="text-6xl font-bold mb-4">TaskRoute Tracker</h1>
         <p className="text-xl mb-8">GPS-enabled task management with ML-powered performance analytics</p>
