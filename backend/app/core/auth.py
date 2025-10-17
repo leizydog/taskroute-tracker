@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db  # Remove 'backend.' prefix
 from app.models.user import User  # Remove 'backend.' prefix
 from app.schemas.user import TokenData  # Remove 'backend.' prefix
+from app.models.user import User, UserRole
 
 # Security configuration
 SECRET_KEY = "your-secret-key-change-this-in-production"  # Change this in production!
@@ -86,4 +87,17 @@ def get_current_active_user(current_user: User = Depends(get_current_user)):
     """Get the current authenticated and active user."""
     if not current_user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
+    return current_user
+
+def get_current_admin_user(current_user: User = Depends(get_current_active_user)) -> User:
+    """
+    Dependency that returns the current user if they have the ADMIN role.
+    Raises 403 Forbidden otherwise.
+    """
+    # 🚨 Crucial Check: Ensure the user's role is ADMIN
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to perform this action (Admin access required)",
+        )
     return current_user

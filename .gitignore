@@ -55,6 +55,7 @@ yarn-error.log*
 .env
 .env.local
 .env.*.local
+taskroute_mobile/android/app/src/main/AndroidManifest.xml
 
 # Logs
 logs/

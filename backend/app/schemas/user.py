@@ -14,6 +14,7 @@ class UserBase(BaseModel):
 # Schema for user creation (registration)
 class UserCreate(UserBase):
     password: str = Field(..., min_length=8, max_length=100)
+    role: UserRole = UserRole.USER
 
 
 # Schema for user login

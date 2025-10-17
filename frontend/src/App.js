@@ -3,15 +3,16 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
+import SupervisorRoute from './components/SupervisorRoute';
 import Login from './components/auth/Login';
 import Register from './components/auth/Register';
-import Dashboard from './components/Dashboard';
+import SupervisorDashboard from './pages/SupervisorDashboard';
 import './App.css';
 
 // Landing page for non-authenticated users
 const LandingPage = () => {
   return (
-    <div className="min-h-screen bg-gradient-to-r from-blue-900 to-white- flex items-center justify-center">
+    <div className="min-h-screen bg-gradient-to-r from-blue-900 to-white flex items-center justify-center">
       <div className="text-center text-white">
         <h1 className="text-6xl font-bold mb-4">TaskRoute Tracker</h1>
         <p className="text-xl mb-8">GPS-enabled task management with ML-powered performance analytics</p>
@@ -50,18 +51,23 @@ const AppRoutes = () => {
     <Routes>
       <Route 
         path="/" 
-        element={isAuthenticated ? <Navigate to="/dashboard" /> : <LandingPage />} 
+        element={isAuthenticated ? <Navigate to="/supervisor" /> : <LandingPage />} 
       />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
+      
+      {/* Supervisor Routes */}
       <Route 
-        path="/dashboard" 
+        path="/supervisor/*" 
         element={
           <ProtectedRoute>
-            <Dashboard />
+            <SupervisorRoute>
+              <SupervisorDashboard />
+            </SupervisorRoute>
           </ProtectedRoute>
         } 
       />
+      
       {/* Redirect any unknown routes */}
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>
