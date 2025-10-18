@@ -2,11 +2,13 @@ import React, { createContext, useState, useContext, useEffect } from 'react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 
+// Create the context
 const AuthContext = createContext();
 
 // Configure axios defaults
 axios.defaults.baseURL = 'http://localhost:8000';
 
+// Export the useAuth hook for easy consumption
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
@@ -15,6 +17,7 @@ export const useAuth = () => {
   return context;
 };
 
+// Export the provider component
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(localStorage.getItem('token'));
@@ -51,6 +54,7 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     try {
+      // Your AuthContext is set up to handle the API call itself
       const response = await axios.post('/auth/login-json', {
         email,
         password
@@ -108,3 +112,6 @@ export const AuthProvider = ({ children }) => {
     </AuthContext.Provider>
   );
 };
+
+// Also export the context itself
+export default AuthContext;

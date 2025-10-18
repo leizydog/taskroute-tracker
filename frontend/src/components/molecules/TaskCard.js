@@ -1,3 +1,7 @@
+import React from 'react';
+import { Card, Badge, Button } from '../atoms';
+import { FiEdit2, FiTrash2 } from 'react-icons/fi';
+
 export const TaskCard = ({ task, onEdit, onDelete }) => (
     <Card className="hover:shadow-lg transition-shadow">
       <div className="flex justify-between items-start mb-3">
@@ -14,4 +18,4 @@ export const TaskCard = ({ task, onEdit, onDelete }) => (
         <Button variant="danger" size="sm" icon={FiTrash2} onClick={onDelete}>Delete</Button>
       </div>
     </Card>
-  );
+);

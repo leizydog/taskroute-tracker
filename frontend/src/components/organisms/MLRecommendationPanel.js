@@ -1,97 +1,71 @@
-export const MLRecommendationPanel = ({ employees = [], onAssignTask }) => {
-    const [taskDetails, setTaskDetails] = useState({
-      name: '',
-      description: '',
-      priority: 'medium'
-    });
-  
+import React, { useState } from 'react';
+import { motion } from 'framer-motion';
+import { Card, Input, Select, Button, Badge } from '../atoms';
+import { FiCpu } from 'react-icons/fi';
+
+export const MLRecommendationPanel = () => {
+    const [taskType, setTaskType] = useState('delivery');
+    const [priority, setPriority] = useState('high');
+    const [location, setLocation] = useState('');
     const [recommendations, setRecommendations] = useState([]);
-    const [showRecommendations, setShowRecommendations] = useState(false);
-  
-    const handleGenerateRecommendations = () => {
-      const mockRecommendations = [
-        { id: 1, name: 'John Doe', score: 94, reason: 'Excellent completion rate and quality' },
-        { id: 2, name: 'Jane Smith', score: 89, reason: 'Strong performance history' },
-        { id: 3, name: 'Sarah Williams', score: 85, reason: 'Good capability for this type of task' }
-      ];
-      setRecommendations(mockRecommendations);
-      setShowRecommendations(true);
+    const [loading, setLoading] = useState(false);
+
+    const handleGenerate = () => {
+        setLoading(true);
+        setTimeout(() => {
+            setRecommendations([
+                { id: 1, name: 'John Doe', score: 95 },
+                { id: 2, name: 'Jane Smith', score: 92 },
+                { id: 4, name: 'Sarah Williams', score: 88 },
+            ]);
+            setLoading(false);
+        }, 1000);
     };
-  
+
     return (
-      <div className="space-y-4">
-        <Card>
-          <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
-            <FiBrain />
-            ML-Powered Task Assignment
-          </h3>
-  
-          <div className="space-y-4 mb-6">
-            <Input
-              label="Task Name"
-              placeholder="e.g., Package Delivery Downtown"
-              value={taskDetails.name}
-              onChange={(e) => setTaskDetails({ ...taskDetails, name: e.target.value })}
-            />
-            <textarea
-              placeholder="Describe the task..."
-              value={taskDetails.description}
-              onChange={(e) => setTaskDetails({ ...taskDetails, description: e.target.value })}
-              className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-700"
-              rows="3"
-            />
-            <Select
-              label="Priority"
-              options={[
-                { value: 'low', label: 'Low' },
-                { value: 'medium', label: 'Medium' },
-                { value: 'high', label: 'High' }
-              ]}
-              value={taskDetails.priority}
-              onChange={(e) => setTaskDetails({ ...taskDetails, priority: e.target.value })}
-            />
-          </div>
-  
-          <Button
-            variant="primary"
-            onClick={handleGenerateRecommendations}
-            fullWidth
-          >
-            Get ML Recommendations
-          </Button>
-        </Card>
-  
-        {showRecommendations && (
-          <Card>
-            <h4 className="font-semibold text-slate-900 dark:text-slate-100 mb-4">Recommended Employees</h4>
-            <div className="space-y-3">
-              {recommendations.map((rec, idx) => (
-                <motion.div
-                  key={idx}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: idx * 0.1 }}
-                  className="p-4 bg-slate-50 dark:bg-slate-700 rounded-lg flex items-center justify-between"
-                >
-                  <div className="flex-1">
-                    <p className="font-semibold text-slate-900 dark:text-slate-100">{rec.name}</p>
-                    <p className="text-xs text-slate-600 dark:text-slate-400">{rec.reason}</p>
-                  </div>
-                  <div className="text-right mr-4">
-                    <Badge text={`${rec.score}% Match`} color="green" size="sm" />
-                  </div>
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={() => onAssignTask(rec.id, taskDetails)}
-                  >
-                    Assign
-                  </Button>
-                </motion.div>
-              ))}
-            </div>
-          </Card>
-        )}
-      </div>
+        <div>
+            <Card>
+                <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><FiCpu /> ML-Powered Assignment</h3>
+                <div className="space-y-4">
+                    <p className="text-sm text-slate-600 dark:text-slate-400">
+                        Find the best employee for a new task based on historical performance.
+                    </p>
+                    <Input placeholder="Enter location (e.g., Downtown)" value={location} onChange={(e) => setLocation(e.target.value)} />
+                    <div className="grid grid-cols-2 gap-4">
+                        <Select value={taskType} onChange={(e) => setTaskType(e.target.value)}>
+                            <option value="delivery">Delivery</option>
+                            <option value="maintenance">Maintenance</option>
+                            <option value="sales">Sales Visit</option>
+                        </Select>
+                        <Select value={priority} onChange={(e) => setPriority(e.target.value)}>
+                            <option value="low">Low</option>
+                            <option value="medium">Medium</option>
+                            <option value="high">High</option>
+                            <option value="urgent">Urgent</option>
+                        </Select>
+                    </div>
+                    <Button onClick={handleGenerate} fullWidth disabled={loading}>
+                        {loading ? 'Generating...' : 'Get Recommendations'}
+                    </Button>
+                </div>
+            </Card>
+
+            {recommendations.length > 0 && (
+                <Card className="mt-4">
+                    <h4 className="font-semibold mb-3">Top Recommendations:</h4>
+                    <div className="space-y-2">
+                        {recommendations.map(rec => (
+                            <motion.div key={rec.id} layout className="p-3 bg-slate-50 dark:bg-slate-700 rounded-lg flex justify-between items-center">
+                                <span className="font-medium text-slate-900 dark:text-slate-100">{rec.name}</span>
+                                <div className="flex items-center gap-2">
+                                    <Badge text={`Match: ${rec.score}%`} color="green" />
+                                    <Button size="sm" variant="secondary">Assign</Button>
+                                </div>
+                            </motion.div>
+                        ))}
+                    </div>
+                </Card>
+            )}
+        </div>
     );
-  };
+};

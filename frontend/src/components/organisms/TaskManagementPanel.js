@@ -1,56 +1,47 @@
-export const TaskManagementPanel = ({ onCreateTask, tasks = [], onEdit, onDelete }) => {
-    const [filterStatus, setFilterStatus] = useState('all');
+import React, { useState } from 'react';
+import { Button, Input, Select, Card } from '../atoms';
+import { TaskCard } from '../molecules';
+import { FiPlus, FiSearch } from 'react-icons/fi';
+
+export const TaskManagementPanel = ({ tasks = [] }) => {
     const [searchTerm, setSearchTerm] = useState('');
-  
+    const [filterStatus, setFilterStatus] = useState('all');
+
     const filteredTasks = tasks.filter(task => {
-      const matchesStatus = filterStatus === 'all' || task.status === filterStatus;
-      const matchesSearch = task.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           task.assignee.toLowerCase().includes(searchTerm.toLowerCase());
-      return matchesStatus && matchesSearch;
+        const matchesSearch = task.title.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesStatus = filterStatus === 'all' || task.status === filterStatus;
+        return matchesSearch && matchesStatus;
     });
-  
+
     return (
-      <div className="space-y-4">
-        <div className="flex justify-between items-center gap-3">
-          <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">Task Management</h3>
-          <Button icon={FiPlus} onClick={onCreateTask}>Create Task</Button>
+        <div>
+            <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold">Task Management</h2>
+                <Button icon={FiPlus}>Create Task</Button>
+            </div>
+            <div className="flex gap-4 mb-4">
+                <div className="relative flex-1">
+                    <Input placeholder="Search tasks..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                    <FiSearch className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                </div>
+                <Select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
+                    <option value="all">All Statuses</option>
+                    <option value="pending">Pending</option>
+                    <option value="in-progress">In Progress</option>
+                    <option value="completed">Completed</option>
+                </Select>
+            </div>
+            <Card>
+                <div className="space-y-4">
+                    {filteredTasks.length > 0 ? (
+                        filteredTasks.map((task) => (
+                            <TaskCard key={task.id} task={task} />
+                        ))
+                    ) : (
+                        <p className="text-center text-slate-500">No tasks match the current filters.</p>
+                    )}
+                </div>
+            </Card>
         </div>
-  
-        <div className="flex gap-3">
-          <Input
-            placeholder="Search tasks or assignee..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            icon={FiSearch}
-          />
-          <Select
-            options={[
-              { value: 'all', label: 'All Status' },
-              { value: 'pending', label: 'Pending' },
-              { value: 'in-progress', label: 'In Progress' },
-              { value: 'completed', label: 'Completed' }
-            ]}
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-          />
-        </div>
-  
-        {filteredTasks.length === 0 ? (
-          <Card className="text-center py-8 text-slate-500 dark:text-slate-400">
-            No tasks found
-          </Card>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {filteredTasks.map((task, idx) => (
-              <TaskCard
-                key={idx}
-                task={task}
-                onEdit={() => onEdit(task)}
-                onDelete={() => onDelete(task.id)}
-              />
-            ))}
-          </div>
-        )}
-      </div>
     );
-  };
+};

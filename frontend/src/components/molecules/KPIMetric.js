@@ -1,3 +1,6 @@
+import React from 'react';
+import { Card } from '../atoms';
+
 export const KPIMetric = ({ icon: Icon, label, value, target, color = 'indigo' }) => {
     const colorClasses = {
       indigo: 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400',
@@ -8,7 +11,7 @@ export const KPIMetric = ({ icon: Icon, label, value, target, color = 'indigo' }
     };
   
     return (
-      <Card className="flex items-center gap-4 hoverable">
+      <Card className="flex items-center gap-4">
         <div className={`p-3 rounded-lg ${colorClasses[color]}`}>
           <Icon className="w-6 h-6" />
         </div>
@@ -19,4 +22,4 @@ export const KPIMetric = ({ icon: Icon, label, value, target, color = 'indigo' }
         </div>
       </Card>
     );
-  };
+};

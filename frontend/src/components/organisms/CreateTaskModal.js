@@ -5,7 +5,6 @@ import { useAuth } from '../../contexts/AuthContext';
 import { FiX, FiPlusCircle, FiMapPin } from 'react-icons/fi';
 import { GoogleMap, useJsApiLoader, MarkerF } from '@react-google-maps/api';
 
-// --- Reusable & Styled Form Components for consistency and clean code ---
 const FormInput = React.forwardRef(({ label, id, isRequired, ...props }, ref) => (
   <div>
     <label htmlFor={id} className="block text-sm font-semibold text-slate-700 mb-1">
@@ -49,8 +48,6 @@ const FormSelect = ({ label, id, isRequired, children, ...props }) => (
   </div>
 );
 
-
-// --- Main CreateTaskModal Component ---
 const CreateTaskModal = ({ onClose, onSuccess }) => {
   const [formData, setFormData] = useState({
     title: '', description: '', priority: 'medium', location_name: '',
@@ -62,12 +59,11 @@ const CreateTaskModal = ({ onClose, onSuccess }) => {
   const { user: currentUser } = useAuth();
   const [isClosing, setIsClosing] = useState(false);
 
-  // --- Google Maps State & Setup ---
-  const defaultCenter = useMemo(() => ({ lat: 14.3315, lng: 121.0515 }), []); // Default to Biñan, Laguna
+  const defaultCenter = useMemo(() => ({ lat: 14.8781, lng: 120.9750 }), []); // Default to Bulacan
   const [mapCenter, setMapCenter] = useState(defaultCenter);
   const { isLoaded, loadError } = useJsApiLoader({
     id: 'google-map-script',
-    googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY
+    googleMapsApiKey: process.env.REACT_APP_GOOGLE_MAPS_API_KEY
   });
 
   const handleClose = useCallback(() => {
@@ -87,18 +83,26 @@ const CreateTaskModal = ({ onClose, onSuccess }) => {
     const fetchUsers = async () => {
       try {
         setLoadingUsers(true);
-        // In a real app, replace this with an API call: const response = await axios.get('/users');
-        const availableUsers = [{ id: currentUser.id, full_name: `${currentUser.full_name} (Me)` }];
-        setUsers(availableUsers);
-        // Pre-assign the task to the current user
-        setFormData(prev => ({ ...prev, assigned_to: currentUser.id }));
+        const response = await axios.get('/users/');
+        
+        const assignableUsers = response.data.filter(user => user.id !== currentUser.id && user.role === 'user');
+        
+        setUsers(assignableUsers);
+        
+        if (assignableUsers.length > 0) {
+          setFormData(prev => ({ ...prev, assigned_to: assignableUsers[0].id }));
+        }
+
       } catch (error) {
-        toast.error('Failed to load users');
+        toast.error('Failed to load users for assignment.');
       } finally {
         setLoadingUsers(false);
       }
     };
-    fetchUsers();
+    
+    if (currentUser?.id) {
+        fetchUsers();
+    }
   }, [currentUser]);
 
   const handleChange = (e) => {
@@ -106,7 +110,6 @@ const CreateTaskModal = ({ onClose, onSuccess }) => {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  // --- Map Interaction Handlers ---
   const handleMapClick = useCallback((event) => {
     const lat = event.latLng.lat();
     const lng = event.latLng.lng();
@@ -142,7 +145,7 @@ const CreateTaskModal = ({ onClose, onSuccess }) => {
           latitude: newCoords.lat.toFixed(6),
           longitude: newCoords.lng.toFixed(6)
         }));
-        setMapCenter(newCoords); // Center the map on the user's location
+        setMapCenter(newCoords);
         toast.success('Location captured!');
       },
       () => toast.error('Could not get your location. Please check permissions.')
@@ -163,9 +166,9 @@ const CreateTaskModal = ({ onClose, onSuccess }) => {
         assigned_to: parseInt(formData.assigned_to, 10),
         due_date: formData.due_date ? new Date(formData.due_date).toISOString() : null,
       };
-      await axios.post('/tasks/', taskData);
+      const response = await axios.post('/tasks/', taskData);
       toast.success('Task created successfully!');
-      onSuccess();
+      onSuccess(response.data);
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Failed to create task');
     } finally {
@@ -173,7 +176,6 @@ const CreateTaskModal = ({ onClose, onSuccess }) => {
     }
   };
   
-  // Marker position derived from form state
   const markerPosition = useMemo(() => {
     const lat = parseFloat(formData.latitude);
     const lng = parseFloat(formData.longitude);
@@ -192,7 +194,6 @@ const CreateTaskModal = ({ onClose, onSuccess }) => {
         onClick={(e) => e.stopPropagation()}
         className={`relative w-full max-w-2xl bg-slate-50 rounded-xl shadow-xl p-8 transform transition-all duration-300 ${isClosing ? 'scale-95 opacity-0' : 'scale-100 opacity-100'}`}
       >
-        {/* --- Modal Header --- */}
         <div className="flex items-start justify-between mb-6">
             <div className="flex items-center gap-3">
                 <FiPlusCircle className="h-7 w-7 text-indigo-600"/>
@@ -203,10 +204,8 @@ const CreateTaskModal = ({ onClose, onSuccess }) => {
             </button>
         </div>
 
-        {/* --- Modal Form --- */}
         <form onSubmit={handleSubmit} className="space-y-6 max-h-[70vh] overflow-y-auto pr-2">
             
-            {/* --- Section 1: Task Details --- */}
             <fieldset className="space-y-4">
                 <FormInput label="Title" id="title" name="title" required isRequired value={formData.title} onChange={handleChange} placeholder="e.g., Deliver package to client" autoFocus/>
                 <FormTextarea label="Description" id="description" name="description" value={formData.description} onChange={handleChange} placeholder="Add more details about the task..." />
@@ -218,14 +217,15 @@ const CreateTaskModal = ({ onClose, onSuccess }) => {
                         <option value="urgent">Urgent</option>
                     </FormSelect>
                     <FormSelect label="Assign To" id="assigned_to" name="assigned_to" required isRequired value={formData.assigned_to} onChange={handleChange} disabled={loadingUsers}>
-                        {loadingUsers ? <option>Loading users...</option> : users.map(user => (
-                            <option key={user.id} value={user.id}>{user.full_name}</option>
-                        ))}
+                        {loadingUsers ? <option>Loading users...</option> : (
+                            users.length > 0 ? users.map(user => (
+                                <option key={user.id} value={user.id}>{user.full_name}</option>
+                            )) : <option>No users available</option>
+                        )}
                     </FormSelect>
                 </div>
             </fieldset>
 
-            {/* --- Section 2: Location & Scheduling (IMPROVED) --- */}
             <fieldset className="space-y-4 pt-4 border-t border-slate-200">
                 <FormInput label="Location Name" id="location_name" name="location_name" value={formData.location_name} onChange={handleChange} placeholder="e.g., Client Office, Warehouse A" />
                 
@@ -271,7 +271,6 @@ const CreateTaskModal = ({ onClose, onSuccess }) => {
                 </div>
             </fieldset>
 
-            {/* --- Action Buttons --- */}
             <div className="flex justify-end space-x-4 pt-6 border-t border-slate-200">
                 <button type="button" onClick={handleClose} className="px-5 py-2.5 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">
                     Cancel
