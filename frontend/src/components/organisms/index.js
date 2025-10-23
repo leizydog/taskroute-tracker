@@ -1,10 +1,11 @@
 export * from './CreateTaskModal';
 export * from './EmployeeKPIPanel';
 export * from './EmployeeSelector';
-export * from './LiveLocationTracker';
+export { default as LiveLocationTracker } from './LiveLocationTracker';
 export * from './MLRecommendationPanel';
 export * from './PerformanceComparisonPanel';
 export * from './TaskManagementPanel';
 export * from './TaskRoutePlanner';
 export * from '../atoms';
 export * from '../molecules';
+export * from './AdvancedMarker';

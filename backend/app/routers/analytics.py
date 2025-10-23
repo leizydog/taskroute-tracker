@@ -3,12 +3,46 @@ from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func, desc
+from pydantic import BaseModel  # <-- ADDED IMPORT
+
 from app.database import get_db
 from app.models.user import User, UserRole
 from app.models.task import Task, TaskStatus
 from app.core.auth import get_current_active_user
+from app.core.forecasting import predict_duration  # <-- ADDED IMPORT FOR OUR MODEL
 
 router = APIRouter(prefix="/analytics", tags=["Performance Analytics"])
+
+# --- NEW: Pydantic model for receiving forecast data ---
+class TaskForecastInput(BaseModel):
+    Date: datetime
+    StartTime: datetime
+    City: str
+    Conditions: str
+    Method: str
+    Reliability_pct: Optional[float] = 90.0  # Make it optional, with a default
+
+# --- NEW: Forecasting Endpoint ---
+@router.post("/forecast")
+async def get_task_forecast(input_data: TaskForecastInput):
+    """
+    Receives task data and returns a duration forecast.
+    """
+    # Convert Pydantic model to a dictionary
+    task_data = input_data.dict()
+    
+    # Call our forecasting function from app/core/forecasting.py
+    prediction = predict_duration(task_data)
+    
+    if "error" in prediction:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=prediction["error"]
+        )
+        
+    return prediction
+
+# --- Your Existing Code Below ---
 
 @router.get("/kpi/overview")
 def get_kpi_overview(
@@ -115,7 +149,7 @@ def get_kpi_overview(
         week_end = end_date - timedelta(weeks=week)
         week_completed = len([
             t for t in completed_tasks 
-            if week_start <= t.completed_at <= week_end
+            if t.completed_at and week_start <= t.completed_at <= week_end
         ])
         productivity_trend.append({
             "week": f"Week {4-week}",

@@ -10,6 +10,11 @@ import { Button, Card, StatValue, Input, Select, Alert, Badge, Avatar } from '..
 import CreateTaskModal from '../components/organisms/CreateTaskModal';
 import { EmployeeKPIPanel, LiveLocationTracker } from '../components/organisms'; // Import LiveLocationTracker
 import { useAuth } from '../contexts/AuthContext';
+import { useJsApiLoader } from '@react-google-maps/api';
+
+
+const MAP_LOADER_ID = 'google-map-script';
+const MAP_LIBRARIES = ['places'];
 
 const SupervisorDashboard = () => {
   const { user, logout } = useAuth();
@@ -32,6 +37,12 @@ const SupervisorDashboard = () => {
   const [employeeKpiData, setEmployeeKpiData] = useState(null);
   const [loadingKpi, setLoadingKpi] = useState(false);
 
+  const { isLoaded: isMapLoaded, loadError: mapLoadError } = useJsApiLoader({
+    id: MAP_LOADER_ID,
+    googleMapsApiKey: process.env.REACT_APP_GOOGLE_MAPS_API_KEY,
+    libraries: MAP_LIBRARIES,
+  });
+
   const navItems = [
     { id: 'overview', label: 'Overview', icon: <FiGrid /> },
     { id: 'employees', label: 'Employees', icon: <FiUsers /> },
@@ -49,6 +60,16 @@ const SupervisorDashboard = () => {
       document.documentElement.classList.remove('dark');
     }
   }, [dark]);
+
+  useEffect(() => {
+    if (isMapLoaded) {
+      console.log('maps script loaded; window.google?', !!window.google, window.google?.maps?.version ?? 'no-version');
+    }
+    if (mapLoadError) {
+      console.error('mapLoadError', mapLoadError);
+    }
+  }, [isMapLoaded, mapLoadError]);
+  
 
   useEffect(() => {
     const fetchData = async () => {
@@ -276,8 +297,9 @@ const SupervisorDashboard = () => {
             {activeTab === 'routes' && (<Card className="text-center py-8"><h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2 justify-center"><FiMap />Multi-Task Route Planner</h3><p className="text-slate-500 dark:text-slate-400">Route planning feature is under development.</p></Card>)}
             
             {activeTab === 'tracking' && (
-              <LiveLocationTracker />
+              <LiveLocationTracker isMapLoaded={isMapLoaded} mapLoadError={mapLoadError} />
             )}
+
 
             {activeTab === 'forecast' && (<div className="space-y-4"><Card><h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2"><FiCpu />ML-Powered Task Assignment</h3><div className="space-y-4"><p className="text-sm text-slate-600 dark:text-slate-400">Select an employee to see ML-powered performance predictions.</p>{selectedEmployee && (<div className="space-y-3 mt-6 pt-6 border-t border-slate-200 dark:border-slate-700"><h4 className="font-semibold text-slate-900 dark:text-slate-100">Recommended For: {selectedEmployee.full_name}</h4><div className="space-y-2"><div className="p-3 bg-slate-50 dark:bg-slate-700 rounded-lg"><p className="text-sm font-medium text-slate-900 dark:text-slate-100">Next Week Completion Probability</p><p className="text-2xl font-bold text-green-600">94% (mock data)</p></div><div className="p-3 bg-slate-50 dark:bg-slate-700 rounded-lg"><p className="text-sm font-medium text-slate-900 dark:text-slate-100">Quality Maintenance</p><p className="text-2xl font-bold text-blue-600">92% (mock data)</p></div></div></div>)}</div></Card></div>)}
             {activeTab === 'analytics' && (<Card className="text-center py-8"><h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-4">Analytics Dashboard</h3><p className="text-slate-500 dark:text-slate-400">Detailed analytics are under development.</p></Card>)}
@@ -285,7 +307,16 @@ const SupervisorDashboard = () => {
         </main>
       </div>
 
-      {isCreateTaskModalOpen && (<CreateTaskModal onClose={() => setIsCreateTaskModalOpen(false)} onSuccess={handleTaskCreated} />)}
+      {isCreateTaskModalOpen && (
+         <CreateTaskModal
+          isOpen={isCreateTaskModalOpen}
+          onClose={() => setIsCreateTaskModalOpen(false)}
+          onTaskCreated={handleTaskCreated}
+          isMapLoaded={isMapLoaded}
+          mapLoadError={mapLoadError}
+        />
+      )}
+
     </div>
   );
 };

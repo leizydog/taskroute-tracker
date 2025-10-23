@@ -1,8 +1,10 @@
 version: '3.8'
+
 services:
+  
   postgres:
     image: postgis/postgis:13-3.1
-    container_name: taskroute
+    container_name: taskroute_db
     environment:
       POSTGRES_DB: taskroute
       POSTGRES_USER: postgres
@@ -13,5 +15,36 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
+
+  backend:
+    build: ./backend
+    container_name: taskroute_backend
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: "postgresql://postgres:password@postgres:5432/taskroute"
+      SECRET_KEY: "xK9mP2vN8qR5wT7yU4jL6hG3fD1sA0zX9cV8bN7mQ5"
+      ALGORITHM: "HS256"
+      ACCESS_TOKEN_EXPIRE_MINUTES: 30
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend  # <-- Tells Docker to build the 'frontend' folder
+    container_name: taskroute_frontend
+    ports:
+      - "3000:3000"  # <-- Exposes your React port
+    volumes:
+      - ./frontend/src:/app/src # <-- Syncs your 'src' folder
+    depends_on:
+      - backend  # <-- Waits for the backend to start first
+    restart: unless-stopped
+    environment:
+      - REACT_APP_API_URL=http://backend:8000/api/v1  # Your existing fix for HTTP
+      - REACT_APP_WS_URL=ws://backend:8000/ws/location # <-- THE NEW FIX FOR WEBSOCKETS
+
 volumes:
   postgres_data:

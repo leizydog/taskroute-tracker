@@ -2,7 +2,8 @@ import axios from 'axios';
 
 // Create an Axios instance
 const apiClient = axios.create({
-  baseURL: 'http://localhost:8000', // Your FastAPI backend URL
+  // This is the FIX
+  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8000/api/v1',
   headers: {
     'Content-Type': 'application/json',
   },

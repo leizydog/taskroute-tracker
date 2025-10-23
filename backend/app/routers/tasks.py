@@ -6,6 +6,8 @@ from sqlalchemy import desc
 from app.database import get_db
 from app.models.user import User
 from app.models.task import Task, TaskStatus
+from app.models.location import LocationLog
+from app.schemas.location import LocationLogCreate
 from app.schemas.task import (
     TaskCreate, TaskUpdate, TaskResponse, TaskStart,
     TaskComplete, TaskWithUsers, TaskStats
@@ -163,6 +165,7 @@ async def start_task(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
+    # Check if the user already has an active task
     active_task = db.query(Task).filter(
         Task.assigned_to == current_user.id,
         Task.status == TaskStatus.IN_PROGRESS
@@ -174,47 +177,74 @@ async def start_task(
             detail="You already have an active task. Complete it before starting a new one."
         )
 
+    # Fetch the task to be started
     task = db.query(Task).options(
         joinedload(Task.assigned_user),
         joinedload(Task.created_user)
     ).filter(Task.id == task_id).first()
 
+    # --- Validation ---
     if not task:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Task not found"
         )
-
     if task.assigned_to != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You can only start tasks assigned to you"
         )
-
     if task.status != TaskStatus.PENDING:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Task can only be started from pending status"
         )
 
+    # --- Create the first location log for this task when it starts ---
+    if start_data.latitude is not None and start_data.longitude is not None:
+        location_log_data = LocationLogCreate(
+            latitude=start_data.latitude,
+            longitude=start_data.longitude,
+            task_id=task.id,
+            location_type="task_start"
+        )
+        # Changed from .dict() to .model_dump() for compatibility with Pydantic v2+
+        db_location_log = LocationLog(**location_log_data.model_dump(), user_id=current_user.id)
+        db.add(db_location_log)
+
+    # Update task status and start time
     task.status = TaskStatus.IN_PROGRESS
     task.started_at = datetime.utcnow()
 
     db.commit()
     db.refresh(task)
 
+    # Prepare the response object
     response_task = TaskWithUsers(
         **task.__dict__,
         assigned_user_name=task.assigned_user.full_name,
         created_user_name=task.created_user.full_name
     )
 
+    # Broadcast that the task has started
     await manager.broadcast_json({
         "event": "task_started",
         "task": response_task.model_dump_json()
     })
 
+    # Also broadcast the initial location so the map updates immediately
+    if start_data.latitude is not None and start_data.longitude is not None:
+        await manager.broadcast_json({
+            "event": "location_update",
+            "task_id": task.id,
+            "latitude": start_data.latitude,
+            "longitude": start_data.longitude,
+            "user_id": current_user.id,
+            "user_name": current_user.full_name,
+        })
+
     return response_task
+
 
 
 

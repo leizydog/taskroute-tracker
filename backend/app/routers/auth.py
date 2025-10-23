@@ -166,7 +166,7 @@ def protected_route(current_user: User = Depends(get_current_active_user)):
     response_model=UserResponse, 
     status_code=status.HTTP_201_CREATED,
     # 🎯 APPLY THE ADMIN DEPENDENCY HERE 
-    dependencies=[Depends(get_current_admin_user)]
+    #dependencies=[Depends(get_current_admin_user)]
 )
 def create_admin_user(
     user_data: UserCreate, 
