@@ -1,12 +1,12 @@
 // src/components/organisms/CreateTaskModal.js
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import axios from 'axios';
+import api from '../../services/api'; // ✅ USE THIS instead of axios
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { FiX, FiPlusCircle, FiMapPin } from 'react-icons/fi';
 import { GoogleMap } from '@react-google-maps/api';
 import AdvancedMarker from './AdvancedMarker';
-import { Spinner, Button } from '../atoms'; // adjust path if needed
+import { Spinner, Button } from '../atoms';
 
 const FormInput = React.forwardRef(({ label, id, isRequired, ...props }, ref) => (
   <div>
@@ -51,13 +51,6 @@ const FormSelect = ({ label, id, isRequired, children, ...props }) => (
   </div>
 );
 
-/**
- * Props:
- * - onClose(): called when modal should close
- * - onSuccess(task): called after successful task creation
- * - isMapLoaded (boolean) optional, passed from parent loader
- * - mapLoadError (any) optional, passed from parent loader
- */
 const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError = null }) => {
   const { user: currentUser } = useAuth();
 
@@ -85,7 +78,8 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
     const fetchUsers = async () => {
       try {
         setLoadingUsers(true);
-        const res = await axios.get('/users/');
+        // ✅ FIX: Use api service instead of axios directly
+        const res = await api.getUsers();
         const assignableUsers = (res.data || []).filter(u => u.id !== currentUser?.id && u.role === 'user');
         setUsers(assignableUsers);
         if (assignableUsers.length > 0) {
@@ -108,7 +102,6 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
 
   const handleClose = useCallback(() => {
     setIsClosing(true);
-    // animate then close
     setTimeout(() => {
       if (typeof onClose === 'function') onClose();
     }, 180);
@@ -128,7 +121,6 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
   };
 
   const handleMapClick = useCallback((event) => {
-    // event from GoogleMap click
     if (!event?.latLng) return;
     const lat = event.latLng.lat();
     const lng = event.latLng.lng();
@@ -139,7 +131,7 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
     }));
   }, []);
 
-  const handleMarkerDragEnd = useCallback((coords /* {lat,lng} */, ev) => {
+  const handleMarkerDragEnd = useCallback((coords, ev) => {
     if (!coords) return;
     setFormData(prev => ({
       ...prev,
@@ -183,10 +175,10 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
         due_date: formData.due_date ? new Date(formData.due_date).toISOString() : null,
       };
 
-      const res = await axios.post('/tasks/', payload);
+      // ✅ FIX: Use api service instead of axios directly
+      const res = await api.createTask(payload);
       toast.success('Task created successfully!');
       if (typeof onSuccess === 'function') onSuccess(res.data);
-      // close modal
       if (typeof onClose === 'function') onClose();
     } catch (err) {
       console.error('CreateTaskModal submit error', err);
@@ -201,11 +193,6 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
     const lng = parseFloat(formData.longitude);
     return (!Number.isNaN(lat) && !Number.isNaN(lng)) ? { lat, lng } : null;
   }, [formData.latitude, formData.longitude]);
-
-  // Debugging help — safe to remove later
-  useEffect(() => {
-    console.log('CreateTaskModal loader state: isMapLoaded=', isMapLoaded, 'mapLoadError=', mapLoadError);
-  }, [isMapLoaded, mapLoadError]);
 
   const showMapError = Boolean(mapLoadError && !isMapLoaded);
 

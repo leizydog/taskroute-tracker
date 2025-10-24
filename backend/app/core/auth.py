@@ -5,21 +5,19 @@ from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
-from app.database import get_db  # Remove 'backend.' prefix
-from app.models.user import User  # Remove 'backend.' prefix
-from app.schemas.user import TokenData  # Remove 'backend.' prefix
+from app.database import get_db
 from app.models.user import User, UserRole
+from app.schemas.user import TokenData
 
 # Security configuration
-SECRET_KEY = "your-secret-key-change-this-in-production"  # Change this in production!
+SECRET_KEY = "your-secret-key-change-this-in-production"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
-# Password hashing context
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# OAuth2 scheme for token extraction
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
+# ✅ FIX: Update tokenUrl to include /api/v1 prefix
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -89,12 +87,12 @@ def get_current_active_user(current_user: User = Depends(get_current_user)):
         raise HTTPException(status_code=400, detail="Inactive user")
     return current_user
 
+
 def get_current_admin_user(current_user: User = Depends(get_current_active_user)) -> User:
     """
     Dependency that returns the current user if they have the ADMIN role.
     Raises 403 Forbidden otherwise.
     """
-    # 🚨 Crucial Check: Ensure the user's role is ADMIN
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

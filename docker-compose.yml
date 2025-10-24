@@ -43,8 +43,8 @@ services:
       - backend  # <-- Waits for the backend to start first
     restart: unless-stopped
     environment:
-      - REACT_APP_API_URL=http://backend:8000/api/v1  # Your existing fix for HTTP
-      - REACT_APP_WS_URL=ws://backend:8000/ws/location # <-- THE NEW FIX FOR WEBSOCKETS
+      - REACT_APP_API_URL=http://localhost:8000/api/v1  # ✅ Changed to localhost
+      - REACT_APP_WS_URL=ws://localhost:8000/ws/location # ✅ Changed to localhost
 
 volumes:
   postgres_data:

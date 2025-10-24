@@ -1,12 +1,9 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import axios from 'axios';
+import api from '../services/api';  // ✅ Import your configured API client
 import toast from 'react-hot-toast';
 
 // Create the context
 const AuthContext = createContext();
-
-// Configure axios defaults
-axios.defaults.baseURL = 'http://localhost:8000';
 
 // Export the useAuth hook for easy consumption
 export const useAuth = () => {
@@ -23,13 +20,11 @@ export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(localStorage.getItem('token'));
   const [loading, setLoading] = useState(true);
 
-  // Set axios authorization header
+  // Update localStorage when token changes
   useEffect(() => {
     if (token) {
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       localStorage.setItem('token', token);
     } else {
-      delete axios.defaults.headers.common['Authorization'];
       localStorage.removeItem('token');
     }
   }, [token]);
@@ -39,7 +34,7 @@ export const AuthProvider = ({ children }) => {
     const loadUser = async () => {
       if (token) {
         try {
-          const response = await axios.get('/auth/me');
+          const response = await api.getCurrentUserInfo();  // ✅ Use api service
           setUser(response.data);
         } catch (error) {
           console.error('Error loading user:', error);
@@ -54,21 +49,21 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     try {
-      // Your AuthContext is set up to handle the API call itself
-      const response = await axios.post('/auth/login-json', {
-        email,
-        password
-      });
+      // ✅ Use the api service login method
+      const response = await api.login({ email, password });
       
-      const { access_token } = response.data;
+      const { access_token, user: userData } = response.data;
       setToken(access_token);
       
-      // Get user info
-      const userResponse = await axios.get('/auth/me', {
-        headers: { Authorization: `Bearer ${access_token}` }
-      });
+      // If login-json returns user data, use it directly
+      if (userData) {
+        setUser(userData);
+      } else {
+        // Otherwise fetch user info
+        const userResponse = await api.getCurrentUserInfo();
+        setUser(userResponse.data);
+      }
       
-      setUser(userResponse.data);
       toast.success('Login successful!');
       return { success: true };
     } catch (error) {
@@ -80,7 +75,7 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (userData) => {
     try {
-      const response = await axios.post('/auth/register', userData);
+      const response = await api.register(userData);  // ✅ Use api service
       toast.success('Registration successful! Please login.');
       return { success: true, data: response.data };
     } catch (error) {

@@ -1,6 +1,7 @@
+// src/components/organisms/SupervisorDashboard.js
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import axios from 'axios';
+import api from '../services/api';
 import { toast } from 'react-hot-toast';
 import {
   FiGrid, FiUsers, FiCheckSquare, FiTrendingUp, FiLogOut, FiMenu, FiBell, FiMoon, FiSun, FiX,
@@ -8,10 +9,10 @@ import {
 } from 'react-icons/fi';
 import { Button, Card, StatValue, Input, Select, Alert, Badge, Avatar } from '../components/atoms';
 import CreateTaskModal from '../components/organisms/CreateTaskModal';
-import { EmployeeKPIPanel, LiveLocationTracker } from '../components/organisms'; // Import LiveLocationTracker
+import { EmployeeKPIPanel, LiveLocationTracker } from '../components/organisms';
 import { useAuth } from '../contexts/AuthContext';
 import { useJsApiLoader } from '@react-google-maps/api';
-
+import FeatureImportanceChart from '../components/analytics/FeatureImportanceChart';
 
 const MAP_LOADER_ID = 'google-map-script';
 const MAP_LIBRARIES = ['places'];
@@ -36,6 +37,7 @@ const SupervisorDashboard = () => {
 
   const [employeeKpiData, setEmployeeKpiData] = useState(null);
   const [loadingKpi, setLoadingKpi] = useState(false);
+  const [teamKpiData, setTeamKpiData] = useState(null); // Store all team KPIs
 
   const { isLoaded: isMapLoaded, loadError: mapLoadError } = useJsApiLoader({
     id: MAP_LOADER_ID,
@@ -54,67 +56,82 @@ const SupervisorDashboard = () => {
   ];
 
   useEffect(() => {
-    if (dark) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
+    if (dark) document.documentElement.classList.add('dark');
+    else document.documentElement.classList.remove('dark');
   }, [dark]);
 
   useEffect(() => {
     if (isMapLoaded) {
-      console.log('maps script loaded; window.google?', !!window.google, window.google?.maps?.version ?? 'no-version');
+      console.log('Google Maps API script loaded successfully.');
     }
     if (mapLoadError) {
-      console.error('mapLoadError', mapLoadError);
+      console.error('Error loading Google Maps API:', mapLoadError);
+      toast.error("Map services could not be loaded.");
     }
   }, [isMapLoaded, mapLoadError]);
-  
 
+  // Fetch initial data
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
       setError(null);
       try {
-        const [tasksResponse, employeesResponse, kpiResponse] = await Promise.all([
-          axios.get('/tasks/'),
-          axios.get('/users/'),
-          axios.get('/analytics/kpi/overview?days=30')
+        const [tasksResponse, employeesResponse, kpiResponse, teamResponse] = await Promise.all([
+          api.getTasks(),
+          api.getUsers(),
+          api.getAnalyticsOverview(),
+          api.getTeamOverview().catch(() => ({ data: null })), // Optional team data
         ]);
-        
-        setTasks(tasksResponse.data);
-        setEmployees(employeesResponse.data);
-        setKpiData(kpiResponse.data);
 
+        const tasksData = tasksResponse?.data?.results ?? tasksResponse?.data ?? [];
+        const usersData = employeesResponse?.data?.results ?? employeesResponse?.data ?? [];
+
+        setTasks(Array.isArray(tasksData) ? tasksData : []);
+        
+        // ✅ FIX: Filter for 'user' role instead of 'employee'
+        // Backend roles: admin, supervisor, user
+        setEmployees(
+          Array.isArray(usersData)
+            ? usersData.filter(u => u.role === 'user' || u.role === 'supervisor')
+            : []
+        );
+        
+        setKpiData(kpiResponse?.data ?? null);
+        setTeamKpiData(teamResponse?.data ?? null); // Store team KPIs
       } catch (err) {
+        console.error("Failed to load initial dashboard data:", err);
         toast.error("Failed to load initial dashboard data.");
+        setError("Could not load dashboard. Please try again later.");
       } finally {
         setLoading(false);
       }
     };
+
     fetchData();
   }, []);
 
-  useEffect(() => {
-    const fetchEmployeeKpi = async () => {
-      if (!selectedEmployee) {
-        setEmployeeKpiData(null);
-        return;
-      }
-      try {
-        setLoadingKpi(true);
-        const response = await axios.get(`/tasks/stats/performance?user_id=${selectedEmployee.id}`);
-        setEmployeeKpiData(response.data);
-      } catch (err) {
-        toast.error(`Failed to load KPIs for ${selectedEmployee.full_name}`);
-        setEmployeeKpiData(null);
-      } finally {
-        setLoadingKpi(false);
-      }
-    };
+  // Fetch specific employee KPI data when selectedEmployee changes
+  // ✅ FIXED: Extract employee KPI from team data instead of fetching individually
+useEffect(() => {
+  if (!selectedEmployee) {
+    setEmployeeKpiData(null);
+    return;
+  }
 
-    fetchEmployeeKpi();
-  }, [selectedEmployee]);
+  setLoadingKpi(true);
+  
+  // Try to find this employee's data in the team overview
+  if (teamKpiData && Array.isArray(teamKpiData.employees)) {
+    const employeeData = teamKpiData.employees.find(
+      emp => emp.id === selectedEmployee.id || emp.employee_id === selectedEmployee.id
+    );
+    setEmployeeKpiData(employeeData || null);
+  } else {
+    setEmployeeKpiData(null);
+  }
+  
+  setLoadingKpi(false);
+}, [selectedEmployee, teamKpiData]);
 
   const addAlert = (type, message) => {
     const id = Date.now();
@@ -128,134 +145,171 @@ const SupervisorDashboard = () => {
     addAlert('success', 'Task created successfully!');
   };
 
-  const handleEditTask = (task) => addAlert('info', `Editing task: ${task.title}`);
-  
+  const handleEditTask = (task) => {
+    addAlert('info', `Editing task: ${task?.title ?? 'task'}`);
+  };
+
   const handleDeleteTask = async (taskId) => {
     const originalTasks = tasks;
     setTasks(originalTasks.filter(t => t.id !== taskId));
     try {
-        await axios.delete(`/tasks/${taskId}`);
-        addAlert('success', 'Task deleted successfully!');
+      await api.deleteTask(taskId);
+      addAlert('success', 'Task deleted successfully!');
     } catch (err) {
-        addAlert('error', 'Failed to delete task.');
-        setTasks(originalTasks);
+      addAlert('error', 'Failed to delete task. Restoring task list.');
+      setTasks(originalTasks);
     }
   };
 
-  const filteredEmployees = employees.filter(emp => {
+  const filteredEmployees = (Array.isArray(employees) ? employees : []).filter(emp => {
     const name = emp.full_name || emp.email || '';
-    return name.toLowerCase().includes(searchTerm.toLowerCase()) && (filterRole === 'all' || emp.role === filterRole);
+    const matchesSearch = name.toLowerCase().includes((searchTerm || '').toLowerCase());
+    const matchesRole = (filterRole === 'all' || emp.role === filterRole);
+    return matchesSearch && matchesRole;
   });
 
-  const roles = Array.from(new Set(employees.map(e => e.role).filter(Boolean)));
+  const roles = Array.from(new Set((Array.isArray(employees) ? employees : []).map(e => e.role).filter(Boolean)));
 
+  // Reusable components
   const TaskCardComponent = ({ task }) => (
-    <Card className="hover:shadow-lg transition-shadow">
-      <div className="flex justify-between items-start mb-3">
-        <h4 className="font-semibold text-slate-900 dark:text-slate-100 flex-1">{task.title}</h4>
-        <Badge text={task.status} color={task.status === 'completed' ? 'green' : task.status === 'in-progress' ? 'blue' : 'yellow'} size="sm" />
+    <Card className="hover:shadow-lg transition-shadow duration-200">
+      <div className="flex justify-between items-start mb-2">
+        <h4 className="font-semibold text-slate-800 dark:text-slate-100 flex-1 truncate pr-2">{task?.title}</h4>
+        <Badge
+          text={task?.status ?? 'UNKNOWN'}
+          color={
+            task?.status === 'COMPLETED' || task?.status === 'completed' ? 'green' :
+            task?.status === 'IN_PROGRESS' || task?.status === 'in_progress' ? 'blue' :
+            task?.status === 'PENDING' || task?.status === 'pending' ? 'yellow' : 'gray'
+          }
+          size="sm"
+        />
       </div>
-      <p className="text-sm text-slate-600 dark:text-slate-400 mb-3">{task.description}</p>
+      <p className="text-sm text-slate-600 dark:text-slate-400 mb-3 line-clamp-2">{task?.description}</p>
       <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-3">
-        <span>{task.assigned_user_name || 'Unassigned'}</span>
-        <span>{task.due_date ? new Date(task.due_date).toLocaleString() : 'No due date'}</span>
+        <span>{task?.assigned_user ? task.assigned_user.full_name : 'Unassigned'}</span>
+        <span>{task?.due_date ? new Date(task.due_date).toLocaleDateString() : 'No due date'}</span>
       </div>
-      <div className="flex gap-2">
-        <Button variant="secondary" size="sm" icon={FiEdit2} onClick={() => handleEditTask(task)}>Edit</Button>
-        <Button variant="danger" size="sm" icon={FiTrash2} onClick={() => handleDeleteTask(task.id)}>Delete</Button>
+      <div className="flex gap-2 mt-auto pt-2 border-t border-slate-200 dark:border-slate-700">
+        <Button variant="secondary" size="xs" icon={FiEdit2} onClick={() => handleEditTask(task)}>Edit</Button>
+        <Button variant="danger" size="xs" icon={FiTrash2} onClick={() => handleDeleteTask(task?.id)}>Delete</Button>
       </div>
     </Card>
   );
 
   const EmployeeListItemComponent = ({ employee, isSelected }) => (
     <motion.div
-      whileHover={{ x: 4 }}
+      whileHover={{ x: 3 }}
       onClick={() => setSelectedEmployee(employee)}
-      className={`p-4 rounded-lg border-2 cursor-pointer transition-colors ${ isSelected ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-900/20' : 'border-slate-200 dark:border-slate-700 hover:border-indigo-400' }`}
+      className={`p-3 rounded-lg border cursor-pointer transition-colors duration-150 flex items-center gap-3 ${
+        isSelected
+          ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 shadow-sm'
+          : 'border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-700'
+      }`}
     >
-      <div className="flex items-center gap-3">
-        <Avatar name={employee.full_name || employee.email} size="md" />
-        <div className="flex-1">
-          <h4 className="font-semibold text-slate-900 dark:text-slate-100">{employee.full_name || employee.email}</h4>
-          <p className="text-sm text-slate-500 dark:text-slate-400">{employee.role}</p>
-        </div>
-        <Badge text={employee.is_active ? 'active' : 'inactive'} color={employee.is_active ? 'green' : 'yellow'} />
+      <Avatar name={employee?.full_name || employee?.username} size="sm" />
+      <div className="flex-1 overflow-hidden">
+        <h4 className="font-semibold text-sm text-slate-800 dark:text-slate-100 truncate">{employee?.full_name || employee?.username}</h4>
+        <p className="text-xs text-slate-500 dark:text-slate-400 capitalize">{employee?.role === 'user' ? 'Employee' : employee?.role}</p>
       </div>
+      <Badge text={employee?.is_active ? 'Active' : 'Inactive'} color={employee?.is_active ? 'green' : 'gray'} size="xs" />
     </motion.div>
   );
 
   if (loading) {
-    return <div className="flex items-center justify-center h-screen bg-slate-100 dark:bg-slate-900 text-slate-500 font-semibold">Loading Dashboard...</div>;
+    return <div className="flex items-center justify-center h-screen bg-slate-100 dark:bg-slate-900 text-slate-500 font-semibold text-lg">Loading Dashboard Data...</div>;
   }
 
   if (error) {
-    return <div className="flex items-center justify-center h-screen bg-slate-100 dark:bg-slate-900 text-red-500 font-semibold">{error}</div>;
+    return <div className="flex items-center justify-center h-screen bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 font-semibold text-lg p-6 text-center">{error}</div>;
   }
 
   return (
-    <div className="flex h-screen bg-slate-100 dark:bg-slate-900 text-slate-900 dark:text-slate-100">
+    <div className="flex h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-200 overflow-hidden">
       <aside
-        className={`fixed z-30 inset-y-0 left-0 transform ${mobileOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 md:static transition-transform duration-300 w-64 bg-slate-800 text-slate-100 p-4 flex flex-col`}
+        className={`fixed z-30 inset-y-0 left-0 transform ${mobileOpen ? 'translate-x-0 shadow-xl' : '-translate-x-full'} md:translate-x-0 md:static transition-transform duration-300 ease-in-out w-60 bg-slate-800 text-slate-100 p-4 flex flex-col border-r border-slate-700`}
       >
-        <div className="flex items-center justify-between mb-8">
-          <h1 className="text-2xl font-bold">TaskRoute</h1>
-          <button onClick={() => setMobileOpen(false)} className="md:hidden p-1"><FiX size={20} /></button>
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-xl font-bold text-indigo-400">TaskRoute</h1>
+          <button onClick={() => setMobileOpen(false)} className="md:hidden p-1 text-slate-400 hover:text-white"><FiX size={20} /></button>
         </div>
-        <nav className="flex-1 space-y-1">
+        <nav className="flex-1 space-y-1.5 overflow-y-auto">
           {navItems.map((item) => (
-            <button key={item.id} onClick={() => { setActiveTab(item.id); setMobileOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${ activeTab === item.id ? 'bg-indigo-600 text-white font-semibold' : 'text-slate-300 hover:bg-slate-700'}`}>
-              {item.icon}
+            <button
+              key={item.id}
+              onClick={() => { setActiveTab(item.id); setMobileOpen(false); }}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-all duration-150 ease-in-out group ${
+                activeTab === item.id
+                  ? 'bg-indigo-600 text-white font-medium shadow-sm'
+                  : 'text-slate-300 hover:bg-slate-700 hover:text-white'
+              }`}
+            >
+              <span className={`transition-transform duration-150 ${activeTab === item.id ? 'scale-110' : 'group-hover:scale-105'}`}>{item.icon}</span>
               <span>{item.label}</span>
             </button>
           ))}
         </nav>
-        <div className="mt-auto space-y-2">
-          <Button variant="secondary" icon={dark ? FiSun : FiMoon} onClick={() => setDark(!dark)} fullWidth>{dark ? 'Light' : 'Dark'}</Button>
-          <Button variant="danger" icon={FiLogOut} onClick={logout} fullWidth>Logout</Button>
+        <div className="mt-auto pt-4 border-t border-slate-700 space-y-2">
+          <Button variant="secondary" icon={dark ? FiSun : FiMoon} onClick={() => setDark(!dark)} fullWidth size="sm">{dark ? 'Light Mode' : 'Dark Mode'}</Button>
+          <Button variant="dangerOutline" icon={FiLogOut} onClick={logout} fullWidth size="sm">Logout</Button>
         </div>
       </aside>
 
-      {mobileOpen && <div onClick={() => setMobileOpen(false)} className="fixed inset-0 bg-black/30 z-20 md:hidden" />}
+      {mobileOpen && <div onClick={() => setMobileOpen(false)} className="fixed inset-0 bg-black/50 z-20 md:hidden" />}
 
       <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="sticky top-0 z-10 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-b border-slate-200 dark:border-slate-800 px-6 py-4 flex items-center justify-between">
-            <div className="flex items-center gap-4">
-                <button onClick={() => setMobileOpen(true)} className="md:hidden p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"><FiMenu size={20} /></button>
-                <h2 className="text-xl font-bold">Supervisor Dashboard</h2>
+        <header className="sticky top-0 z-10 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 py-3 flex items-center justify-between shadow-sm">
+          <div className="flex items-center gap-3">
+            <button onClick={() => setMobileOpen(true)} className="md:hidden p-2 rounded-md text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"><FiMenu size={20} /></button>
+            <h2 className="text-lg sm:text-xl font-semibold text-slate-800 dark:text-slate-100">{navItems.find(item => item.id === activeTab)?.label || 'Dashboard'}</h2>
+          </div>
+          <div className="flex items-center gap-3">
+            <button className="p-2 rounded-full text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 relative">
+              <FiBell size={18} />
+              <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse"></span>
+            </button>
+            <div className="flex items-center gap-2">
+               <Avatar name={user?.full_name || user?.email} size="sm" />
+               <span className="text-sm font-medium text-slate-700 dark:text-slate-300 hidden sm:inline">{user?.full_name || user?.email}</span>
             </div>
-            <div className="flex items-center gap-3">
-                <button className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 relative">
-                    <FiBell size={20} />
-                    <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-                </button>
-            </div>
+          </div>
         </header>
 
-        <div className="fixed top-20 right-4 z-40 space-y-2 max-w-sm">
+        <div className="fixed top-20 right-4 z-40 space-y-2 w-full max-w-xs sm:max-w-sm">
           {alerts.map((alert) => (<Alert key={alert.id} type={alert.type} message={alert.message} onClose={() => setAlerts(prev => prev.filter(a => a.id !== alert.id))} />))}
         </div>
 
-        <main className="flex-1 overflow-y-auto p-6">
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-100 dark:bg-slate-950">
+          <motion.div
+             key={activeTab}
+             initial={{ opacity: 0, y: 10 }}
+             animate={{ opacity: 1, y: 0 }}
+             transition={{ duration: 0.3, ease: "easeOut" }}
+          >
             {activeTab === 'overview' && (
               <div className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <StatValue label="Total Employees" value={employees?.length || 0} />
-                  <StatValue label="Active Tasks" value={(kpiData?.task_metrics?.total_tasks || 0) - (kpiData?.task_metrics?.completed_tasks || 0)} />
-                  <StatValue label="Completed Today" value={kpiData?.task_metrics?.completed_today || 0} />
-                  <StatValue label="Avg Efficiency" value={`${kpiData?.efficiency_metrics?.efficiency_score || 0}%`} />
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <StatValue label="Total Employees" value={(Array.isArray(employees) ? employees.length : 0)} />
+                  <StatValue label="Active Tasks" value={(Array.isArray(tasks) ? tasks.filter(t => t?.status !== 'COMPLETED' && t?.status !== 'completed').length : 0)} />
+                  <StatValue label="Completed Today" value={kpiData?.task_metrics?.completed_today ?? 0} />
+                  <StatValue label="Avg Team Efficiency" value={`${kpiData?.efficiency_metrics?.efficiency_score ?? 'N/A'}%`} />
                 </div>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <Card>
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-4">Recent Activity</h3>
-                    <div className="space-y-3"><p className="text-sm text-slate-600 dark:text-slate-400">Activity feed is under development.</p></div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  <Card className="lg:col-span-2">
+                    <h3 className="text-base font-semibold text-slate-800 dark:text-slate-100 mb-3">Recent Activity</h3>
+                    <div className="space-y-2 text-sm text-slate-500 dark:text-slate-400">
+                      <p>John Doe completed 'Deliver Package A'.</p>
+                      <p>New task 'Inspect Site B' assigned to Jane Smith.</p>
+                      <p>System alert: Heavy traffic detected on Route 7.</p>
+                    </div>
                   </Card>
                   <Card>
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-4">Quick Actions</h3>
+                    <h3 className="text-base font-semibold text-slate-800 dark:text-slate-100 mb-3">Quick Actions</h3>
                     <div className="space-y-2">
-                      <Button variant="primary" fullWidth onClick={() => setActiveTab('tasks')}>Manage Tasks</Button>
-                      <Button variant="secondary" fullWidth onClick={() => setActiveTab('employees')}>View Employees</Button>
-                      <Button variant="secondary" fullWidth onClick={() => setActiveTab('forecast')}>ML Recommendations</Button>
+                      <Button variant="primary" size="sm" fullWidth onClick={() => setIsCreateTaskModalOpen(true)} icon={FiPlus}>Create New Task</Button>
+                      <Button variant="secondary" size="sm" fullWidth onClick={() => setActiveTab('employees')} icon={FiUsers}>View Employees</Button>
+                      <Button variant="secondary" size="sm" fullWidth onClick={() => setActiveTab('forecast')} icon={FiCpu}>Performance AI</Button>
                     </div>
                   </Card>
                 </div>
@@ -263,16 +317,29 @@ const SupervisorDashboard = () => {
             )}
 
             {activeTab === 'employees' && (
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-1">
-                  <Card>
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-4">Select Employee</h3>
-                    <div className="space-y-3 mb-4">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
+                <div className="lg:col-span-1 flex flex-col">
+                  <Card className="flex-1 flex flex-col">
+                    <h3 className="text-base font-semibold text-slate-800 dark:text-slate-100 mb-3">Select Employee</h3>
+                    <div className="space-y-2 mb-3">
                       <Input placeholder="Search employees..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-                      <Select options={[{ value: 'all', label: 'All Roles' }, ...roles.map(role => ({ value: role, label: role }))]} value={filterRole} onChange={(e) => setFilterRole(e.target.value)} />
+                      <Select
+                        options={[{ value: 'all', label: 'All Roles' }, ...roles.map(role => ({ value: role, label: role === 'user' ? 'Employee' : role }))]}
+                        value={filterRole}
+                        onChange={(e) => setFilterRole(e.target.value)}
+                      />
                     </div>
-                    <div className="space-y-2 max-h-96 overflow-y-auto">
-                      {filteredEmployees.length > 0 ? filteredEmployees.map((emp) => (<EmployeeListItemComponent key={emp.id} employee={emp} isSelected={selectedEmployee?.id === emp.id}/>)) : (<p className="text-center text-slate-500 dark:text-slate-400 py-4">No employees found.</p>)}
+                    <div className="flex-1 overflow-y-auto space-y-1.5 pr-1">
+                      {filteredEmployees.length > 0
+                        ? filteredEmployees.map((emp) => (
+                            <EmployeeListItemComponent
+                              key={emp.id}
+                              employee={emp}
+                              isSelected={selectedEmployee?.id === emp.id}
+                            />
+                          ))
+                        : (<p className="text-center text-slate-500 dark:text-slate-400 py-6">No employees found.</p>)
+                      }
                     </div>
                   </Card>
                 </div>
@@ -284,39 +351,68 @@ const SupervisorDashboard = () => {
 
             {activeTab === 'tasks' && (
               <div className="space-y-4">
-                <div className="flex justify-between items-center gap-3">
-                  <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">Task Management</h3>
-                  <Button icon={FiPlus} onClick={() => setIsCreateTaskModalOpen(true)}>Create Task</Button>
+                <div className="flex flex-wrap justify-between items-center gap-3 mb-2">
+                  <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Task Management</h3>
+                  <Button icon={FiPlus} onClick={() => setIsCreateTaskModalOpen(true)} size="sm">Create Task</Button>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                   {tasks.length > 0 ? tasks.map((task) => (<TaskCardComponent key={task.id} task={task} />)) : (<Card className="md:col-span-2 lg:col-span-3 text-center py-8 text-slate-500 dark:text-slate-400">No tasks found. Click 'Create Task' to get started.</Card>)}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {Array.isArray(tasks) && tasks.length > 0
+                    ? tasks.map((task) => (<TaskCardComponent key={task.id} task={task} />))
+                    : (<Card className="sm:col-span-2 lg:col-span-3 xl:col-span-4 text-center py-10 text-slate-500 dark:text-slate-400">No tasks found. Click 'Create Task' to get started.</Card>)
+                  }
                 </div>
               </div>
             )}
-            
-            {activeTab === 'routes' && (<Card className="text-center py-8"><h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2 justify-center"><FiMap />Multi-Task Route Planner</h3><p className="text-slate-500 dark:text-slate-400">Route planning feature is under development.</p></Card>)}
-            
+
+            {activeTab === 'routes' && (
+              <Card className="text-center py-10">
+                <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-3 flex items-center gap-2 justify-center"><FiMap /> Multi-Task Route Planner</h3>
+                <p className="text-slate-500 dark:text-slate-400">Route planning feature is currently under development.</p>
+              </Card>
+            )}
+
             {activeTab === 'tracking' && (
               <LiveLocationTracker isMapLoaded={isMapLoaded} mapLoadError={mapLoadError} />
             )}
 
+            {activeTab === 'forecast' && (
+              <div className="space-y-4">
+                <Card>
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2"><FiCpu /> Performance AI & Forecasting</h3>
+                  <div className="space-y-4">
+                    <p className="text-sm text-slate-600 dark:text-slate-400">
+                      Use the tools below to forecast task durations based on conditions or view insights from the model.
+                    </p>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 italic">Task duration forecasting form under development.</p>
+                    <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-700">
+                      <FeatureImportanceChart />
+                    </div>
+                  </div>
+                </Card>
+              </div>
+            )}
 
-            {activeTab === 'forecast' && (<div className="space-y-4"><Card><h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2"><FiCpu />ML-Powered Task Assignment</h3><div className="space-y-4"><p className="text-sm text-slate-600 dark:text-slate-400">Select an employee to see ML-powered performance predictions.</p>{selectedEmployee && (<div className="space-y-3 mt-6 pt-6 border-t border-slate-200 dark:border-slate-700"><h4 className="font-semibold text-slate-900 dark:text-slate-100">Recommended For: {selectedEmployee.full_name}</h4><div className="space-y-2"><div className="p-3 bg-slate-50 dark:bg-slate-700 rounded-lg"><p className="text-sm font-medium text-slate-900 dark:text-slate-100">Next Week Completion Probability</p><p className="text-2xl font-bold text-green-600">94% (mock data)</p></div><div className="p-3 bg-slate-50 dark:bg-slate-700 rounded-lg"><p className="text-sm font-medium text-slate-900 dark:text-slate-100">Quality Maintenance</p><p className="text-2xl font-bold text-blue-600">92% (mock data)</p></div></div></div>)}</div></Card></div>)}
-            {activeTab === 'analytics' && (<Card className="text-center py-8"><h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-4">Analytics Dashboard</h3><p className="text-slate-500 dark:text-slate-400">Detailed analytics are under development.</p></Card>)}
+            {activeTab === 'analytics' && (
+              <div className="space-y-6">
+                <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-0">Model Analytics</h3>
+                <FeatureImportanceChart />
+                <Card>
+                  <p className="text-slate-500 dark:text-slate-400 text-center py-4">More detailed performance analytics coming soon.</p>
+                </Card>
+              </div>
+            )}
           </motion.div>
         </main>
       </div>
 
       {isCreateTaskModalOpen && (
          <CreateTaskModal
-          isOpen={isCreateTaskModalOpen}
           onClose={() => setIsCreateTaskModalOpen(false)}
-          onTaskCreated={handleTaskCreated}
+          onSuccess={handleTaskCreated}
           isMapLoaded={isMapLoaded}
           mapLoadError={mapLoadError}
         />
       )}
-
     </div>
   );
 };

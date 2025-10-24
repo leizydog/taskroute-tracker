@@ -2,7 +2,8 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 
 class ApiService {
-  static const String baseUrl = 'http://10.0.2.2:8000';
+  // ✅ FIX: Add /api/v1 to match your backend
+  static const String baseUrl = 'http://10.0.2.2:8000/api/v1';
   
   // Singleton pattern
   static final ApiService _instance = ApiService._internal();
@@ -118,28 +119,28 @@ class ApiService {
   }
 
   Future<http.Response> startTask(int taskId, Map<String, dynamic> locationData) async {
-  print('=== START TASK API DEBUG ===');
-  print('Task ID: $taskId');
-  print('Location Data: $locationData');
-  print('URL: $baseUrl/tasks/$taskId/start');
-  print('Headers: $_headers');
-  
-  try {
-    final response = await http.post(
-      Uri.parse('$baseUrl/tasks/$taskId/start'),
-      headers: _headers,
-      body: json.encode(locationData),
-    );
+    print('=== START TASK API DEBUG ===');
+    print('Task ID: $taskId');
+    print('Location Data: $locationData');
+    print('URL: $baseUrl/tasks/$taskId/start');
+    print('Headers: $_headers');
     
-    print('Start Task API Response Status: ${response.statusCode}');
-    print('Start Task API Response Body: ${response.body}');
-    
-    return response;
-  } catch (e) {
-    print('Start Task API Exception: $e');
-    rethrow;
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/tasks/$taskId/start'),
+        headers: _headers,
+        body: json.encode(locationData),
+      );
+      
+      print('Start Task API Response Status: ${response.statusCode}');
+      print('Start Task API Response Body: ${response.body}');
+      
+      return response;
+    } catch (e) {
+      print('Start Task API Exception: $e');
+      rethrow;
+    }
   }
-}
 
   Future<http.Response> completeTask(int taskId, Map<String, dynamic> completionData) async {
     final response = await http.post(

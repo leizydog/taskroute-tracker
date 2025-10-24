@@ -1,38 +1,37 @@
+// src/services/api.js
 import axios from 'axios';
 
 // Create an Axios instance
 const apiClient = axios.create({
-  // This is the FIX
   baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8000/api/v1',
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Use an interceptor to add the authentication token to every request
+// Add auth token automatically
 apiClient.interceptors.request.use(
   (config) => {
-    // Retrieve the token from local storage
     const token = localStorage.getItem('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
 export default {
   // --- Authentication ---
   login(credentials) {
-    // FastAPI's OAuth2PasswordRequestForm expects form data
-    return apiClient.post('/auth/token', credentials, {
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
+    return apiClient.post('/auth/login-json', {
+      email: credentials.email || credentials.username,
+      password: credentials.password
     });
+  },
+
+  getCurrentUserInfo() {
+    return apiClient.get('/auth/me');
   },
 
   register(userData) {
@@ -70,7 +69,40 @@ export default {
     return apiClient.get(`/locations/task/${taskId}`);
   },
 
+  getLocationHistory({ taskId, limit = 100 }) {
+    let url = `/locations/?limit=${limit}`;
+    if (taskId) {
+      url += `&task_id=${taskId}`;
+    }
+    return apiClient.get(url);
+  },
+
   // --- Analytics ---
+  // ✅ FIXED: Use the correct endpoint that exists in your backend
+  getAnalyticsOverview() {
+    return apiClient.get('/analytics/kpi/overview');
+  },
+
+  // ✅ REMOVED: This endpoint doesn't exist in your backend
+  // Instead, use getTeamOverview() which returns data for all employees
+  // getEmployeeKpiById(employeeId) {
+  //   return apiClient.get(`/analytics/employee/${employeeId}`);
+  // },
+
+  // ✅ NEW: Use the team overview endpoint
+  getTeamOverview() {
+    return apiClient.get('/analytics/team/overview');
+  },
+
+  getFeatureImportance() {
+    return apiClient.get('/analytics/feature-importance');
+  },
+
+  getTaskForecast(forecastData) {
+    return apiClient.post('/analytics/forecast', forecastData);
+  },
+
+  // Legacy method (keeping for backwards compatibility)
   getAnalytics() {
     return apiClient.get('/analytics/performance');
   },

@@ -1,9 +1,9 @@
 // src/components/organisms/LiveLocationTracker.js
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import axios from 'axios';
+import api from '../../services/api'; // ✅ FIXED: Import api instead of axios
 import { GoogleMap, DirectionsRenderer } from '@react-google-maps/api';
 import { Card, Button, Spinner, Avatar } from '../atoms';
-import AdvancedMarker from './AdvancedMarker'; // ensure this path is correct
+import AdvancedMarker from './AdvancedMarker';
 import { FiMapPin, FiEyeOff } from 'react-icons/fi';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -53,7 +53,6 @@ const LiveLocationTracker = ({ isMapLoaded, mapLoadError }) => {
 
   const lastOriginRef = useRef(null);
   const debounceRef = useRef(null);
-  // map ref
   const mapRef = useRef(null);
 
   const mapCenter = useMemo(() => {
@@ -69,20 +68,35 @@ const LiveLocationTracker = ({ isMapLoaded, mapLoadError }) => {
     const fetchInitial = async () => {
       try {
         setLoading(true);
-        const tasksRes = await axios.get('/tasks/?status=in_progress').catch(() => ({ data: [] }));
-        const inProgress = tasksRes.data || [];
+        // ✅ FIXED: Use api service with proper error handling
+        const tasksRes = await api.getTasks().catch(() => ({ data: [] }));
+        
+        // Filter for in_progress tasks on the client side
+        const allTasks = tasksRes.data?.results || tasksRes.data || [];
+        const inProgress = Array.isArray(allTasks) 
+          ? allTasks.filter(t => t.status === 'in_progress' || t.status === 'IN_PROGRESS')
+          : [];
+        
         if (!mounted) return;
         setActiveTasks(inProgress);
 
-        const locPromises = inProgress.map(t => axios.get(`/locations/${t.id}/latest`).catch(() => null));
+        // ✅ FIXED: Use api service for location fetching
+        // Note: You may need to add a getLatestLocation method to your api.js
+        const locPromises = inProgress.map(t => 
+          api.getLocationHistory({ taskId: t.id, limit: 1 })
+            .then(res => res.data?.[0] || null)
+            .catch(() => null)
+        );
+        
         const locResults = await Promise.all(locPromises);
         const initial = {};
-        locResults.forEach(r => {
-          if (r && r.data) {
-            const { task_id, latitude, longitude } = r.data;
-            initial[task_id] = { lat: latitude, lng: longitude };
+        locResults.forEach((loc, idx) => {
+          if (loc && loc.latitude && loc.longitude) {
+            const taskId = inProgress[idx].id;
+            initial[taskId] = { lat: loc.latitude, lng: loc.longitude };
           }
         });
+        
         if (!mounted) return;
         setLiveLocations(initial);
       } catch (err) {
@@ -133,13 +147,11 @@ const LiveLocationTracker = ({ isMapLoaded, mapLoadError }) => {
     };
   }, []);
 
-  // reset directions when switching tasks
   useEffect(() => {
     setDirectionsResult(null);
     lastOriginRef.current = null;
   }, [selectedTask?.id]);
 
-  // compute directions when selectedTask or live location changes
   useEffect(() => {
     if (!selectedTask) {
       setDirectionsResult(null);
@@ -195,12 +207,10 @@ const LiveLocationTracker = ({ isMapLoaded, mapLoadError }) => {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [selectedTask, liveLocations]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedTask, liveLocations, directionsResult]);
 
   const onMapLoad = useCallback((map) => {
     mapRef.current = map;
-    // also expose globally so AdvancedMarker can find it (your AdvancedMarker code uses window.__google_map__).
-    // this is intentionally simple — if you'd rather pass a prop into AdvancedMarker, we can change that.
     window.__google_map__ = map;
   }, []);
 
@@ -228,7 +238,6 @@ const LiveLocationTracker = ({ isMapLoaded, mapLoadError }) => {
         onUnmount={onMapUnmount}
         options={{ streetViewControl: false, mapTypeControl: false, fullscreenControl: false }}
       >
-        {/* Destination marker: blue pin */}
         <AdvancedMarker
           position={destination}
           type="destination"
@@ -236,7 +245,6 @@ const LiveLocationTracker = ({ isMapLoaded, mapLoadError }) => {
           zIndex={20}
         />
 
-        {/* Employee marker: red circle */}
         {employeePosition && (
           <AdvancedMarker
             position={employeePosition}

@@ -1,10 +1,9 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine
-from app.models import user, task  # Import both models
+from app.models import user, task
 from app.routers import auth, tasks, locations, analytics, users
 from .websocket_manager import manager
-
 
 # Create database tables
 user.Base.metadata.create_all(bind=engine)
@@ -20,19 +19,18 @@ app = FastAPI(
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # React dev server
+    allow_origins=["http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Include routers
-app.include_router(auth.router)
-app.include_router(tasks.router)
-app.include_router(analytics.router)  # Add this line
-app.include_router(locations.router)  # Add this line
-app.include_router(users.router)
-
+# ✅ Include routers with /api/v1 prefix
+app.include_router(auth.router, prefix="/api/v1")          # /api/v1/auth/*
+app.include_router(tasks.router, prefix="/api/v1")         # /api/v1/tasks/*
+app.include_router(users.router, prefix="/api/v1")         # /api/v1/users/*
+app.include_router(locations.router, prefix="/api/v1")     # /api/v1/locations/*
+app.include_router(analytics.router, prefix="/api/v1")     # /api/v1/analytics/*
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -40,11 +38,9 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         while True:
             data = await websocket.receive_text()
-            # You can add logic here if supervisors need to send messages back
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 
-# Root endpoint
 @app.get("/")
 def read_root():
     return {
@@ -54,7 +50,6 @@ def read_root():
         "docs": "/docs"
     }
 
-# Health check endpoint
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
