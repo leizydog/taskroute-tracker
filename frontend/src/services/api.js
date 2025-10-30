@@ -66,30 +66,30 @@ export default {
 
   // --- Locations ---
   getLocations(taskId) {
-    return apiClient.get(`/locations/task/${taskId}`);
+    return apiClient.get(`/locations/${taskId}`);
   },
 
+  // ✅ FIXED: Use the /latest endpoint that exists in your backend
+  getLatestLocation(taskId) {
+    return apiClient.get(`/locations/${taskId}/latest`);
+  },
+
+  // Legacy method for backwards compatibility
   getLocationHistory({ taskId, limit = 100 }) {
-    let url = `/locations/?limit=${limit}`;
     if (taskId) {
-      url += `&task_id=${taskId}`;
+      // For single task, get all locations
+      return apiClient.get(`/locations/${taskId}`);
     }
-    return apiClient.get(url);
+    // If no taskId, this won't work with current backend
+    console.warn('getLocationHistory without taskId is not supported');
+    return Promise.resolve({ data: [] });
   },
 
   // --- Analytics ---
-  // ✅ FIXED: Use the correct endpoint that exists in your backend
   getAnalyticsOverview() {
     return apiClient.get('/analytics/kpi/overview');
   },
 
-  // ✅ REMOVED: This endpoint doesn't exist in your backend
-  // Instead, use getTeamOverview() which returns data for all employees
-  // getEmployeeKpiById(employeeId) {
-  //   return apiClient.get(`/analytics/employee/${employeeId}`);
-  // },
-
-  // ✅ NEW: Use the team overview endpoint
   getTeamOverview() {
     return apiClient.get('/analytics/team/overview');
   },
@@ -100,6 +100,11 @@ export default {
 
   getTaskForecast(forecastData) {
     return apiClient.post('/analytics/forecast', forecastData);
+  },
+
+   // ✅ Add this method
+   getLatestLocation(taskId) {
+    return apiClient.get(`/locations/${taskId}/latest`);
   },
 
   // Legacy method (keeping for backwards compatibility)

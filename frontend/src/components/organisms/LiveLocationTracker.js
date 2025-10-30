@@ -1,6 +1,5 @@
-// src/components/organisms/LiveLocationTracker.js
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import api from '../../services/api'; // ✅ FIXED: Import api instead of axios
+import api from '../../services/api';
 import { GoogleMap, DirectionsRenderer } from '@react-google-maps/api';
 import { Card, Button, Spinner, Avatar } from '../atoms';
 import AdvancedMarker from './AdvancedMarker';
@@ -31,15 +30,24 @@ const ActiveTaskCard = ({ task, onSelect, isSelected }) => (
     animate={{ opacity: 1, y: 0 }}
     exit={{ opacity: 0, x: -20 }}
     transition={{ duration: 0.3 }}
-    className={`p-4 rounded-lg border-2 transition-colors ${isSelected ? 'bg-indigo-50 border-indigo-500' : 'bg-white border-slate-200'}`}
+    className={`p-4 rounded-lg border-2 transition-colors ${
+      isSelected ? 'bg-indigo-50 border-indigo-500' : 'bg-white border-slate-200'
+    }`}
   >
     <div className="flex items-center gap-4">
       <Avatar name={task.assigned_user_name} size="md" />
       <div className="flex-1">
         <p className="font-semibold text-slate-800">{task.title}</p>
         <p className="text-sm text-slate-500">Assigned to: {task.assigned_user_name}</p>
+        {task.is_multi_destination && task.destinations && (
+          <p className="text-xs text-indigo-600 mt-1">
+            {task.destinations.length} destinations
+          </p>
+        )}
       </div>
-      <Button size="sm" onClick={() => onSelect(task)}>View on Map</Button>
+      <Button size="sm" onClick={() => onSelect(task)}>
+        View on Map
+      </Button>
     </div>
   </motion.div>
 );
@@ -50,100 +58,182 @@ const LiveLocationTracker = ({ isMapLoaded, mapLoadError }) => {
   const [loading, setLoading] = useState(true);
   const [liveLocations, setLiveLocations] = useState({});
   const [directionsResult, setDirectionsResult] = useState(null);
+  const [wsConnected, setWsConnected] = useState(false);
 
   const lastOriginRef = useRef(null);
   const debounceRef = useRef(null);
   const mapRef = useRef(null);
+  const wsRef = useRef(null);
+  const reconnectTimeoutRef = useRef(null);
 
   const mapCenter = useMemo(() => {
     if (selectedTask) {
       const emp = liveLocations[selectedTask.id];
-      return emp || { lat: Number(selectedTask.latitude), lng: Number(selectedTask.longitude) };
+      if (emp) return emp;
+      
+      if (selectedTask.is_multi_destination && selectedTask.destinations?.length > 0) {
+        return { 
+          lat: Number(selectedTask.destinations[0].latitude), 
+          lng: Number(selectedTask.destinations[0].longitude) 
+        };
+      }
+      
+      return { lat: Number(selectedTask.latitude), lng: Number(selectedTask.longitude) };
     }
     return { lat: 14.8781, lng: 120.9750 };
   }, [selectedTask, liveLocations]);
 
   useEffect(() => {
     let mounted = true;
+
     const fetchInitial = async () => {
       try {
         setLoading(true);
-        // ✅ FIXED: Use api service with proper error handling
-        const tasksRes = await api.getTasks().catch(() => ({ data: [] }));
+        console.log('📄 Fetching initial tasks...');
         
-        // Filter for in_progress tasks on the client side
+        const tasksRes = await api.getTasks().catch((err) => {
+          console.error('❌ Error fetching tasks:', err);
+          return { data: [] };
+        });
+
         const allTasks = tasksRes.data?.results || tasksRes.data || [];
-        const inProgress = Array.isArray(allTasks) 
-          ? allTasks.filter(t => t.status === 'in_progress' || t.status === 'IN_PROGRESS')
+        const inProgress = Array.isArray(allTasks)
+          ? allTasks.filter((t) => t.status === 'in_progress' || t.status === 'IN_PROGRESS')
           : [];
-        
+
+        console.log(`✅ Found ${inProgress.length} active tasks`);
+
         if (!mounted) return;
         setActiveTasks(inProgress);
 
-        // ✅ FIXED: Use api service for location fetching
-        // Note: You may need to add a getLatestLocation method to your api.js
-        const locPromises = inProgress.map(t => 
-          api.getLocationHistory({ taskId: t.id, limit: 1 })
-            .then(res => res.data?.[0] || null)
-            .catch(() => null)
+        const locPromises = inProgress.map((t) =>
+          api
+            .getLatestLocation(t.id)
+            .then((res) => res.data || null)
+            .catch((err) => {
+              console.warn(`⚠️ Could not fetch location for task ${t.id}:`, err.response?.status);
+              return null;
+            })
         );
-        
+
         const locResults = await Promise.all(locPromises);
         const initial = {};
+        
         locResults.forEach((loc, idx) => {
           if (loc && loc.latitude && loc.longitude) {
             const taskId = inProgress[idx].id;
             initial[taskId] = { lat: loc.latitude, lng: loc.longitude };
+            console.log(`📍 Initial location for task ${taskId}:`, initial[taskId]);
           }
         });
-        
+
         if (!mounted) return;
         setLiveLocations(initial);
       } catch (err) {
-        console.error('fetch initial live tracking failed', err);
+        console.error('❌ Fetch initial live tracking failed:', err);
       } finally {
         if (mounted) setLoading(false);
       }
     };
 
-    fetchInitial();
+    const connectWebSocket = () => {
+      if (!mounted) return;
 
-    const WS_URL = process.env.REACT_APP_WS_URL || 'ws://localhost:8000/ws/location';
-    const ws = new WebSocket(WS_URL);
-    ws.onopen = () => console.log('WebSocket connected for live tracking.');
-    ws.onmessage = e => {
+      const WS_URL = process.env.REACT_APP_WS_URL || 'ws://localhost:8000/ws/location';
+      console.log('🔌 Connecting to WebSocket:', WS_URL);
+
       try {
-        const message = JSON.parse(e.data);
-        if (message.event === 'task_started') {
-          const newTask = JSON.parse(message.task);
-          setActiveTasks(prev => [newTask, ...prev.filter(t => t.id !== newTask.id)]);
-        }
-        if (message.event === 'task_completed' || message.event === 'task_deleted') {
-          setActiveTasks(prev => prev.filter(t => t.id !== message.task_id));
-          setLiveLocations(prev => {
-            const next = { ...prev };
-            delete next[message.task_id];
-            return next;
-          });
-          setSelectedTask(curr => (curr?.id === message.task_id ? null : curr));
-        }
-        if (message.event === 'location_update') {
-          setLiveLocations(prev => ({
-            ...prev,
-            [message.task_id]: { lat: message.latitude, lng: message.longitude }
-          }));
-        }
-      } catch (err) {
-        console.warn('ws message parse error', err);
+        const ws = new WebSocket(WS_URL);
+        wsRef.current = ws;
+
+        ws.onopen = () => {
+          console.log('✅ WebSocket connected for live tracking');
+          if (mounted) setWsConnected(true);
+        };
+
+        ws.onmessage = (e) => {
+          if (!mounted) return;
+
+          try {
+            const message = JSON.parse(e.data);
+            console.log('📨 WebSocket message received:', message);
+
+            if (message.event === 'task_started') {
+              const newTask = typeof message.task === 'string' 
+                ? JSON.parse(message.task) 
+                : message.task;
+              
+              console.log('🚀 Task started:', newTask);
+              setActiveTasks((prev) => [newTask, ...prev.filter((t) => t.id !== newTask.id)]);
+            }
+
+            if (message.event === 'task_completed' || message.event === 'task_deleted') {
+              console.log(`✅ Task ${message.event}:`, message.task_id);
+              setActiveTasks((prev) => prev.filter((t) => t.id !== message.task_id));
+              setLiveLocations((prev) => {
+                const next = { ...prev };
+                delete next[message.task_id];
+                return next;
+              });
+              setSelectedTask((curr) => (curr?.id === message.task_id ? null : curr));
+            }
+
+            if (message.event === 'location_update') {
+              console.log('📍 Location update:', message);
+              setLiveLocations((prev) => ({
+                ...prev,
+                [message.task_id]: { lat: message.latitude, lng: message.longitude },
+              }));
+            }
+          } catch (err) {
+            console.warn('⚠️ WS message parse error:', err);
+          }
+        };
+
+        ws.onerror = (error) => {
+          console.error('❌ WebSocket error:', error);
+        };
+
+        ws.onclose = (event) => {
+          console.log('🔌 WebSocket disconnected:', event.code, event.reason);
+          if (mounted) setWsConnected(false);
+
+          if (mounted && !reconnectTimeoutRef.current) {
+            console.log('🔄 Reconnecting in 3 seconds...');
+            reconnectTimeoutRef.current = setTimeout(() => {
+              reconnectTimeoutRef.current = null;
+              connectWebSocket();
+            }, 3000);
+          }
+        };
+      } catch (error) {
+        console.error('❌ Failed to create WebSocket:', error);
+        if (mounted) setWsConnected(false);
       }
     };
-    ws.onclose = () => console.log('WebSocket disconnected.');
-    ws.onerror = (e) => console.warn('ws error', e);
+
+    fetchInitial();
+    connectWebSocket();
 
     return () => {
       mounted = false;
-      try { ws.close(); } catch (e) {}
-      if (debounceRef.current) clearTimeout(debounceRef.current);
+      
+      if (wsRef.current) {
+        try {
+          wsRef.current.close();
+        } catch (e) {
+          console.warn('Error closing WebSocket:', e);
+        }
+      }
+
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
     };
   }, []);
 
@@ -159,7 +249,17 @@ const LiveLocationTracker = ({ isMapLoaded, mapLoadError }) => {
       return;
     }
 
-    const dest = { lat: Number(selectedTask.latitude), lng: Number(selectedTask.longitude) };
+    // For multi-destination, use first destination
+    let dest;
+    if (selectedTask.is_multi_destination && selectedTask.destinations?.length > 0) {
+      dest = { 
+        lat: Number(selectedTask.destinations[0].latitude), 
+        lng: Number(selectedTask.destinations[0].longitude) 
+      };
+    } else {
+      dest = { lat: Number(selectedTask.latitude), lng: Number(selectedTask.longitude) };
+    }
+
     const origin = liveLocations[selectedTask.id] || null;
 
     if (!origin) {
@@ -174,7 +274,11 @@ const LiveLocationTracker = ({ isMapLoaded, mapLoadError }) => {
       return;
     }
 
-    if (lastOriginRef.current && haversineMeters(lastOriginRef.current, origin) < HYSTERESIS_METERS && directionsResult) {
+    if (
+      lastOriginRef.current &&
+      haversineMeters(lastOriginRef.current, origin) < HYSTERESIS_METERS &&
+      directionsResult
+    ) {
       return;
     }
 
@@ -187,13 +291,30 @@ const LiveLocationTracker = ({ isMapLoaded, mapLoadError }) => {
       }
 
       const ds = new window.google.maps.DirectionsService();
-      ds.route({
+      
+      // For multi-destination, add waypoints
+      const routeConfig = {
         origin,
-        destination: dest,
+        destination: selectedTask.is_multi_destination && selectedTask.destinations?.length > 0
+          ? {
+              lat: Number(selectedTask.destinations[selectedTask.destinations.length - 1].latitude),
+              lng: Number(selectedTask.destinations[selectedTask.destinations.length - 1].longitude)
+            }
+          : dest,
         travelMode: window.google.maps.TravelMode.DRIVING,
         drivingOptions: { departureTime: new Date() },
         provideRouteAlternatives: false,
-      }, (result, status) => {
+      };
+
+      // Add waypoints for multi-destination (middle stops)
+      if (selectedTask.is_multi_destination && selectedTask.destinations?.length > 2) {
+        routeConfig.waypoints = selectedTask.destinations.slice(1, -1).map(dest => ({
+          location: { lat: Number(dest.latitude), lng: Number(dest.longitude) },
+          stopover: true,
+        }));
+      }
+
+      ds.route(routeConfig, (result, status) => {
         if (status === window.google.maps.DirectionsStatus.OK || status === 'OK') {
           setDirectionsResult(result);
           lastOriginRef.current = origin;
@@ -221,11 +342,15 @@ const LiveLocationTracker = ({ isMapLoaded, mapLoadError }) => {
 
   const MapView = () => {
     if (mapLoadError) return <div className="text-red-500">Error loading map.</div>;
-    if (!isMapLoaded) return <div className="flex items-center justify-center h-full"><Spinner /></div>;
+    if (!isMapLoaded)
+      return (
+        <div className="flex items-center justify-center h-full">
+          <Spinner />
+        </div>
+      );
     if (!selectedTask) return null;
 
     const employeePosition = liveLocations[selectedTask.id] || null;
-    const destination = { lat: Number(selectedTask.latitude), lng: Number(selectedTask.longitude) };
 
     const drKey = `dr-${selectedTask.id}-${employeePosition?.lat ?? 'no'}-${employeePosition?.lng ?? 'no'}`;
 
@@ -238,13 +363,7 @@ const LiveLocationTracker = ({ isMapLoaded, mapLoadError }) => {
         onUnmount={onMapUnmount}
         options={{ streetViewControl: false, mapTypeControl: false, fullscreenControl: false }}
       >
-        <AdvancedMarker
-          position={destination}
-          type="destination"
-          title={`Destination: ${selectedTask.location_name || selectedTask.title}`}
-          zIndex={20}
-        />
-
+        {/* Employee marker */}
         {employeePosition && (
           <AdvancedMarker
             position={employeePosition}
@@ -254,6 +373,33 @@ const LiveLocationTracker = ({ isMapLoaded, mapLoadError }) => {
           />
         )}
 
+        {/* Destination markers */}
+        {selectedTask.is_multi_destination && selectedTask.destinations ? (
+          // Multi-destination: show all stops with numbered markers
+          selectedTask.destinations.map((dest, index) => (
+            <AdvancedMarker
+              key={`dest-${dest.sequence}`}
+              position={{ lat: Number(dest.latitude), lng: Number(dest.longitude) }}
+              type="waypoint"
+              label={`${dest.sequence}`}
+              title={dest.location_name}
+              zIndex={10 + index}
+            />
+          ))
+        ) : (
+          // Single destination
+          <AdvancedMarker
+            position={{ 
+              lat: Number(selectedTask.latitude), 
+              lng: Number(selectedTask.longitude) 
+            }}
+            type="destination"
+            title={`Destination: ${selectedTask.location_name || selectedTask.title}`}
+            zIndex={20}
+          />
+        )}
+
+        {/* Route line */}
         {directionsResult && (
           <DirectionsRenderer
             key={drKey}
@@ -270,10 +416,25 @@ const LiveLocationTracker = ({ isMapLoaded, mapLoadError }) => {
 
   return (
     <Card>
-      <h2 className="text-xl font-bold mb-4">Live Employee Tracking</h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-xl font-bold">Live Employee Tracking</h2>
+        <div className="flex items-center gap-2">
+          <div
+            className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-green-500' : 'bg-red-500'}`}
+          />
+          <span className="text-xs text-slate-500">
+            {wsConnected ? 'Connected' : 'Disconnected'}
+          </span>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="space-y-3 pr-2 -mr-2 max-h-96 overflow-y-auto">
-          {loading && <div className="flex justify-center p-4"><Spinner /></div>}
+          {loading && (
+            <div className="flex justify-center p-4">
+              <Spinner />
+            </div>
+          )}
           {!loading && activeTasks.length === 0 && (
             <div className="text-center py-10 text-slate-500">
               <FiEyeOff className="mx-auto h-8 w-8 mb-2" />
@@ -281,7 +442,7 @@ const LiveLocationTracker = ({ isMapLoaded, mapLoadError }) => {
             </div>
           )}
           <AnimatePresence>
-            {activeTasks.map(task => (
+            {activeTasks.map((task) => (
               <ActiveTaskCard
                 key={task.id}
                 task={task}
@@ -293,7 +454,9 @@ const LiveLocationTracker = ({ isMapLoaded, mapLoadError }) => {
         </div>
 
         <div className="h-96 bg-slate-200 rounded-lg overflow-hidden relative">
-          {selectedTask ? <MapView /> : (
+          {selectedTask ? (
+            <MapView />
+          ) : (
             <div className="flex flex-col items-center justify-center h-full text-slate-500">
               <FiMapPin className="h-10 w-10 mb-2" />
               <p className="font-semibold">Select a task to view on the map.</p>

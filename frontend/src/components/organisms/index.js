@@ -9,3 +9,4 @@ export * from './TaskRoutePlanner';
 export * from '../atoms';
 export * from '../molecules';
 export * from './AdvancedMarker';
+export * from './TaskForecast';

@@ -10,10 +10,11 @@ from app.models.location import LocationLog
 from app.schemas.location import LocationLogCreate
 from app.schemas.task import (
     TaskCreate, TaskUpdate, TaskResponse, TaskStart,
-    TaskComplete, TaskWithUsers, TaskStats
+    TaskComplete, TaskWithUsers, TaskStats, OngoingTasksByUser, UserWithOngoingTask
 )
 from app.core.auth import get_current_active_user
 from app.websocket_manager import manager
+
 
 router = APIRouter(prefix="/tasks", tags=["Tasks"])
 
@@ -321,7 +322,11 @@ async def delete_task(
             detail="Task not found"
         )
 
-    if task.created_by != current_user.id:
+    # ✅ FIX: Compare against UserRole enum, not strings
+    from app.models.user import UserRole
+    
+    # Allow admins and supervisors to delete any task
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPERVISOR] and task.created_by != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You can only delete tasks you created"
@@ -335,7 +340,6 @@ async def delete_task(
         "event": "task_deleted",
         "task_id": task_id_to_broadcast
     })
-
 
 @router.get("/stats/performance", response_model=TaskStats)
 async def get_task_statistics(
@@ -387,4 +391,70 @@ async def get_task_statistics(
         average_quality_rating=average_quality_rating,
         tasks_by_status=tasks_by_status,
         tasks_by_priority=tasks_by_priority
+    )
+    
+@router.get("/stats/ongoing-by-users", response_model=OngoingTasksByUser)
+async def get_ongoing_tasks_by_users(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Get all users with their currently ongoing (in_progress) tasks.
+    Includes their current location for real-time tracking.
+    """
+    # Get all users who have ongoing tasks
+    ongoing_tasks = db.query(Task).options(
+        joinedload(Task.assigned_user),
+        joinedload(Task.created_user)
+    ).filter(Task.status == TaskStatus.IN_PROGRESS).all()
+    
+    # Group tasks by user
+    users_with_tasks = {}
+    for task in ongoing_tasks:
+        user_id = task.assigned_to
+        if user_id not in users_with_tasks:
+            users_with_tasks[user_id] = {
+                "user": task.assigned_user,
+                "tasks": []
+            }
+        users_with_tasks[user_id]["tasks"].append(task)
+    
+    # Build response
+    users_data = []
+    for user_id, data in users_with_tasks.items():
+        user = data["user"]
+        tasks = data["tasks"]
+        
+        # Get the most recent task (current task)
+        current_task = max(tasks, key=lambda t: t.started_at if t.started_at else datetime.min)
+        
+        task_with_users = TaskWithUsers(
+            **current_task.__dict__,
+            assigned_user_name=current_task.assigned_user.full_name,
+            created_user_name=current_task.created_user.full_name
+        )
+        
+        # Get the latest location for this user's current task
+        latest_location = db.query(LocationLog).filter(
+            LocationLog.task_id == current_task.id,
+            LocationLog.user_id == user.id
+        ).order_by(LocationLog.recorded_at.desc()).first()
+        
+        users_data.append(UserWithOngoingTask(
+            user_id=user.id,
+            user_name=user.full_name,
+            user_email=user.email,
+            user_role=user.role.value,
+            ongoing_task_count=len(tasks),
+            current_task=task_with_users,
+            current_location=latest_location  # Add current location
+        ))
+    
+    # Sort by user name
+    users_data.sort(key=lambda x: x.user_name)
+    
+    return OngoingTasksByUser(
+        total_users_with_tasks=len(users_data),
+        total_ongoing_tasks=len(ongoing_tasks),
+        users=users_data
     )

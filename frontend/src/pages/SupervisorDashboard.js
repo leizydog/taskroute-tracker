@@ -9,10 +9,12 @@ import {
 } from 'react-icons/fi';
 import { Button, Card, StatValue, Input, Select, Alert, Badge, Avatar } from '../components/atoms';
 import CreateTaskModal from '../components/organisms/CreateTaskModal';
-import { EmployeeKPIPanel, LiveLocationTracker } from '../components/organisms';
+import { EmployeeKPIPanel, LiveLocationTracker, TaskManagementPanel } from '../components/organisms';
 import { useAuth } from '../contexts/AuthContext';
 import { useJsApiLoader } from '@react-google-maps/api';
 import FeatureImportanceChart from '../components/analytics/FeatureImportanceChart';
+import TaskForecast from '../components/organisms/TaskForecast';
+
 
 const MAP_LOADER_ID = 'google-map-script';
 const MAP_LIBRARIES = ['places'];
@@ -350,25 +352,24 @@ useEffect(() => {
             )}
 
             {activeTab === 'tasks' && (
-              <div className="space-y-4">
-                <div className="flex flex-wrap justify-between items-center gap-3 mb-2">
-                  <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Task Management</h3>
-                  <Button icon={FiPlus} onClick={() => setIsCreateTaskModalOpen(true)} size="sm">Create Task</Button>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                  {Array.isArray(tasks) && tasks.length > 0
-                    ? tasks.map((task) => (<TaskCardComponent key={task.id} task={task} />))
-                    : (<Card className="sm:col-span-2 lg:col-span-3 xl:col-span-4 text-center py-10 text-slate-500 dark:text-slate-400">No tasks found. Click 'Create Task' to get started.</Card>)
-                  }
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'routes' && (
-              <Card className="text-center py-10">
-                <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-3 flex items-center gap-2 justify-center"><FiMap /> Multi-Task Route Planner</h3>
-                <p className="text-slate-500 dark:text-slate-400">Route planning feature is currently under development.</p>
-              </Card>
+              <TaskManagementPanel 
+                isMapLoaded={isMapLoaded}
+                mapLoadError={mapLoadError}
+                onTaskCreated={(newTask) => {
+                  setTasks(prevTasks => [newTask, ...prevTasks]);
+                  addAlert('success', 'Task created successfully!');
+                }}
+                onTaskDeleted={(taskId) => {
+                  setTasks(prevTasks => prevTasks.filter(t => t.id !== taskId));
+                  addAlert('success', 'Task deleted successfully!');
+                }}
+                onTaskUpdated={(updatedTask) => {
+                  setTasks(prevTasks => prevTasks.map(t => 
+                    t.id === updatedTask.id ? updatedTask : t
+                  ));
+                  addAlert('success', 'Task updated successfully!');
+                }}
+              />
             )}
 
             {activeTab === 'tracking' && (
@@ -378,19 +379,24 @@ useEffect(() => {
             {activeTab === 'forecast' && (
               <div className="space-y-4">
                 <Card>
-                  <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2"><FiCpu /> Performance AI & Forecasting</h3>
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
+                    <FiCpu /> Performance AI & Forecasting
+                  </h3>
+
                   <div className="space-y-4">
                     <p className="text-sm text-slate-600 dark:text-slate-400">
                       Use the tools below to forecast task durations based on conditions or view insights from the model.
                     </p>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 italic">Task duration forecasting form under development.</p>
-                    <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-700">
-                      <FeatureImportanceChart />
+
+                    {/* TaskForecast component — adjust path if needed */}
+                    <div className="mt-4">
+                      <TaskForecast />
                     </div>
                   </div>
                 </Card>
               </div>
             )}
+
 
             {activeTab === 'analytics' && (
               <div className="space-y-6">

@@ -1,7 +1,11 @@
 # In: backend/Dockerfile
 
-# THIS IS THE FIX: We are forcing Docker to use the amd64 (Intel/PC) version
-FROM --platform=linux/amd64 python:3.10-slim
+FROM python:3.10-slim
+
+# --- THIS IS THE FIX ---
+# Install build-essential, which contains the C/C++ compilers
+RUN apt-get update && apt-get install -y build-essential
+# --- END OF FIX ---
 
 # Set the working directory in the container
 WORKDIR /app
@@ -10,7 +14,8 @@ WORKDIR /app
 COPY requirements.txt .
 
 # Install any needed packages specified in requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+# This will now work, but will be slow the first time
+RUN pip install -r requirements.txt
 
 # Copy the rest of the backend application code
 COPY . .

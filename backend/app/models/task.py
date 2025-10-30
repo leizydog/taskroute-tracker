@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, Enum, ForeignKey, Boolean, Float
+from sqlalchemy import Column, Integer, String, Text, DateTime, Enum, ForeignKey, Boolean, Float, JSON
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -32,9 +32,13 @@ class Task(Base):
     assigned_to = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     
-    # Location data
-    location_name = Column(String(200))  # e.g., "Client Office", "Warehouse A"
-    latitude = Column(Float)  # GPS coordinates
+    # ✅ NEW: Multi-destination support
+    is_multi_destination = Column(Boolean, default=False)
+    destinations = Column(JSON)  # Array of {location_name, latitude, longitude, sequence}
+    
+    # Location data (for single destination tasks - backward compatible)
+    location_name = Column(String(200))
+    latitude = Column(Float)
     longitude = Column(Float)
     
     # Time tracking

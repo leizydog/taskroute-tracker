@@ -96,22 +96,23 @@ def create_admin_user(base_url: str) -> tuple:
 def create_users(base_url: str, admin_token: str) -> tuple:
     """Create users and return mapping of old_id -> (new_id, token)"""
     users_data = [
-        {
-            "old_id": 2,
-            "email": "supervisor1@company.com",
-            "username": "supervisor_juan",
-            "full_name": "Juan Dela Cruz",
-            "password": "Super123!",
-            "role": "supervisor"
-        },
-        {
-            "old_id": 3,
-            "email": "supervisor2@company.com",
-            "username": "supervisor_ana",
-            "full_name": "Ana Reyes",
-            "password": "Super123!",
-            "role": "supervisor"
-        },
+        # Skip supervisors for now - just create regular users
+        # {
+        #     "old_id": 2,
+        #     "email": "supervisor1@company.com",
+        #     "username": "supervisor_juan",
+        #     "full_name": "Juan Dela Cruz",
+        #     "password": "Super123!",
+        #     "role": "supervisor"
+        # },
+        # {
+        #     "old_id": 3,
+        #     "email": "supervisor2@company.com",
+        #     "username": "supervisor_ana",
+        #     "full_name": "Ana Reyes",
+        #     "password": "Super123!",
+        #     "role": "supervisor"
+        # },
         {
             "old_id": 4,
             "email": "user1@company.com",
@@ -153,19 +154,11 @@ def create_users(base_url: str, admin_token: str) -> tuple:
         try:
             old_id = user.pop("old_id")
             
-            # Register user based on role
-            if user["role"] == "supervisor":
-                headers = {"Authorization": f"Bearer {admin_token}"}
-                response = requests.post(
-                    f"{base_url}/api/v1/auth/supervisor",
-                    json=user,
-                    headers=headers
-                )
-            else:
-                response = requests.post(
-                    f"{base_url}/api/v1/auth/register",
-                    json=user
-                )
+            # All users register as regular users
+            response = requests.post(
+                f"{base_url}/api/v1/auth/register",
+                json=user
+            )
             
             print_status(f"Registration response for {user['username']}: {response.status_code}", "DEBUG")
             
@@ -266,7 +259,7 @@ def create_tasks(base_url: str, admin_token: str, user_ids: Dict[int, int]) -> D
             "longitude": 121.0509,
             "estimated_duration": 90,
             "due_date": "2025-10-27T09:00:00.000Z",
-            "assigned_to": 6
+            "assigned_to": 7
         },
         {
             "old_id": 7,
@@ -327,153 +320,256 @@ def create_tasks(base_url: str, admin_token: str, user_ids: Dict[int, int]) -> D
     
     return task_ids
 
-def complete_tasks(base_url: str, user_tokens: Dict[int, str], task_ids: Dict[int, int]):
-    """Complete specific tasks"""
-    completions = [
+def start_ongoing_tasks(base_url: str, user_tokens: Dict[int, str], task_ids: Dict[int, int]):
+    """
+    Start some tasks to create ongoing tasks.
+    Each user starts ONE task from their current location (not the task destination).
+    The /start endpoint automatically creates the initial location log.
+    """
+    tasks_to_start = [
+        # Pedro (user 4) - Electrical inspection at Makati
+        # Task destination: Ayala Tower (14.5547, 121.0244)
+        # Starting from San Juan area, about 4km away
         {
-            "old_task_id": 2,
-            "user_id": 5,
-            "completion_notes": "All 15 boxes delivered successfully. Warehouse clerk Maria confirmed receipt. No damage to items.",
-            "quality_rating": 5,
-            "latitude": 14.5520,
-            "longitude": 121.0476
-        },
-        {
-            "old_task_id": 4,
+            "old_task_id": 1,
             "user_id": 4,
-            "completion_notes": "Pipe leak fixed. Replaced corroded section with new PVC pipe. Water flow tested and verified. Area cleaned up.",
-            "quality_rating": 4,
-            "latitude": 14.6509,
-            "longitude": 121.0495
+            "latitude": 14.5900,
+            "longitude": 121.0380
+        },
+        # Lisa (user 5) - Network cabling at Eastwood
+        # Task destination: Eastwood City (14.6091, 121.0780)
+        # Starting from Quezon City Hall area, about 4.5km away
+        {
+            "old_task_id": 8,
+            "user_id": 5,
+            "latitude": 14.6350,
+            "longitude": 121.0350
+        },
+        # Carlo (user 6) - HVAC maintenance at Ortigas
+        # Task destination: Ortigas Center (14.5866, 121.0582)
+        # Starting from Kapitolyo/Pasig area, about 3km away
+        {
+            "old_task_id": 3,
+            "user_id": 6,
+            "latitude": 14.5650,
+            "longitude": 121.0650
+        },
+        # Nina (user 7) - Equipment check at Mandaluyong
+        # Task destination: Shaw Boulevard (14.5814, 121.0509)
+        # Starting from Boni Avenue area, about 2km away
+        {
+            "old_task_id": 6,
+            "user_id": 7,
+            "latitude": 14.5650,
+            "longitude": 121.0350
         }
     ]
     
-    for completion in completions:
+    for task_start in tasks_to_start:
         try:
-            old_task_id = completion["old_task_id"]
+            old_task_id = task_start["old_task_id"]
             new_task_id = task_ids.get(old_task_id)
-            user_id = completion["user_id"]
+            user_id = task_start["user_id"]
             token = user_tokens.get(user_id)
             
             if not new_task_id:
-                print_status(f"Task ID {old_task_id} not found, skipping completion", "WARNING")
+                print_status(f"Task ID {old_task_id} not found, skipping start", "WARNING")
                 continue
                 
             if not token:
-                print_status(f"Token for user {user_id} not found, skipping completion", "WARNING")
+                print_status(f"Token for user {user_id} not found, skipping start", "WARNING")
                 continue
             
             headers = {"Authorization": f"Bearer {token}"}
             
-            # Start task first (send empty JSON body)
+            # Start task
             start_response = requests.post(
                 f"{base_url}/api/v1/tasks/{new_task_id}/start",
-                json={},
+                json={
+                    "latitude": task_start["latitude"],
+                    "longitude": task_start["longitude"]
+                },
                 headers=headers
             )
             
             if start_response.status_code in [200, 201]:
-                # Complete task
-                complete_response = requests.post(
-                    f"{base_url}/api/v1/tasks/{new_task_id}/complete",
-                    json={
-                        "completion_notes": completion["completion_notes"],
-                        "quality_rating": completion["quality_rating"],
-                        "latitude": completion["latitude"],
-                        "longitude": completion["longitude"]
-                    },
-                    headers=headers
-                )
-                
-                if complete_response.status_code in [200, 201]:
-                    print_status(f"Completed task ID {new_task_id}", "SUCCESS")
-                else:
-                    print_status(f"Failed to complete task {new_task_id}: {complete_response.status_code} - {complete_response.text}", "ERROR")
+                print_status(f"Started task ID {new_task_id} for user {user_id}", "SUCCESS")
             else:
                 print_status(f"Failed to start task {new_task_id}: {start_response.status_code} - {start_response.text}", "ERROR")
         except Exception as e:
-            print_status(f"Error completing task: {str(e)}", "ERROR")
+            print_status(f"Error starting task: {str(e)}", "ERROR")
 
 def create_locations(base_url: str, user_tokens: Dict[int, str], task_ids: Dict[int, int]):
-    """Create location logs"""
+    """
+    Create additional location logs (simulating GPS tracking updates as users move).
+    These represent the user's position updates as they work on tasks.
+    IMPORTANT: Timestamps must be AFTER the task start time so they appear as the latest location.
+    """
+    from datetime import datetime, timedelta, timezone
+    
+    # Generate timestamps that are recent (current time + offsets)
+    now = datetime.now(timezone.utc)
+    
     locations_data = [
+        # Pedro - Task 1 (Electrical inspection) - Moving from San Juan to Makati
         {
             "old_task_id": 1,
             "user_id": 4,
-            "latitude": 14.5547,
-            "longitude": 121.0244,
+            "latitude": 14.5750,
+            "longitude": 14.5750,
             "accuracy": 5.2,
-            "altitude": 45.0,
-            "speed": 0.0,
-            "address": "Ayala Tower, Ayala Avenue, Makati City, Metro Manila",
-            "notes": "Arrived at site, beginning inspection",
+            "altitude": 42.0,
+            "speed": 8.5,
+            "address": "N. Domingo Street, San Juan City",
+            "notes": "En route to Makati, passing through EDSA",
             "location_type": "auto",
-            "recorded_at": "2025-10-24T10:15:00.000Z"
+            "recorded_at": (now - timedelta(minutes=30)).isoformat()
         },
         {
-            "old_task_id": 2,
-            "user_id": 5,
-            "latitude": 14.5518,
-            "longitude": 121.0475,
-            "accuracy": 8.1,
-            "altitude": 12.5,
-            "speed": 0.0,
-            "address": "BGC Corporate Center, 26th Street, Bonifacio Global City, Taguig",
-            "notes": "Arrived at warehouse",
-            "location_type": "auto",
-            "recorded_at": "2025-10-24T14:45:00.000Z"
-        },
-        {
-            "old_task_id": 2,
-            "user_id": 5,
-            "latitude": 14.5520,
-            "longitude": 121.0476,
-            "accuracy": 6.5,
-            "altitude": 12.8,
-            "speed": 0.0,
-            "address": "BGC Corporate Center, 26th Street, Bonifacio Global City, Taguig",
-            "notes": "Delivery completed, obtaining signature",
-            "location_type": "manual",
-            "recorded_at": "2025-10-24T15:30:00.000Z"
-        },
-        {
-            "old_task_id": 4,
+            "old_task_id": 1,
             "user_id": 4,
-            "latitude": 14.6507,
-            "longitude": 121.0494,
-            "accuracy": 10.3,
-            "altitude": 78.0,
-            "speed": 0.0,
-            "address": "Commonwealth Avenue, Quezon City, Metro Manila",
-            "notes": "On-site for emergency repair",
+            "latitude": 14.5600,
+            "longitude": 121.0280,
+            "accuracy": 4.0,
+            "altitude": 44.5,
+            "speed": 3.5,
+            "address": "Approaching Makati via Guadalupe",
+            "notes": "Almost at destination, 10 minutes away",
             "location_type": "auto",
-            "recorded_at": "2025-10-24T10:30:00.000Z"
+            "recorded_at": (now - timedelta(minutes=10)).isoformat()
         },
         {
-            "old_task_id": 4,
+            "old_task_id": 1,
             "user_id": 4,
-            "latitude": 14.6509,
-            "longitude": 121.0495,
-            "accuracy": 7.8,
-            "altitude": 78.5,
-            "speed": 0.0,
-            "address": "Commonwealth Avenue, Quezon City, Metro Manila",
-            "notes": "Repair completed, testing water flow",
-            "location_type": "manual",
-            "recorded_at": "2025-10-24T11:45:00.000Z"
+            "latitude": 14.5545,
+            "longitude": 121.0243,
+            "accuracy": 3.2,
+            "altitude": 45.8,
+            "speed": 0.5,
+            "address": "Ayala Tower entrance, Makati City",
+            "notes": "Arrived at building, checking in with security",
+            "location_type": "auto",
+            "recorded_at": (now - timedelta(minutes=2)).isoformat()
+        },
+        # Lisa - Task 8 (Network cabling) - Moving from QC to Eastwood
+        {
+            "old_task_id": 8,
+            "user_id": 5,
+            "latitude": 14.6280,
+            "longitude": 121.0420,
+            "accuracy": 6.0,
+            "altitude": 18.0,
+            "speed": 12.0,
+            "address": "Quezon Avenue, Quezon City",
+            "notes": "Heading to Eastwood via Commonwealth",
+            "location_type": "auto",
+            "recorded_at": (now - timedelta(minutes=28)).isoformat()
+        },
+        {
+            "old_task_id": 8,
+            "user_id": 5,
+            "latitude": 14.6180,
+            "longitude": 121.0650,
+            "accuracy": 5.5,
+            "altitude": 20.0,
+            "speed": 8.0,
+            "address": "Near Eastwood City, Libis",
+            "notes": "Almost there, 5 minutes out",
+            "location_type": "auto",
+            "recorded_at": (now - timedelta(minutes=12)).isoformat()
         },
         {
             "old_task_id": 8,
             "user_id": 5,
             "latitude": 14.6091,
             "longitude": 121.0780,
-            "accuracy": 4.5,
-            "altitude": 22.0,
+            "accuracy": 4.2,
+            "altitude": 22.3,
             "speed": 0.0,
-            "address": "Eastwood Avenue, Eastwood City, Quezon City",
-            "notes": "Started network cabling installation",
+            "address": "Eastwood City Corporate Center, 5th Floor",
+            "notes": "Arrived, setting up equipment for cabling",
             "location_type": "auto",
-            "recorded_at": "2025-10-24T13:00:00.000Z"
+            "recorded_at": (now - timedelta(minutes=3)).isoformat()
+        },
+        # Carlo - Task 3 (HVAC maintenance) - Moving from Kapitolyo to Ortigas
+        {
+            "old_task_id": 3,
+            "user_id": 6,
+            "latitude": 14.5680,
+            "longitude": 121.0620,
+            "accuracy": 6.8,
+            "altitude": 15.0,
+            "speed": 5.5,
+            "address": "Kapitolyo, Pasig City",
+            "notes": "Left warehouse, heading to Ortigas site",
+            "location_type": "auto",
+            "recorded_at": (now - timedelta(minutes=25)).isoformat()
+        },
+        {
+            "old_task_id": 3,
+            "user_id": 6,
+            "latitude": 14.5780,
+            "longitude": 121.0600,
+            "accuracy": 5.5,
+            "altitude": 16.5,
+            "speed": 2.5,
+            "address": "Near Ortigas Center, looking for parking",
+            "notes": "Arrived at area, finding parking spot",
+            "location_type": "auto",
+            "recorded_at": (now - timedelta(minutes=8)).isoformat()
+        },
+        {
+            "old_task_id": 3,
+            "user_id": 6,
+            "latitude": 14.5866,
+            "longitude": 121.0582,
+            "accuracy": 5.8,
+            "altitude": 18.2,
+            "speed": 0.0,
+            "address": "Ortigas Center Building, 3rd Floor",
+            "notes": "Starting HVAC inspection, first unit",
+            "location_type": "auto",
+            "recorded_at": (now - timedelta(minutes=2)).isoformat()
+        },
+        # Nina - Task 6 (Equipment check) - Moving through Mandaluyong
+        {
+            "old_task_id": 6,
+            "user_id": 7,
+            "latitude": 14.5680,
+            "longitude": 121.0380,
+            "accuracy": 5.8,
+            "altitude": 12.0,
+            "speed": 4.0,
+            "address": "Boni Avenue, Mandaluyong",
+            "notes": "En route from previous site",
+            "location_type": "auto",
+            "recorded_at": (now - timedelta(minutes=18)).isoformat()
+        },
+        {
+            "old_task_id": 6,
+            "user_id": 7,
+            "latitude": 14.5750,
+            "longitude": 121.0450,
+            "accuracy": 5.0,
+            "altitude": 14.0,
+            "speed": 1.5,
+            "address": "Shaw Boulevard, approaching building",
+            "notes": "Almost at inspection site",
+            "location_type": "auto",
+            "recorded_at": (now - timedelta(minutes=8)).isoformat()
+        },
+        {
+            "old_task_id": 6,
+            "user_id": 7,
+            "latitude": 14.5814,
+            "longitude": 121.0509,
+            "accuracy": 4.5,
+            "altitude": 15.8,
+            "speed": 0.0,
+            "address": "Shaw Boulevard Building, 3rd Floor",
+            "notes": "Conducting equipment inspection, 2nd floor complete",
+            "location_type": "auto",
+            "recorded_at": (now - timedelta(minutes=1)).isoformat()
         }
     ]
     
@@ -544,26 +640,39 @@ def main():
     task_ids = create_tasks(base_url, admin_token, user_ids)
     print()
     
-    # Step 4: Create location logs
-    print_status("Creating location logs...", "INFO")
+    # Step 4: Start some tasks (creates initial location logs automatically)
+    print_status("Starting ongoing tasks...", "INFO")
+    start_ongoing_tasks(base_url, user_tokens, task_ids)
+    print()
+    
+    # Step 5: Create additional location logs (GPS tracking updates)
+    print_status("Creating location tracking updates...", "INFO")
     create_locations(base_url, user_tokens, task_ids)
     print()
     
-    # Step 5: Complete some tasks
-    print_status("Completing tasks...", "INFO")
-    complete_tasks(base_url, user_tokens, task_ids)
-    print()
-    
     print_status("Seed process completed!", "SUCCESS")
+    print()
+    print_status("Summary:", "INFO")
+    print("  - 4 ongoing tasks with live GPS tracking:")
+    print("    • Pedro: Electrical inspection at Makati (almost at destination)")
+    print("    • Lisa: Network cabling at Eastwood (actively working)")
+    print("    • Carlo: HVAC maintenance at Ortigas (in progress)")
+    print("    • Nina: Equipment check at Mandaluyong (final inspection)")
+    print("  - 4 pending tasks (not yet started)")
     print()
     print_status("Login credentials:", "INFO")
     print("  Admin: admin_user / Admin123!")
     print("  Supervisor 1: supervisor_juan / Super123!")
     print("  Supervisor 2: supervisor_ana / Super123!")
-    print("  User 1: field_worker_pedro / User123!")
-    print("  User 2: field_worker_lisa / User123!")
-    print("  User 3: field_worker_carlo / User123!")
-    print("  User 4: field_worker_nina / User123!")
+    print("  User 1 (Pedro): field_worker_pedro / User123!")
+    print("  User 2 (Lisa): field_worker_lisa / User123!")
+    print("  User 3 (Carlo): field_worker_carlo / User123!")
+    print("  User 4 (Nina): field_worker_nina / User123!")
+    print()
+    print_status("Test the live tracking:", "INFO")
+    print(f"  - Visit the Supervisor Dashboard")
+    print(f"  - Check 'Live Employee Tracking' section")
+    print(f"  - You should see 4 employees with different locations on the map")
 
 if __name__ == "__main__":
     main()

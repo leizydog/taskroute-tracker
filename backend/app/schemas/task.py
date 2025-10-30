@@ -1,7 +1,19 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 from app.models.task import TaskStatus, TaskPriority
+from app.schemas.location import LocationLogResponse
+
+
+# ✅ NEW: Schema for task destinations
+class TaskDestination(BaseModel):
+    sequence: int = Field(..., ge=1)
+    location_name: str = Field(..., max_length=200)
+    latitude: float = Field(..., ge=-90, le=90)
+    longitude: float = Field(..., ge=-180, le=180)
+    
+    class Config:
+        from_attributes = True
 
 
 # Base Task schema
@@ -9,16 +21,30 @@ class TaskBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
     description: Optional[str] = None
     priority: TaskPriority = TaskPriority.MEDIUM
+    
+    # ✅ NEW: Multi-destination fields
+    is_multi_destination: bool = False
+    destinations: Optional[List[TaskDestination]] = None
+    
+    # Single destination (backward compatible)
     location_name: Optional[str] = Field(None, max_length=200)
     latitude: Optional[float] = Field(None, ge=-90, le=90)
     longitude: Optional[float] = Field(None, ge=-180, le=180)
-    estimated_duration: Optional[int] = Field(None, gt=0)  # minutes
+    
+    estimated_duration: Optional[int] = Field(None, gt=0)
     due_date: Optional[datetime] = None
+    
+    @validator('destinations')
+    def validate_destinations(cls, v, values):
+        """Ensure destinations are provided if is_multi_destination is True"""
+        if values.get('is_multi_destination') and (not v or len(v) < 2):
+            raise ValueError('Multi-destination tasks must have at least 2 destinations')
+        return v
 
 
 # Schema for task creation
 class TaskCreate(TaskBase):
-    assigned_to: int  # User ID
+    assigned_to: int
 
 
 # Schema for task update
@@ -27,9 +53,16 @@ class TaskUpdate(BaseModel):
     description: Optional[str] = None
     status: Optional[TaskStatus] = None
     priority: Optional[TaskPriority] = None
+    
+    # Multi-destination fields
+    is_multi_destination: Optional[bool] = None
+    destinations: Optional[List[TaskDestination]] = None
+    
+    # Single destination
     location_name: Optional[str] = Field(None, max_length=200)
     latitude: Optional[float] = Field(None, ge=-90, le=90)
     longitude: Optional[float] = Field(None, ge=-180, le=180)
+    
     estimated_duration: Optional[int] = Field(None, gt=0)
     actual_duration: Optional[int] = Field(None, gt=0)
     due_date: Optional[datetime] = None
@@ -51,7 +84,7 @@ class TaskComplete(BaseModel):
     longitude: Optional[float] = Field(None, ge=-180, le=180)
 
 
-# Schema for task response (what we return to frontend)
+# Schema for task response
 class TaskResponse(TaskBase):
     id: int
     status: TaskStatus
@@ -69,13 +102,13 @@ class TaskResponse(TaskBase):
         from_attributes = True
 
 
-# Schema with user information included
+# Schema with user information
 class TaskWithUsers(TaskResponse):
     assigned_user_name: str
     created_user_name: str
 
 
-# Schema for task statistics (for ML analysis)
+# Schema for task statistics
 class TaskStats(BaseModel):
     total_tasks: int
     completed_tasks: int
@@ -84,3 +117,24 @@ class TaskStats(BaseModel):
     average_quality_rating: Optional[float] = None
     tasks_by_status: dict
     tasks_by_priority: dict
+    
+
+class UserWithOngoingTask(BaseModel):
+    user_id: int
+    user_name: str
+    user_email: str
+    user_role: str
+    ongoing_task_count: int
+    current_task: TaskWithUsers
+    
+    class Config:
+        from_attributes = True
+
+
+class OngoingTasksByUser(BaseModel):
+    total_users_with_tasks: int
+    total_ongoing_tasks: int
+    users: List[UserWithOngoingTask]
+    
+    class Config:
+        from_attributes = True

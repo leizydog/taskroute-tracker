@@ -70,6 +70,39 @@ enum TaskPriority {
   }
 }
 
+// ✅ NEW: Task Destination class for multi-destination tasks
+class TaskDestination {
+  final int sequence;
+  final String locationName;
+  final double latitude;
+  final double longitude;
+
+  TaskDestination({
+    required this.sequence,
+    required this.locationName,
+    required this.latitude,
+    required this.longitude,
+  });
+
+  factory TaskDestination.fromJson(Map<String, dynamic> json) {
+    return TaskDestination(
+      sequence: json['sequence'],
+      locationName: json['location_name'],
+      latitude: json['latitude'].toDouble(),
+      longitude: json['longitude'].toDouble(),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'sequence': sequence,
+      'location_name': locationName,
+      'latitude': latitude,
+      'longitude': longitude,
+    };
+  }
+}
+
 class TaskModel {
   final int id;
   final String title;
@@ -78,9 +111,16 @@ class TaskModel {
   final TaskPriority priority;
   final int assignedTo;
   final int createdBy;
+  
+  // ✅ NEW: Multi-destination support
+  final bool isMultiDestination;
+  final List<TaskDestination>? destinations;
+  
+  // Single destination (backward compatible)
   final String? locationName;
   final double? latitude;
   final double? longitude;
+  
   final int? estimatedDuration;
   final int? actualDuration;
   final DateTime? dueDate;
@@ -101,6 +141,8 @@ class TaskModel {
     required this.priority,
     required this.assignedTo,
     required this.createdBy,
+    this.isMultiDestination = false,
+    this.destinations,
     this.locationName,
     this.latitude,
     this.longitude,
@@ -126,6 +168,12 @@ class TaskModel {
       priority: TaskPriority.fromString(json['priority']),
       assignedTo: json['assigned_to'],
       createdBy: json['created_by'],
+      isMultiDestination: json['is_multi_destination'] ?? false,
+      destinations: json['destinations'] != null
+          ? (json['destinations'] as List)
+              .map((d) => TaskDestination.fromJson(d))
+              .toList()
+          : null,
       locationName: json['location_name'],
       latitude: json['latitude']?.toDouble(),
       longitude: json['longitude']?.toDouble(),
@@ -152,6 +200,8 @@ class TaskModel {
       'priority': priority.name,
       'assigned_to': assignedTo,
       'created_by': createdBy,
+      'is_multi_destination': isMultiDestination,
+      'destinations': destinations?.map((d) => d.toJson()).toList(),
       'location_name': locationName,
       'latitude': latitude,
       'longitude': longitude,
@@ -168,6 +218,41 @@ class TaskModel {
       'created_user_name': createdUserName,
     };
   }
+
+  // ✅ NEW: Get first destination for multi-destination tasks
+  TaskDestination? get firstDestination {
+    if (!isMultiDestination || destinations == null || destinations!.isEmpty) {
+      return null;
+    }
+    return destinations!.first;
+  }
+
+  // ✅ NEW: Get effective latitude (single or first destination)
+  double? get effectiveLatitude {
+    if (isMultiDestination) {
+      return firstDestination?.latitude;
+    }
+    return latitude;
+  }
+
+  // ✅ NEW: Get effective longitude (single or first destination)
+  double? get effectiveLongitude {
+    if (isMultiDestination) {
+      return firstDestination?.longitude;
+    }
+    return longitude;
+  }
+
+  // ✅ NEW: Get effective location name
+  String? get effectiveLocationName {
+    if (isMultiDestination) {
+      return firstDestination?.locationName;
+    }
+    return locationName;
+  }
+
+  // ✅ UPDATED: Use effective location
+  bool get hasLocation => effectiveLatitude != null && effectiveLongitude != null;
 
   String get formattedDueDate {
     if (dueDate == null) return 'No due date';
@@ -198,8 +283,6 @@ class TaskModel {
     return '${minutes}m';
   }
 
-  bool get hasLocation => latitude != null && longitude != null;
-
   bool get isOverdue {
     if (dueDate == null || status == TaskStatus.completed) return false;
     return DateTime.now().isAfter(dueDate!);
@@ -226,6 +309,14 @@ class TaskModel {
     }
   }
 
+  // ✅ NEW: Get destination count text
+  String get destinationText {
+    if (!isMultiDestination || destinations == null) {
+      return effectiveLocationName ?? 'No location';
+    }
+    return '${destinations!.length} destinations';
+  }
+
   TaskModel copyWith({
     int? id,
     String? title,
@@ -234,6 +325,8 @@ class TaskModel {
     TaskPriority? priority,
     int? assignedTo,
     int? createdBy,
+    bool? isMultiDestination,
+    List<TaskDestination>? destinations,
     String? locationName,
     double? latitude,
     double? longitude,
@@ -257,6 +350,8 @@ class TaskModel {
       priority: priority ?? this.priority,
       assignedTo: assignedTo ?? this.assignedTo,
       createdBy: createdBy ?? this.createdBy,
+      isMultiDestination: isMultiDestination ?? this.isMultiDestination,
+      destinations: destinations ?? this.destinations,
       locationName: locationName ?? this.locationName,
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,

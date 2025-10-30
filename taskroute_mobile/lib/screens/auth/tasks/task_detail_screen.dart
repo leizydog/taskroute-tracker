@@ -156,12 +156,13 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           MaterialPageRoute(
             builder: (_) => TaskMapScreen(
               key: UniqueKey(), // 👈 forces Flutter to rebuild fresh state
-              taskLat: widget.task.latitude!,
-              taskLng: widget.task.longitude!,
+              taskLat: widget.task.effectiveLatitude!,
+              taskLng: widget.task.effectiveLongitude!,
               taskTitle: widget.task.title,
               taskDescription: widget.task.description ?? 'No description provided.',
               userLat: _currentPosition?.latitude,
               userLng: _currentPosition?.longitude,
+              destinations: widget.task.destinations,  // ✅ Add this
             ),
           ),
         );
@@ -479,54 +480,102 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     );
   }
 
-  Widget _buildLocationSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Location',
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.bold,
-          ),
+  // In _buildLocationSection(), update the coordinates text and button:
+Widget _buildLocationSection() {
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        'Location',
+        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+          fontWeight: FontWeight.bold,
         ),
-        const SizedBox(height: 12),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.grey[50],
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey[300]!),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (widget.task.locationName != null) ...[
-                Row(
+      ),
+      const SizedBox(height: 12),
+      Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.grey[50],
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey[300]!),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (widget.task.isMultiDestination && widget.task.destinations != null) ...[
+              Row(
+                children: [
+                  const Icon(Icons.route, color: Colors.blue),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '${widget.task.destinations!.length} Destinations',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              ...widget.task.destinations!.map((dest) => Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(
                   children: [
-                    const Icon(Icons.location_on, color: Colors.blue),
+                    Container(
+                      width: 20,
+                      height: 20,
+                      decoration: BoxDecoration(
+                        color: Colors.blue,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Center(
+                        child: Text(
+                          '${dest.sequence}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        widget.task.locationName!,
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
+                        dest.locationName,
+                        style: Theme.of(context).textTheme.bodyMedium,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
-              ],
+              )).toList(),
+            ] else if (widget.task.effectiveLocationName != null) ...[
+              Row(
+                children: [
+                  const Icon(Icons.location_on, color: Colors.blue),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      widget.task.effectiveLocationName!,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
               Text(
-                'Coordinates: ${widget.task.latitude!.toStringAsFixed(6)}, ${widget.task.longitude!.toStringAsFixed(6)}',
+                'Coordinates: ${widget.task.effectiveLatitude!.toStringAsFixed(6)}, ${widget.task.effectiveLongitude!.toStringAsFixed(6)}',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: Colors.grey[600],
                 ),
               ),
-              const SizedBox(height: 12),
-              // --- NEW: Conditionally show the button only if a location exists ---
-            if (widget.task.latitude != null && widget.task.longitude != null)
+            ],
+            const SizedBox(height: 12),
+            if (widget.task.hasLocation)
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
@@ -534,12 +583,11 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                     Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => TaskMapScreen(
-                          // Safely use the '!' because we've already checked for null
-                          taskLat: widget.task.latitude!,
-                          taskLng: widget.task.longitude!,
+                          taskLat: widget.task.effectiveLatitude,
+                          taskLng: widget.task.effectiveLongitude,
                           taskTitle: widget.task.title,
-                          // Use '??' to provide a default value if description is null
                           taskDescription: widget.task.description ?? 'No description provided.',
+                          destinations: widget.task.destinations,  // ✅ Add this
                         ),
                       ),
                     );
@@ -548,12 +596,12 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                   label: const Text('View on Map'),
                 ),
               ),
-            ],
-          ),
+          ],
         ),
-      ],
-    );
-  }
+      ),
+    ],
+  );
+}
 
   Widget _buildCompletionSection() {
     return Column(
