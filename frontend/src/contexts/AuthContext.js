@@ -1,5 +1,5 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import api from '../services/api';  // ✅ Import your configured API client
+import api from '../services/api';
 import toast from 'react-hot-toast';
 
 // Create the context
@@ -19,6 +19,16 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(localStorage.getItem('token'));
   const [loading, setLoading] = useState(true);
+  
+  // Dark mode state - check localStorage or system preference
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme) {
+      return savedTheme === 'dark';
+    }
+    // Check system preference
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  });
 
   // Update localStorage when token changes
   useEffect(() => {
@@ -29,12 +39,27 @@ export const AuthProvider = ({ children }) => {
     }
   }, [token]);
 
+  // Apply dark mode to document
+  useEffect(() => {
+    const root = document.documentElement;
+    
+    if (isDarkMode) {
+      root.classList.add('dark');
+      root.setAttribute('data-theme', 'dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      root.classList.remove('dark');
+      root.setAttribute('data-theme', 'light');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [isDarkMode]);
+
   // Load user data on app start
   useEffect(() => {
     const loadUser = async () => {
       if (token) {
         try {
-          const response = await api.getCurrentUserInfo();  // ✅ Use api service
+          const response = await api.getCurrentUserInfo();
           setUser(response.data);
         } catch (error) {
           console.error('Error loading user:', error);
@@ -49,17 +74,14 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     try {
-      // ✅ Use the api service login method
       const response = await api.login({ email, password });
       
       const { access_token, user: userData } = response.data;
       setToken(access_token);
       
-      // If login-json returns user data, use it directly
       if (userData) {
         setUser(userData);
       } else {
-        // Otherwise fetch user info
         const userResponse = await api.getCurrentUserInfo();
         setUser(userResponse.data);
       }
@@ -75,7 +97,7 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (userData) => {
     try {
-      const response = await api.register(userData);  // ✅ Use api service
+      const response = await api.register(userData);
       toast.success('Registration successful! Please login.');
       return { success: true, data: response.data };
     } catch (error) {
@@ -91,6 +113,11 @@ export const AuthProvider = ({ children }) => {
     toast.success('Logged out successfully');
   };
 
+  // Toggle dark mode function
+  const toggleDarkMode = () => {
+    setIsDarkMode(prev => !prev);
+  };
+
   const value = {
     user,
     token,
@@ -98,7 +125,9 @@ export const AuthProvider = ({ children }) => {
     login,
     register,
     logout,
-    isAuthenticated: !!user
+    isAuthenticated: !!user,
+    isDarkMode,
+    toggleDarkMode,
   };
 
   return (

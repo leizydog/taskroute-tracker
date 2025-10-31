@@ -1,4 +1,4 @@
-// src/components/organisms/SupervisorDashboard.js
+// src/pages/SupervisorDashboard.js
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import api from '../services/api';
@@ -15,16 +15,18 @@ import { useJsApiLoader } from '@react-google-maps/api';
 import FeatureImportanceChart from '../components/analytics/FeatureImportanceChart';
 import TaskForecast from '../components/organisms/TaskForecast';
 
-
 const MAP_LOADER_ID = 'google-map-script';
 const MAP_LIBRARIES = ['places'];
 
 const SupervisorDashboard = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, isDarkMode, toggleDarkMode } = useAuth(); // ✅ Use dark mode from AuthContext
+
+  useEffect(() => {
+    console.log('🔑 API Key:', process.env.REACT_APP_GOOGLE_MAPS_API_KEY);
+  }, []);   
 
   const [activeTab, setActiveTab] = useState('overview');
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'));
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [isCreateTaskModalOpen, setIsCreateTaskModalOpen] = useState(false);
   const [alerts, setAlerts] = useState([]);
@@ -39,7 +41,7 @@ const SupervisorDashboard = () => {
 
   const [employeeKpiData, setEmployeeKpiData] = useState(null);
   const [loadingKpi, setLoadingKpi] = useState(false);
-  const [teamKpiData, setTeamKpiData] = useState(null); // Store all team KPIs
+  const [teamKpiData, setTeamKpiData] = useState(null);
 
   const { isLoaded: isMapLoaded, loadError: mapLoadError } = useJsApiLoader({
     id: MAP_LOADER_ID,
@@ -56,11 +58,6 @@ const SupervisorDashboard = () => {
     { id: 'forecast', label: 'Performance AI', icon: <FiCpu /> },
     { id: 'analytics', label: 'Analytics', icon: <FiTrendingUp /> },
   ];
-
-  useEffect(() => {
-    if (dark) document.documentElement.classList.add('dark');
-    else document.documentElement.classList.remove('dark');
-  }, [dark]);
 
   useEffect(() => {
     if (isMapLoaded) {
@@ -82,7 +79,7 @@ const SupervisorDashboard = () => {
           api.getTasks(),
           api.getUsers(),
           api.getAnalyticsOverview(),
-          api.getTeamOverview().catch(() => ({ data: null })), // Optional team data
+          api.getTeamOverview().catch(() => ({ data: null })),
         ]);
 
         const tasksData = tasksResponse?.data?.results ?? tasksResponse?.data ?? [];
@@ -90,8 +87,6 @@ const SupervisorDashboard = () => {
 
         setTasks(Array.isArray(tasksData) ? tasksData : []);
         
-        // ✅ FIX: Filter for 'user' role instead of 'employee'
-        // Backend roles: admin, supervisor, user
         setEmployees(
           Array.isArray(usersData)
             ? usersData.filter(u => u.role === 'user' || u.role === 'supervisor')
@@ -99,7 +94,7 @@ const SupervisorDashboard = () => {
         );
         
         setKpiData(kpiResponse?.data ?? null);
-        setTeamKpiData(teamResponse?.data ?? null); // Store team KPIs
+        setTeamKpiData(teamResponse?.data ?? null);
       } catch (err) {
         console.error("Failed to load initial dashboard data:", err);
         toast.error("Failed to load initial dashboard data.");
@@ -112,28 +107,25 @@ const SupervisorDashboard = () => {
     fetchData();
   }, []);
 
-  // Fetch specific employee KPI data when selectedEmployee changes
-  // ✅ FIXED: Extract employee KPI from team data instead of fetching individually
-useEffect(() => {
-  if (!selectedEmployee) {
-    setEmployeeKpiData(null);
-    return;
-  }
+  useEffect(() => {
+    if (!selectedEmployee) {
+      setEmployeeKpiData(null);
+      return;
+    }
 
-  setLoadingKpi(true);
-  
-  // Try to find this employee's data in the team overview
-  if (teamKpiData && Array.isArray(teamKpiData.employees)) {
-    const employeeData = teamKpiData.employees.find(
-      emp => emp.id === selectedEmployee.id || emp.employee_id === selectedEmployee.id
-    );
-    setEmployeeKpiData(employeeData || null);
-  } else {
-    setEmployeeKpiData(null);
-  }
-  
-  setLoadingKpi(false);
-}, [selectedEmployee, teamKpiData]);
+    setLoadingKpi(true);
+    
+    if (teamKpiData && Array.isArray(teamKpiData.employees)) {
+      const employeeData = teamKpiData.employees.find(
+        emp => emp.id === selectedEmployee.id || emp.employee_id === selectedEmployee.id
+      );
+      setEmployeeKpiData(employeeData || null);
+    } else {
+      setEmployeeKpiData(null);
+    }
+    
+    setLoadingKpi(false);
+  }, [selectedEmployee, teamKpiData]);
 
   const addAlert = (type, message) => {
     const id = Date.now();
@@ -172,7 +164,6 @@ useEffect(() => {
 
   const roles = Array.from(new Set((Array.isArray(employees) ? employees : []).map(e => e.role).filter(Boolean)));
 
-  // Reusable components
   const TaskCardComponent = ({ task }) => (
     <Card className="hover:shadow-lg transition-shadow duration-200">
       <div className="flex justify-between items-start mb-2">
@@ -252,7 +243,16 @@ useEffect(() => {
           ))}
         </nav>
         <div className="mt-auto pt-4 border-t border-slate-700 space-y-2">
-          <Button variant="secondary" icon={dark ? FiSun : FiMoon} onClick={() => setDark(!dark)} fullWidth size="sm">{dark ? 'Light Mode' : 'Dark Mode'}</Button>
+          {/* ✅ Updated to use AuthContext dark mode */}
+          <Button 
+            variant="secondary" 
+            icon={isDarkMode ? FiSun : FiMoon} 
+            onClick={toggleDarkMode} 
+            fullWidth 
+            size="sm"
+          >
+            {isDarkMode ? 'Light Mode' : 'Dark Mode'}
+          </Button>
           <Button variant="dangerOutline" icon={FiLogOut} onClick={logout} fullWidth size="sm">Logout</Button>
         </div>
       </aside>
@@ -388,7 +388,6 @@ useEffect(() => {
                       Use the tools below to forecast task durations based on conditions or view insights from the model.
                     </p>
 
-                    {/* TaskForecast component — adjust path if needed */}
                     <div className="mt-4">
                       <TaskForecast />
                     </div>
@@ -396,7 +395,6 @@ useEffect(() => {
                 </Card>
               </div>
             )}
-
 
             {activeTab === 'analytics' && (
               <div className="space-y-6">

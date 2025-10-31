@@ -10,41 +10,41 @@ import { Spinner, Button } from '../atoms';
 
 const FormInput = React.forwardRef(({ label, id, isRequired, ...props }, ref) => (
   <div>
-    <label htmlFor={id} className="block text-sm font-semibold text-slate-700 mb-1">
+    <label htmlFor={id} className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">
       {label} {isRequired && <span className="text-red-500">*</span>}
     </label>
     <input
       id={id}
       ref={ref}
       {...props}
-      className="block w-full px-3 py-2 bg-white border border-slate-300 rounded-md shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition"
+      className="block w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-md shadow-sm placeholder-slate-400 dark:placeholder-slate-500 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition"
     />
   </div>
 ));
 
 const FormTextarea = ({ label, id, ...props }) => (
   <div>
-    <label htmlFor={id} className="block text-sm font-semibold text-slate-700 mb-1">
+    <label htmlFor={id} className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">
       {label}
     </label>
     <textarea
       id={id}
       rows={3}
       {...props}
-      className="block w-full px-3 py-2 bg-white border border-slate-300 rounded-md shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition"
+      className="block w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-md shadow-sm placeholder-slate-400 dark:placeholder-slate-500 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition"
     />
   </div>
 );
 
 const FormSelect = ({ label, id, isRequired, children, ...props }) => (
   <div>
-    <label htmlFor={id} className="block text-sm font-semibold text-slate-700 mb-1">
+    <label htmlFor={id} className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">
       {label} {isRequired && <span className="text-red-500">*</span>}
     </label>
     <select
       id={id}
       {...props}
-      className="block w-full px-3 py-2 bg-white border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition"
+      className="block w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-md shadow-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition"
     >
       {children}
     </select>
@@ -294,20 +294,20 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
   return (
     <div
       onClick={handleClose}
-      className={`fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 transition-opacity duration-200 ${isClosing ? 'opacity-0' : 'opacity-100'}`}
+      className={`fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 dark:bg-black/80 transition-opacity duration-200 ${isClosing ? 'opacity-0' : 'opacity-100'}`}
       aria-modal="true"
       role="dialog"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className={`relative w-full max-w-4xl max-h-[90vh] bg-slate-50 rounded-xl shadow-xl p-6 overflow-y-auto transform transition-all duration-200 ${isClosing ? 'scale-95 opacity-0' : 'scale-100 opacity-100'}`}
+       className={`relative w-full max-w-4xl max-h-[90vh] bg-white dark:bg-slate-900 rounded-xl shadow-xl p-6 overflow-y-auto transform transition-all duration-200 ${isClosing ? 'scale-95 opacity-0' : 'scale-100 opacity-100'}`}
       >
-        <div className="flex items-start justify-between mb-4 sticky top-0 bg-slate-50 z-10 pb-2">
+        <div  top-0 bg-white className="flex items-start justify-between mb-4 sticky top-0 bg-white dark:bg-slate-900 z-10 pb-2">
           <div className="flex items-center gap-3">
-            <FiPlusCircle className="h-7 w-7 text-indigo-600" />
-            <h3 className="text-2xl font-bold text-slate-800">Create New Task</h3>
+            <FiPlusCircle className="h-7 w-7 text-indigo-600 dark:text-indigo-400" />
+            <h3 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Create New Task</h3>
           </div>
-          <button onClick={handleClose} className="p-1 rounded-full text-slate-400 hover:bg-slate-200 hover:text-slate-600 transition-colors">
+          <button onClick={handleClose} className="p-1 rounded-full text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-600 dark:hover:text-slate-300 transition-colors">
             <FiX className="w-6 h-6" />
           </button>
         </div>
@@ -368,23 +368,23 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
             </div>
           </fieldset>
 
-          <div className="pt-4 border-t border-slate-200">
+          <div className="pt-4 border-t border-slate-200 dark:border-slate-700">
             <label className="flex items-center gap-3 cursor-pointer">
               <input
                 type="checkbox"
                 name="is_multi_destination"
                 checked={formData.is_multi_destination}
                 onChange={handleChange}
-                className="w-5 h-5 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500"
+                className="w-5 h-5 text-indigo-600 border-slate-300 dark:border-slate-600 rounded focus:ring-indigo-500 dark:bg-slate-800"
               />
               <div>
-                <span className="font-semibold text-slate-700">Multiple Destinations</span>
-                <p className="text-sm text-slate-500">Create a task with multiple stops in sequence</p>
+                <span className="font-semibold text-slate-700 dark:text-slate-300">Multiple Destinations</span>
+                <p className="text-sm text-slate-500 dark:text-slate-400">Create a task with multiple stops in sequence</p>
               </div>
             </label>
           </div>
 
-          <fieldset className="space-y-4 pt-4 border-t border-slate-200">
+          <fieldset className="space-y-4 pt-4 border-t border-slate-200 dark:border-slate-700">
             {!formData.is_multi_destination ? (
               <>
                 <FormInput
@@ -399,7 +399,7 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
             ) : (
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <label className="block text-sm font-semibold text-slate-700">
+                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300">
                     Destinations ({destinations.length})
                   </label>
                   <Button
@@ -413,14 +413,14 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
                 </div>
 
                 {destinations.length === 0 ? (
-                  <div className="text-center py-6 bg-slate-100 rounded-lg border-2 border-dashed border-slate-300">
-                    <FiMapPin className="mx-auto h-8 w-8 text-slate-400 mb-2" />
-                    <p className="text-sm text-slate-500">Click on the map to add destinations</p>
+                  <div className="text-center py-6 bg-slate-100 dark:bg-slate-800 rounded-lg border-2 border-dashed border-slate-300 dark:border-slate-600">
+                    <FiMapPin className="mx-auto h-8 w-8 text-slate-400 dark:text-slate-500 mb-2" />
+                    <p className="text-sm text-slate-500 dark:text-slate-400">Click on the map to add destinations</p>
                   </div>
                 ) : (
-                  <div className="space-y-2 max-h-48 overflow-y-auto bg-slate-50 rounded-lg p-3">
+                  <div className="space-y-2 max-h-48 overflow-y-auto bg-slate-50 dark:bg-slate-800 rounded-lg p-3">
                     {destinations.map((dest, index) => (
-                      <div key={dest.id} className="flex items-center gap-2 bg-white p-2 rounded border border-slate-200">
+                      <div key={dest.id} className="flex items-center gap-2 bg-white dark:bg-slate-900 p-2 rounded border border-slate-200 dark:border-slate-700">
                         <span className="flex-shrink-0 w-6 h-6 rounded-full bg-indigo-600 text-white text-xs flex items-center justify-center font-semibold">
                           {index + 1}
                         </span>
@@ -428,13 +428,13 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
                           type="text"
                           value={dest.location_name}
                           onChange={(e) => handleDestinationNameChange(index, e.target.value)}
-                          className="flex-1 px-2 py-1 text-sm border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                          className="flex-1 px-2 py-1 text-sm border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
                           placeholder="Location name"
                         />
                         <button
                           type="button"
                           onClick={() => handleRemoveDestination(index)}
-                          className="p-1 text-red-500 hover:bg-red-50 rounded transition"
+                          className="p-1 text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition"
                         >
                           <FiTrash2 className="w-4 h-4" />
                         </button>
@@ -446,22 +446,22 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
             )}
 
             <div className="space-y-2">
-              <label className="block text-sm font-semibold text-slate-700">
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300">
                 {formData.is_multi_destination ? 'Click map to add destinations' : 'Set Location on Map'}
               </label>
 
               {showMapError && (
-                <div className="text-red-500">Error loading map. Please check your API key.</div>
+                <div className="text-red-500 dark:text-red-400">Error loading map. Please check your API key.</div>
               )}
 
               {!isMapLoaded && !mapLoadError && (
-                <div className="h-80 w-full bg-slate-200 animate-pulse rounded-md flex items-center justify-center">
+                <div className="h-80 w-full bg-slate-200 dark:bg-slate-800 animate-pulse rounded-md flex items-center justify-center">
                   <Spinner />
                 </div>
               )}
 
               {isMapLoaded && (
-                <div className="h-80 w-full rounded-md overflow-hidden border border-slate-300">
+                <div className="h-80 w-full rounded-md overflow-hidden border border-slate-300 dark:border-slate-700">
                   <GoogleMap
                     mapContainerStyle={{ width: '100%', height: '100%' }}
                     center={mapCenter}
@@ -543,7 +543,7 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
               </div>
             )}
 
-            <button type="button" onClick={getCurrentLocation} className="flex items-center gap-2 text-sm font-semibold text-indigo-600 hover:text-indigo-800 transition-colors">
+            <button type="button" onClick={getCurrentLocation} className="flex items-center gap-2 text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 transition-colors">
               <FiMapPin /> Use Current Location
             </button>
 
@@ -553,11 +553,11 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
             </div>
           </fieldset>
 
-          <div className="flex justify-end space-x-3 pt-4 border-t border-slate-200">
-            <button type="button" onClick={handleClose} className="px-4 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition">
+          <div className="flex justify-end space-x-3 pt-4 border-t border-slate-200 dark:border-slate-700">
+            <button type="button" onClick={handleClose} className="px-4 py-2 text-sm font-semibold text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition">
               Cancel
             </button>
-            <button type="submit" disabled={loading} className="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition">
+            <button type="submit" disabled={loading} className="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 dark:bg-indigo-500 rounded-lg hover:bg-indigo-700 dark:hover:bg-indigo-600 disabled:opacity-50 transition">
               {loading ? 'Creating...' : 'Create Task'}
             </button>
           </div>
