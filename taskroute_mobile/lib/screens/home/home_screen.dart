@@ -25,28 +25,29 @@ class _HomeScreenState extends State<HomeScreen> {
     _initializeData();
   }
 
- Future<void> _initializeData() async {
+ // In home_screen.dart, update _initializeData:
+
+Future<void> _initializeData() async {
   final taskProvider = Provider.of<TaskProvider>(context, listen: false);
   final locationProvider = Provider.of<LocationProvider>(context, listen: false);
   
   print('=== INITIALIZE DATA DEBUG ===');
   
-  // Request location permissions
+  // ✅ Always request location permissions on startup
   print('Requesting location permission...');
   final hasPermission = await locationProvider.requestPermission();
   print('Location permission granted: $hasPermission');
-  print('Location provider state - isLocationEnabled: ${locationProvider.isLocationEnabled}');
-  print('Location provider state - isTracking: ${locationProvider.isTracking}');
   
   if (hasPermission) {
-    print('Attempting to get current position...');
+    // ✅ Start continuous location tracking (always on)
+    print('Starting continuous location tracking...');
+    await locationProvider.startLocationTracking();
+    print('Location tracking started');
+    
+    // Get initial position
     final position = await locationProvider.getCurrentPosition();
     if (position != null) {
       print('Current position: Lat ${position.latitude}, Lng ${position.longitude}');
-      print('Position accuracy: ${position.accuracy} meters');
-      print('Position timestamp: ${position.timestamp}');
-    } else {
-      print('Failed to get current position');
     }
   } else {
     print('Cannot get position - no location permission');

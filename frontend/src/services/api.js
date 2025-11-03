@@ -69,7 +69,6 @@ export default {
     return apiClient.get(`/locations/${taskId}`);
   },
 
-  // ✅ FIXED: Use the /latest endpoint that exists in your backend
   getLatestLocation(taskId) {
     return apiClient.get(`/locations/${taskId}/latest`);
   },
@@ -77,10 +76,8 @@ export default {
   // Legacy method for backwards compatibility
   getLocationHistory({ taskId, limit = 100 }) {
     if (taskId) {
-      // For single task, get all locations
       return apiClient.get(`/locations/${taskId}`);
     }
-    // If no taskId, this won't work with current backend
     console.warn('getLocationHistory without taskId is not supported');
     return Promise.resolve({ data: [] });
   },
@@ -98,16 +95,20 @@ export default {
     return apiClient.get('/analytics/feature-importance');
   },
 
+  // 🎯 NEW: ML Forecasting Endpoints
   getTaskForecast(forecastData) {
     return apiClient.post('/analytics/forecast', forecastData);
   },
 
-   // ✅ Add this method
-   getLatestLocation(taskId) {
-    return apiClient.get(`/locations/${taskId}/latest`);
+  compareEmployeeForecasts(comparisonData) {
+    return apiClient.post('/analytics/forecast/compare-employees', comparisonData);
   },
 
-  // Legacy method (keeping for backwards compatibility)
+  getModelStatus() {
+    return apiClient.get('/analytics/forecast/model-status');
+  },
+
+  // Legacy method
   getAnalytics() {
     return apiClient.get('/analytics/performance');
   },

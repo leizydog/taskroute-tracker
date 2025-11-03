@@ -150,7 +150,7 @@ Future<void> fetchTasks({bool assignedToMe = true}) async {
     return null;
   }
 
-  Future<bool> startTask(int taskId, Map<String, dynamic> locationData) async {
+ Future<bool> startTask(int taskId, Map<String, dynamic> locationData) async {
   _setLoading(true);
   _setError(null);
 
@@ -171,22 +171,21 @@ Future<void> fetchTasks({bool assignedToMe = true}) async {
         await StorageService.instance.saveTasks(_tasks);
       }
       
-      // Use WidgetsBinding to avoid setState during build
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _setLoading(false);
-      });
+      // ✅ FIX: Just set loading to false directly, no need for postFrameCallback
+      _setLoading(false);
       return true;
     } else {
       final errorData = json.decode(response.body);
       _setError(errorData['message'] ?? 'Failed to start task');
+      _setLoading(false);  // Add this
     }
   } catch (e) {
     print('StartTask parsing error: $e');
     _setError('Network error: ${e.toString()}');
     await _saveTaskStartOffline(taskId, locationData);
+    _setLoading(false);  // Add this
   }
   
-  _setLoading(false);
   return false;
 }
 
