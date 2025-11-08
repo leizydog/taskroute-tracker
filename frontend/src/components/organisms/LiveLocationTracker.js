@@ -31,16 +31,18 @@ const ActiveTaskCard = ({ task, onSelect, isSelected }) => (
     exit={{ opacity: 0, x: -20 }}
     transition={{ duration: 0.3 }}
     className={`p-4 rounded-lg border-2 transition-colors ${
-      isSelected ? 'bg-indigo-50 border-indigo-500' : 'bg-white border-slate-200'
+      isSelected 
+        ? 'bg-indigo-50 dark:bg-indigo-900/30 border-indigo-500 dark:border-indigo-600' 
+        : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'
     }`}
   >
     <div className="flex items-center gap-4">
       <Avatar name={task.assigned_user_name} size="md" />
       <div className="flex-1">
-        <p className="font-semibold text-slate-800">{task.title}</p>
-        <p className="text-sm text-slate-500">Assigned to: {task.assigned_user_name}</p>
+        <p className="font-semibold text-slate-800 dark:text-slate-100">{task.title}</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400">Assigned to: {task.assigned_user_name}</p>
         {task.is_multi_destination && task.destinations && (
-          <p className="text-xs text-indigo-600 mt-1">
+          <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-1">
             {task.destinations.length} destinations
           </p>
         )}
@@ -341,7 +343,7 @@ const LiveLocationTracker = ({ isMapLoaded, mapLoadError }) => {
   }, []);
 
   const MapView = () => {
-    if (mapLoadError) return <div className="text-red-500">Error loading map.</div>;
+    if (mapLoadError) return <div className="text-red-500 dark:text-red-400">Error loading map.</div>;
     if (!isMapLoaded)
       return (
         <div className="flex items-center justify-center h-full">
@@ -417,12 +419,12 @@ const LiveLocationTracker = ({ isMapLoaded, mapLoadError }) => {
   return (
     <Card>
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-bold">Live Employee Tracking</h2>
+        <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">Live Employee Tracking</h2>
         <div className="flex items-center gap-2">
           <div
             className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-green-500' : 'bg-red-500'}`}
           />
-          <span className="text-xs text-slate-500">
+          <span className="text-xs text-slate-500 dark:text-slate-400">
             {wsConnected ? 'Connected' : 'Disconnected'}
           </span>
         </div>
@@ -436,7 +438,7 @@ const LiveLocationTracker = ({ isMapLoaded, mapLoadError }) => {
             </div>
           )}
           {!loading && activeTasks.length === 0 && (
-            <div className="text-center py-10 text-slate-500">
+            <div className="text-center py-10 text-slate-500 dark:text-slate-400">
               <FiEyeOff className="mx-auto h-8 w-8 mb-2" />
               No employees are currently on an active task.
             </div>
@@ -453,11 +455,11 @@ const LiveLocationTracker = ({ isMapLoaded, mapLoadError }) => {
           </AnimatePresence>
         </div>
 
-        <div className="h-96 bg-slate-200 rounded-lg overflow-hidden relative">
+        <div className="h-96 bg-slate-200 dark:bg-slate-800 rounded-lg overflow-hidden relative">
           {selectedTask ? (
             <MapView />
           ) : (
-            <div className="flex flex-col items-center justify-center h-full text-slate-500">
+            <div className="flex flex-col items-center justify-center h-full text-slate-500 dark:text-slate-400">
               <FiMapPin className="h-10 w-10 mb-2" />
               <p className="font-semibold">Select a task to view on the map.</p>
             </div>

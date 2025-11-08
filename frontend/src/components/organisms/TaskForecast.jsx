@@ -51,8 +51,8 @@ const TaskForecast = () => {
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-6 bg-white rounded-lg shadow-lg">
-      <h2 className="text-2xl font-bold mb-6 text-gray-800">
+    <div className="max-w-4xl mx-auto p-6 bg-white dark:bg-slate-800 rounded-lg shadow-lg">
+      <h2 className="text-2xl font-bold mb-6 text-gray-800 dark:text-slate-100">
         🔮 Task Duration Forecast
       </h2>
       
@@ -60,7 +60,7 @@ const TaskForecast = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Date */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
               Task Date
             </label>
             <input
@@ -68,14 +68,14 @@ const TaskForecast = () => {
               name="Date"
               value={formData.Date}
               onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
               required
             />
           </div>
 
           {/* Start Time */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
               Start Time
             </label>
             <input
@@ -83,21 +83,21 @@ const TaskForecast = () => {
               name="StartTime"
               value={formData.StartTime}
               onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
               required
             />
           </div>
 
           {/* City */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
               City
             </label>
             <select
               name="City"
               value={formData.City}
               onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
             >
               <option value="Makati">Makati</option>
               <option value="Mandaluyong">Mandaluyong</option>
@@ -109,14 +109,14 @@ const TaskForecast = () => {
 
           {/* Conditions */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
               Traffic Conditions
             </label>
             <select
               name="Conditions"
               value={formData.Conditions}
               onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
             >
               <option value="Normal">Normal</option>
               <option value="Heavy Traffic">Heavy Traffic</option>
@@ -127,14 +127,14 @@ const TaskForecast = () => {
 
           {/* Method */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
               Transportation Method
             </label>
             <select
               name="Method"
               value={formData.Method}
               onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
             >
               <option value="Drive">Drive</option>
               <option value="Public Transport">Public Transport</option>
@@ -146,7 +146,7 @@ const TaskForecast = () => {
 
           {/* Reliability */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
               Reliability (%)
             </label>
             <input
@@ -157,7 +157,7 @@ const TaskForecast = () => {
               min="0"
               max="100"
               step="0.1"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
             />
           </div>
         </div>
@@ -165,7 +165,7 @@ const TaskForecast = () => {
         <button
           type="submit"
           disabled={loading}
-          className="w-full bg-blue-600 text-white py-3 px-4 rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium"
+          className="w-full bg-blue-600 dark:bg-blue-500 text-white py-3 px-4 rounded-md hover:bg-blue-700 dark:hover:bg-blue-600 disabled:bg-gray-400 dark:disabled:bg-slate-600 disabled:cursor-not-allowed transition-colors font-medium"
         >
           {loading ? 'Predicting...' : '🎯 Predict Duration'}
         </button>
@@ -173,8 +173,8 @@ const TaskForecast = () => {
 
       {/* Error Display */}
       {error && (
-        <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-md">
-          <p className="text-red-800">❌ {error}</p>
+        <div className="mt-4 p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-md">
+          <p className="text-red-800 dark:text-red-300">❌ {error}</p>
         </div>
       )}
 
@@ -182,26 +182,26 @@ const TaskForecast = () => {
       {prediction && !prediction.error && (
         <div className="mt-6 space-y-4">
           {/* Main Prediction */}
-          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-lg border border-blue-200">
-            <h3 className="text-lg font-semibold text-gray-800 mb-3">
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/30 dark:to-indigo-900/30 p-6 rounded-lg border border-blue-200 dark:border-blue-800">
+            <h3 className="text-lg font-semibold text-gray-800 dark:text-slate-100 mb-3">
               📊 Prediction Results
             </h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <p className="text-sm text-gray-600">Estimated Duration</p>
-                <p className="text-3xl font-bold text-blue-600">
+                <p className="text-sm text-gray-600 dark:text-slate-400">Estimated Duration</p>
+                <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">
                   {prediction.predicted_duration_minutes} min
                 </p>
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-gray-500 dark:text-slate-500">
                   ({prediction.predicted_duration_seconds} seconds)
                 </p>
               </div>
               <div>
-                <p className="text-sm text-gray-600">Confidence Range</p>
-                <p className="text-lg font-semibold text-gray-700">
+                <p className="text-sm text-gray-600 dark:text-slate-400">Confidence Range</p>
+                <p className="text-lg font-semibold text-gray-700 dark:text-slate-200">
                   {prediction.confidence_interval.lower_minutes} - {prediction.confidence_interval.upper_minutes} min
                 </p>
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-gray-500 dark:text-slate-500 mt-1">
                   Based on ±6 min MAE
                 </p>
               </div>
@@ -209,47 +209,47 @@ const TaskForecast = () => {
           </div>
 
           {/* Input Summary */}
-          <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-            <h4 className="font-semibold text-gray-700 mb-2">📝 Task Summary</h4>
+          <div className="bg-gray-50 dark:bg-slate-900/50 p-4 rounded-lg border border-gray-200 dark:border-slate-700">
+            <h4 className="font-semibold text-gray-700 dark:text-slate-200 mb-2">📝 Task Summary</h4>
             <div className="grid grid-cols-2 gap-2 text-sm">
               <div>
-                <span className="text-gray-600">Date:</span>{' '}
-                <span className="font-medium">{prediction.input_summary.date}</span>
+                <span className="text-gray-600 dark:text-slate-400">Date:</span>{' '}
+                <span className="font-medium text-gray-900 dark:text-slate-100">{prediction.input_summary.date}</span>
               </div>
               <div>
-                <span className="text-gray-600">Day:</span>{' '}
-                <span className="font-medium">{prediction.input_summary.day_of_week}</span>
+                <span className="text-gray-600 dark:text-slate-400">Day:</span>{' '}
+                <span className="font-medium text-gray-900 dark:text-slate-100">{prediction.input_summary.day_of_week}</span>
               </div>
               <div>
-                <span className="text-gray-600">City:</span>{' '}
-                <span className="font-medium">{prediction.input_summary.city}</span>
+                <span className="text-gray-600 dark:text-slate-400">City:</span>{' '}
+                <span className="font-medium text-gray-900 dark:text-slate-100">{prediction.input_summary.city}</span>
               </div>
               <div>
-                <span className="text-gray-600">Conditions:</span>{' '}
-                <span className="font-medium">{prediction.input_summary.conditions}</span>
+                <span className="text-gray-600 dark:text-slate-400">Conditions:</span>{' '}
+                <span className="font-medium text-gray-900 dark:text-slate-100">{prediction.input_summary.conditions}</span>
               </div>
             </div>
           </div>
 
           {/* Prophet Components */}
-          <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
-            <h4 className="font-semibold text-gray-700 mb-2">🔬 Model Insights</h4>
+          <div className="bg-purple-50 dark:bg-purple-900/30 p-4 rounded-lg border border-purple-200 dark:border-purple-800">
+            <h4 className="font-semibold text-gray-700 dark:text-slate-200 mb-2">🔬 Model Insights</h4>
             <div className="grid grid-cols-3 gap-2 text-sm">
               <div>
-                <p className="text-gray-600">Trend</p>
-                <p className="font-bold text-purple-600">
+                <p className="text-gray-600 dark:text-slate-400">Trend</p>
+                <p className="font-bold text-purple-600 dark:text-purple-400">
                   {prediction.prophet_components.trend}
                 </p>
               </div>
               <div>
-                <p className="text-gray-600">Weekly Effect</p>
-                <p className="font-bold text-purple-600">
+                <p className="text-gray-600 dark:text-slate-400">Weekly Effect</p>
+                <p className="font-bold text-purple-600 dark:text-purple-400">
                   {prediction.prophet_components.weekly_seasonality}
                 </p>
               </div>
               <div>
-                <p className="text-gray-600">Baseline</p>
-                <p className="font-bold text-purple-600">
+                <p className="text-gray-600 dark:text-slate-400">Baseline</p>
+                <p className="font-bold text-purple-600 dark:text-purple-400">
                   {prediction.prophet_components.baseline_forecast}
                 </p>
               </div>

@@ -279,25 +279,25 @@ export const TaskManagementPanel = ({
                             <div className="flex gap-2 mt-auto pt-3 border-t border-slate-200 dark:border-slate-700">
                                 {showArchived ? (
                                     <>
-                                        <Button size="xs" variant="secondary" fullWidth onClick={() => handleViewDetails(task)} icon={FiEye}>
+                                        <Button size="sm" variant="secondary" className="flex-1" onClick={() => handleViewDetails(task)} icon={FiEye}>
                                             View
                                         </Button>
-                                        <Button size="xs" variant="primary" fullWidth onClick={() => handleRestoreTask(task)} icon={FiRotateCcw}>
+                                        <Button size="sm" variant="primary" className="flex-1" onClick={() => handleRestoreTask(task)} icon={FiRotateCcw}>
                                             Restore
                                         </Button>
-                                        <Button size="xs" variant="danger" onClick={() => handlePermanentDelete(task.id)} fullWidth icon={FiTrash2}>
+                                        <Button size="sm" variant="danger" className="flex-1" onClick={() => handlePermanentDelete(task.id)} icon={FiTrash2}>
                                             Delete
                                         </Button>
                                     </>
                                 ) : (
                                     <>
-                                        <Button size="xs" variant="secondary" fullWidth onClick={() => handleViewDetails(task)} icon={FiEye}>
+                                        <Button size="sm" variant="secondary" className="flex-1" onClick={() => handleViewDetails(task)} icon={FiEye}>
                                             View
                                         </Button>
-                                        <Button size="xs" variant="secondary" fullWidth onClick={() => handleEditTask(task)} icon={FiEdit}>
+                                        <Button size="sm" variant="secondary" className="flex-1" onClick={() => handleEditTask(task)} icon={FiEdit}>
                                             Edit
                                         </Button>
-                                        <Button size="xs" variant="danger" onClick={() => handleArchiveTask(task.id)} fullWidth icon={FiArchive}>
+                                        <Button size="sm" variant="danger" className="flex-1" onClick={() => handleArchiveTask(task.id)} icon={FiArchive}>
                                             Archive
                                         </Button>
                                     </>
@@ -379,25 +379,25 @@ export const TaskManagementPanel = ({
                                     <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-200 dark:border-slate-700">
                                         {showArchived ? (
                                             <>
-                                                <Button size="xs" variant="secondary" onClick={() => handleViewDetails(task)} icon={FiEye}>
+                                                <Button size="sm" variant="secondary" onClick={() => handleViewDetails(task)} icon={FiEye} className="justify-center">
                                                     View Details
                                                 </Button>
-                                                <Button size="xs" variant="primary" onClick={() => handleRestoreTask(task)} icon={FiRotateCcw}>
+                                                <Button size="sm" variant="primary" onClick={() => handleRestoreTask(task)} icon={FiRotateCcw} className="justify-center">
                                                     Restore Task
                                                 </Button>
-                                                <Button size="xs" variant="danger" onClick={() => handlePermanentDelete(task.id)} icon={FiTrash2}>
+                                                <Button size="sm" variant="danger" onClick={() => handlePermanentDelete(task.id)} icon={FiTrash2} className="justify-center">
                                                     Delete Permanently
                                                 </Button>
                                             </>
                                         ) : (
                                             <>
-                                                <Button size="xs" variant="secondary" onClick={() => handleViewDetails(task)} icon={FiEye}>
+                                                <Button size="sm" variant="secondary" onClick={() => handleViewDetails(task)} icon={FiEye} className="justify-center">
                                                     View Details
                                                 </Button>
-                                                <Button size="xs" variant="secondary" onClick={() => handleEditTask(task)} icon={FiEdit}>
+                                                <Button size="sm" variant="secondary" onClick={() => handleEditTask(task)} icon={FiEdit} className="justify-center">
                                                     Edit
                                                 </Button>
-                                                <Button size="xs" variant="danger" onClick={() => handleArchiveTask(task.id)} icon={FiArchive}>
+                                                <Button size="sm" variant="danger" onClick={() => handleArchiveTask(task.id)} icon={FiArchive} className="justify-center">
                                                     Archive
                                                 </Button>
                                             </>
