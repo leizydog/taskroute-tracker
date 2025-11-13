@@ -5,7 +5,7 @@ import api from '../services/api';
 import { toast } from 'react-hot-toast';
 import {
   FiGrid, FiUsers, FiCheckSquare, FiTrendingUp, FiLogOut, FiMenu, FiBell, FiMoon, FiSun, FiX,
-  FiPlus, FiEdit2, FiTrash2, FiMapPin, FiCpu, FiMap
+  FiPlus, FiEdit2, FiTrash2, FiMapPin, FiCpu
 } from 'react-icons/fi';
 import { Button, Card, StatValue, Input, Select, Alert, Badge, Avatar } from '../components/atoms';
 import CreateTaskModal from '../components/organisms/CreateTaskModal';
@@ -19,7 +19,7 @@ const MAP_LOADER_ID = 'google-map-script';
 const MAP_LIBRARIES = ['places'];
 
 const SupervisorDashboard = () => {
-  const { user, logout, isDarkMode, toggleDarkMode } = useAuth(); // ✅ Use dark mode from AuthContext
+  const { user, logout, isDarkMode, toggleDarkMode } = useAuth();
 
   useEffect(() => {
     console.log('🔑 API Key:', process.env.REACT_APP_GOOGLE_MAPS_API_KEY);
@@ -53,7 +53,6 @@ const SupervisorDashboard = () => {
     { id: 'overview', label: 'Overview', icon: <FiGrid /> },
     { id: 'employees', label: 'Employees', icon: <FiUsers /> },
     { id: 'tasks', label: 'Tasks', icon: <FiCheckSquare /> },
-    { id: 'routes', label: 'Routes', icon: <FiMap /> },
     { id: 'tracking', label: 'Live Tracking', icon: <FiMapPin /> },
     { id: 'forecast', label: 'Performance AI', icon: <FiCpu /> },
     { id: 'analytics', label: 'Analytics', icon: <FiTrendingUp /> },
@@ -243,7 +242,6 @@ const SupervisorDashboard = () => {
           ))}
         </nav>
         <div className="mt-auto pt-4 border-t border-slate-700 space-y-2">
-          {/* ✅ Updated to use AuthContext dark mode */}
           <Button 
             variant="secondary" 
             icon={isDarkMode ? FiSun : FiMoon} 
