@@ -24,7 +24,7 @@ app.add_middleware(
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "http://frontend:3000",  # Docker container name
-        "*"  # Allow all for development (remove in production!)
+        "https://taskroute-frontend.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
