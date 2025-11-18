@@ -1,4 +1,5 @@
 # Updated: backend/app/routers/analytics.py
+# âœ… MIGRATED TO USE task_duration_predictor.py
 
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
@@ -6,53 +7,120 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func, desc
 from pydantic import BaseModel
-
-# --- ADDED PANDAS IMPORT ---
 import pandas as pd
+import os
+import numpy as np
+
 
 from app.database import get_db
 from app.models.user import User, UserRole
 from app.models.task import Task, TaskStatus
 from app.core.auth import get_current_active_user
-# --- UPDATED FORECASTING IMPORT ---
-from app.core.forecasting import (
-    predict_duration, 
-    model, 
-    model_columns,
-    get_employee_forecast_comparison  # NEW: Compare multiple employees
-)
+
+# âœ… NEW: Import the Google Directions-based predictor
+from app.services.task_duration_predictor import TaskDurationPredictor
+from dotenv import load_dotenv
+
 
 router = APIRouter(prefix="/analytics", tags=["Performance Analytics"])
+
+# ============================================================================
+# INITIALIZE PREDICTOR (SINGLETON)
+# ============================================================================
+load_dotenv("/app/.env")  
+GOOGLE_API_KEY = os.getenv("GOOGLE_DIRECTIONS_API_KEY")
+predictor = None
+
+if GOOGLE_API_KEY:
+    predictor = TaskDurationPredictor(GOOGLE_API_KEY)
+    try:
+        models_loaded = predictor.load_models(model_dir='./app/ml_models')
+        if models_loaded:
+            print("âœ… ML models loaded successfully for analytics")
+        else:
+            print("âš ï¸  Warning: Could not load ML models")
+            predictor = None
+    except Exception as e:
+        print(f"âš ï¸  Warning: Could not load ML models: {e}")
+        predictor = None
+else:
+    print("âš ï¸  Warning: GOOGLE_DIRECTIONS_API_KEY not set")
+
+
+# Add this helper somewhere at the top of analytics.py
+def np_to_python(obj):
+    """Recursively convert NumPy types to native Python types for JSON serialization"""
+    if isinstance(obj, np.generic):
+        return obj.item()
+    if isinstance(obj, dict):
+        return {k: np_to_python(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [np_to_python(i) for i in obj]
+    return obj
+
 
 # ============================================================================
 # FORECASTING SCHEMAS
 # ============================================================================
 
-# In analytics.py, update the TaskForecastInput schema:
-
 class TaskForecastInput(BaseModel):
-    """Input schema for task duration forecasting with auto-detection"""
-    Date: datetime
-    StartTime: datetime
-    latitude: float  # ✅ Required for city auto-detection
-    longitude: float  # ✅ Required for city auto-detection
-    ParticipantID: Optional[str] = None  # Employee ID for KPI lookup
+    """Input schema for task duration forecasting with Google Directions"""
     
-    # ✅ These are now OPTIONAL - will be auto-detected if not provided
-    City: Optional[str] = None
-    Conditions: Optional[str] = None
-    Method: Optional[str] = None
-    Reliability_pct: Optional[float] = None
+    # Required fields
+    employee_lat: float
+    employee_lng: float
+    task_lat: float
+    task_lng: float
+    
+    # Context (with smart defaults)
+    city: Optional[str] = "Manila"
+    conditions: Optional[str] = "Normal"
+    method: Optional[str] = "Drive"
+    
+    # Timing (defaults to current time if not provided)
+    scheduled_hour: Optional[int] = None
+    scheduled_day_of_week: Optional[int] = None
+    scheduled_date: Optional[str] = None
+    
+    # Employee ID (optional - uses current user if not provided)
+    ParticipantID: Optional[str] = None
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "employee_lat": 14.5657,
+                "employee_lng": 121.0346,
+                "task_lat": 14.5547,
+                "task_lng": 121.0244,
+                "city": "Makati",
+                "conditions": "Heavy Traffic",
+                "method": "Drive",
+                "scheduled_hour": 18
+            }
+        }
 
 
 class EmployeeComparisonInput(BaseModel):
     """Compare forecast for multiple employees"""
-    Date: datetime
-    StartTime: datetime
-    City: str
-    Conditions: str
-    Method: str
-    employee_ids: List[str]  # List of employee IDs to compare
+    
+    # Location
+    employee_lat: float
+    employee_lng: float
+    task_lat: float
+    task_lng: float
+    
+    # Context
+    city: str = "Manila"
+    conditions: str = "Normal"
+    method: str = "Drive"
+    
+    # Timing
+    scheduled_hour: Optional[int] = None
+    scheduled_day_of_week: Optional[int] = None
+    scheduled_date: Optional[str] = None
+    
+    # Employees to compare
+    employee_ids: List[str]
 
 
 # ============================================================================
@@ -62,133 +130,216 @@ class EmployeeComparisonInput(BaseModel):
 @router.post("/forecast")
 async def get_task_forecast(
     input_data: TaskForecastInput,
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
 ):
     """
-    🎯 Main forecasting endpoint - predicts task duration for a specific employee.
+    ðŸŽ¯ Main forecasting endpoint - predicts task duration using Google Directions API.
     
-    This is called when a supervisor:
-    1. Selects an employee to assign a task
-    2. Wants to see estimated completion time
-    
-    The prediction considers:
-    - Employee's historical KPI (avg duration, reliability, success rate)
-    - Temporal patterns (time of day, day of week, seasonality)
-    - Current conditions (traffic, weather)
-    - Location characteristics (city patterns)
-    - Transportation method
+    Returns:
+    - Total predicted duration
+    - Travel time breakdown
+    - Work time estimate
+    - Route details
+    - Employee KPI context
     """
-    task_data = input_data.dict()
-    prediction = predict_duration(task_data)
     
-    if "error" in prediction:
+    if predictor is None:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=prediction["error"]
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Prediction service is not available. ML models not loaded."
         )
     
-    return prediction
+    try:
+        # Use current time if not specified
+        now = datetime.now()
+        hour = input_data.scheduled_hour if input_data.scheduled_hour is not None else now.hour
+        day_of_week = input_data.scheduled_day_of_week if input_data.scheduled_day_of_week is not None else now.weekday()
+        date_str = input_data.scheduled_date if input_data.scheduled_date else now.strftime('%Y-%m-%d')
+        
+        # Format participant ID
+        participant_id = input_data.ParticipantID or f"P{current_user.id:03d}"
+        
+        # Make prediction
+        prediction = predictor.predict(
+            participant_id=participant_id,
+            city=input_data.city,
+            conditions=input_data.conditions,
+            method=input_data.method,
+            hour=hour,
+            day_of_week=day_of_week,
+            date=date_str,
+            employee_lat=input_data.employee_lat,
+            employee_lng=input_data.employee_lng,
+            task_lat=input_data.task_lat,
+            task_lng=input_data.task_lng
+        )
+        
+        return np_to_python({
+            "status": "success",
+            "prediction": prediction,
+            "metadata": {
+                "participant_id": participant_id,
+                "prediction_time": datetime.now().isoformat(),
+                "uses_google_directions": True
+            }
+        })
+
+        
+    except Exception as e:
+        print(f"Prediction error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Prediction failed: {str(e)}"
+        )
 
 
 @router.post("/forecast/compare-employees")
 async def compare_employee_forecasts(
     input_data: EmployeeComparisonInput,
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
 ):
     """
-    🔍 Compare multiple employees for the same task.
+    ðŸ” Compare multiple employees for the same task.
     
     Returns forecasts sorted by predicted duration (fastest first).
     Useful for supervisors to choose the best employee for a task.
-    
-    Example response:
-    [
-        {
-            "employee_id": "P164",
-            "predicted_duration": 23.5,
-            "confidence_lower": 18.2,
-            "confidence_upper": 28.8,
-            "employee_kpi": {...}
-        },
-        ...
-    ]
     """
-    # Only supervisors and admins can compare employees
+    
+    # Permission check
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPERVISOR]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only supervisors and admins can compare employee forecasts"
         )
     
-    task_data = {
-        "Date": input_data.Date,
-        "StartTime": input_data.StartTime,
-        "City": input_data.City,
-        "Conditions": input_data.Conditions,
-        "Method": input_data.Method
-    }
-    
-    forecasts = get_employee_forecast_comparison(task_data, input_data.employee_ids)
-    
-    if not forecasts:
+    if predictor is None:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Could not generate forecasts for any employee"
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Prediction service is not available"
         )
     
-    return {
-        "task_details": task_data,
-        "employee_count": len(forecasts),
-        "forecasts": forecasts,
-        "fastest_employee": forecasts[0]["employee_id"],
-        "slowest_employee": forecasts[-1]["employee_id"]
-    }
+    try:
+        # Use current time if not specified
+        now = datetime.now()
+        hour = input_data.scheduled_hour if input_data.scheduled_hour is not None else now.hour
+        day_of_week = input_data.scheduled_day_of_week if input_data.scheduled_day_of_week is not None else now.weekday()
+        date_str = input_data.scheduled_date if input_data.scheduled_date else now.strftime('%Y-%m-%d')
+        
+        forecasts = []
+        
+        for emp_id in input_data.employee_ids:
+            try:
+                prediction = predictor.predict(
+                    participant_id=emp_id,
+                    city=input_data.city,
+                    conditions=input_data.conditions,
+                    method=input_data.method,
+                    hour=hour,
+                    day_of_week=day_of_week,
+                    date=date_str,
+                    employee_lat=input_data.employee_lat,
+                    employee_lng=input_data.employee_lng,
+                    task_lat=input_data.task_lat,
+                    task_lng=input_data.task_lng
+                )
+                
+                forecasts.append({
+                    "employee_id": emp_id,
+                    "predicted_duration_minutes": prediction['predicted_duration_minutes'],
+                    "travel_time_minutes": prediction['travel_time_minutes'],
+                    "work_time_minutes": prediction['work_time_minutes'],
+                    "confidence_interval_lower": prediction['confidence_interval_lower'],
+                    "confidence_interval_upper": prediction['confidence_interval_upper'],
+                    "employee_kpi": {
+                        "avg_duration": prediction['employee_avg_duration'],
+                        "reliability": prediction['employee_reliability'],
+                        "success_rate": prediction['employee_success_rate']
+                    }
+                })
+                
+            except Exception as e:
+                print(f"Error predicting for employee {emp_id}: {e}")
+                continue
+        
+        if not forecasts:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Could not generate forecasts for any employee"
+            )
+        
+        # Sort by predicted duration (fastest first)
+        forecasts.sort(key=lambda x: x['predicted_duration_minutes'])
+        
+        return {
+            "task_details": {
+                "city": input_data.city,
+                "conditions": input_data.conditions,
+                "method": input_data.method,
+                "distance_km": forecasts[0].get('distance_km', 'N/A') if forecasts else 'N/A'
+            },
+            "employee_count": len(forecasts),
+            "forecasts": forecasts,
+            "fastest_employee": forecasts[0]["employee_id"],
+            "slowest_employee": forecasts[-1]["employee_id"],
+            "time_difference_minutes": forecasts[-1]["predicted_duration_minutes"] - forecasts[0]["predicted_duration_minutes"]
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Comparison error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Comparison failed: {str(e)}"
+        )
 
 
 @router.get("/forecast/model-status")
 async def get_model_status():
     """
-    📊 Check if forecasting model is loaded and ready.
+    ðŸ“Š Check if forecasting model is loaded and ready.
     
     Returns model metadata and health status.
     """
-    if model is None or model_columns is None:
+    if predictor is None:
         return {
             "status": "error",
             "loaded": False,
+            "google_api_configured": GOOGLE_API_KEY is not None,
             "message": "Forecasting model not loaded"
         }
     
     return {
         "status": "ready",
         "loaded": True,
-        "feature_count": len(model_columns),
-        "model_type": "XGBoost + Prophet Hybrid",
-        "features": model_columns
+        "model_type": "XGBoost + Google Directions API",
+        "features": predictor.selected_features if predictor.selected_features else [],
+        "feature_count": len(predictor.selected_features) if predictor.selected_features else 0,
+        "google_api_configured": GOOGLE_API_KEY is not None,
+        "has_employee_stats": predictor.employee_stats is not None,
+        "has_city_stats": predictor.city_stats is not None
     }
 
-
-# ============================================================================
-# FEATURE IMPORTANCE ENDPOINT
-# ============================================================================
 
 @router.get("/feature-importance")
 async def get_feature_importance():
     """
-    📈 Returns the top 15 features affecting task duration prediction.
+    ðŸ“ˆ Returns the top 15 features affecting task duration prediction.
     
     Helps understand what factors most influence task completion time.
     """
-    if model is None or model_columns is None:
+    if predictor is None or predictor.xgb_model is None:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Forecasting model or columns not loaded."
+            detail="Forecasting model not loaded."
         )
 
     try:
         # Get importance scores from the loaded XGBoost model
-        importance_scores = model.feature_importances_
-        feature_names = model_columns
+        importance_scores = predictor.xgb_model.feature_importances_
+        feature_names = predictor.selected_features
 
         # Create a DataFrame and sort
         importance_df = pd.DataFrame({
@@ -201,7 +352,8 @@ async def get_feature_importance():
 
         return {
             "top_features": top_features,
-            "total_features": len(feature_names)
+            "total_features": len(feature_names),
+            "model_type": "XGBoost with Google Directions"
         }
     except Exception as e:
         print(f"Error getting feature importance: {e}")
@@ -212,7 +364,7 @@ async def get_feature_importance():
 
 
 # ============================================================================
-# KPI ANALYTICS ENDPOINTS
+# KPI ANALYTICS ENDPOINTS (UNCHANGED)
 # ============================================================================
 
 @router.get("/kpi/overview")
@@ -223,7 +375,7 @@ def get_kpi_overview(
     current_user: User = Depends(get_current_active_user)
 ):
     """
-    📊 Get comprehensive KPI overview for performance assessment.
+    ðŸ“Š Get comprehensive KPI overview for performance assessment.
     
     Includes:
     - Task completion metrics
@@ -385,7 +537,7 @@ def get_team_overview(
     current_user: User = Depends(get_current_active_user)
 ):
     """
-    👥 Get team performance overview (managers, supervisors, and admins only).
+    ðŸ‘¥ Get team performance overview (managers, supervisors, and admins only).
     
     Shows performance metrics for all team members.
     """

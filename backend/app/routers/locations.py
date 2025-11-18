@@ -201,7 +201,7 @@ async def find_nearest_employee(
         # Get task forecast if requested
         forecast = None
         if location_data.get("get_forecast", False):
-            from app.core.forecasting import predict_duration
+            from backend.app.core.forecasting_backup import predict_duration
             
             forecast_data = {
                 "Date": datetime.now().strftime("%Y-%m-%d"),

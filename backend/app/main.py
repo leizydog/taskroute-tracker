@@ -2,21 +2,58 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine
 from app.models import user, task
-from app.routers import auth, tasks, locations, analytics, users
+from app.routers import auth, tasks, locations, analytics, users, predictions
 from app.websocket_manager import manager
+from dotenv import load_dotenv
+import os
 
+# -------------------------
+# Load environment variables
+# -------------------------
+load_dotenv()  # <- This loads .env automatically
+
+# -------------------------
+# Initialize predictors
+# -------------------------
+from app.services.task_duration_predictor import TaskDurationPredictor
+from app.services.multi_destination_predictor import MultiDestinationPredictor
+
+GOOGLE_API_KEY = os.getenv("GOOGLE_DIRECTIONS_API_KEY")
+predictor = None
+multi_predictor = None
+
+if GOOGLE_API_KEY:
+    predictor = TaskDurationPredictor(GOOGLE_API_KEY)
+    try:
+        models_loaded = predictor.load_models(model_dir='./app/ml_models')
+        if models_loaded:
+            print("✅ ML models loaded successfully for predictions")
+            multi_predictor = MultiDestinationPredictor(predictor)
+            print("✅ Multi-destination predictor initialized")
+        else:
+            print("⚠️  Warning: Could not load ML models")
+            predictor = None
+    except Exception as e:
+        print(f"⚠️  Warning: Could not load ML models: {e}")
+        predictor = None
+else:
+    print("⚠️  Warning: GOOGLE_DIRECTIONS_API_KEY not set")
+
+# -------------------------
 # Create database tables
+# -------------------------
 user.Base.metadata.create_all(bind=engine)
 task.Base.metadata.create_all(bind=engine)
 
-# Create FastAPI app
+# -------------------------
+# FastAPI app initialization
+# -------------------------
 app = FastAPI(
     title="TaskRoute Tracker API",
     description="GPS-enabled task management with ML predictions",
     version="1.0.0"
 )
 
-# Configure CORS - IMPORTANT: Add WebSocket origin support
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
@@ -37,34 +74,26 @@ app.include_router(tasks.router, prefix="/api/v1")
 app.include_router(users.router, prefix="/api/v1")
 app.include_router(locations.router, prefix="/api/v1")
 app.include_router(analytics.router, prefix="/api/v1")
+app.include_router(predictions.router, prefix="/api/v1")
 
-# ✅ WebSocket endpoint - Define AFTER routers
+# WebSocket endpoint
 @app.websocket("/ws/location")
 async def websocket_endpoint(websocket: WebSocket):
     print(f"🔌 WebSocket connection attempt from {websocket.client}")
-    
     try:
         await manager.connect(websocket)
         print(f"✅ WebSocket connected successfully")
-        
-        # Keep connection alive
         while True:
             try:
                 data = await websocket.receive_text()
                 print(f"📨 Received from client: {data}")
-                
-                # Optional: Send acknowledgment
-                await websocket.send_json({
-                    "type": "ack",
-                    "message": "Server received your message"
-                })
+                await websocket.send_json({"type": "ack", "message": "Server received your message"})
             except WebSocketDisconnect:
                 print("🔌 Client disconnected normally")
                 break
             except Exception as e:
                 print(f"❌ Error receiving data: {e}")
                 break
-                
     except Exception as e:
         print(f"❌ WebSocket connection error: {e}")
     finally:
@@ -73,18 +102,12 @@ async def websocket_endpoint(websocket: WebSocket):
 
 @app.get("/")
 def read_root():
-    return {
-        "message": "TaskRoute Tracker API",
-        "version": "1.0.0",
-        "status": "running",
-        "docs": "/docs"
-    }
+    return {"message": "TaskRoute Tracker API", "version": "1.0.0", "status": "running", "docs": "/docs"}
 
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
 
-# Add this to help debug
 @app.on_event("startup")
 async def startup_event():
     print("🚀 FastAPI server starting...")

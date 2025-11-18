@@ -1,6 +1,6 @@
 // src/components/organisms/CreateTaskModal.js
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import api from '../../services/api';
+import API from "../../services/api";
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { FiX, FiPlusCircle, FiMapPin, FiTrash2, FiClock, FiTrendingUp, FiAlertCircle } from 'react-icons/fi';
@@ -53,6 +53,9 @@ const FormSelect = ({ label, id, isRequired, children, ...props }) => (
 );
 
 // 🎯 NEW: Forecast Display Component
+// 🎯 UPDATED: ForecastPanel that handles BOTH single and multi-destination
+// 🎯 UPDATED: ForecastPanel that handles BOTH single and multi-destination
+// 🎯 UPDATED: ForecastPanel that handles BOTH single and multi-destination
 const ForecastPanel = ({ forecast, loading, error }) => {
   if (loading) {
     return (
@@ -89,6 +92,9 @@ const ForecastPanel = ({ forecast, loading, error }) => {
 
   if (!forecast) return null;
 
+  // Check if this is a multi-destination forecast
+  const isMultiDest = forecast.is_multi_destination && forecast.legs;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: -10 }}
@@ -101,20 +107,32 @@ const ForecastPanel = ({ forecast, loading, error }) => {
         </div>
         <div className="flex-1">
           <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-1">
-            🎯 AI-Powered Duration Forecast
+            {isMultiDest ? '🗺️ Multi-Stop Route Forecast' : '🎯 AI-Powered Duration Forecast'}
           </h4>
           <p className="text-xs text-slate-600 dark:text-slate-400">
-            Based on employee KPI and current conditions
+            {isMultiDest 
+              ? `${forecast.number_of_stops} stops • ${forecast.total_distance_km.toFixed(1)} km total`
+              : 'Based on employee KPI and current conditions'
+            }
           </p>
         </div>
       </div>
 
+      {/* Main Prediction */}
       <div className="grid grid-cols-2 gap-3 mb-3">
         <div className="bg-white dark:bg-slate-800 rounded-lg p-3 border border-indigo-100 dark:border-indigo-800">
-          <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Predicted Duration</p>
-          <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">
-            {forecast.predicted_duration_minutes} <span className="text-sm font-normal">min</span>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">
+            {isMultiDest ? 'Total Duration' : 'Predicted Duration'}
           </p>
+          <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">
+            {Math.round(forecast.predicted_duration_minutes)} 
+            <span className="text-sm font-normal"> min</span>
+          </p>
+          {isMultiDest && (
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              ({forecast.predicted_duration_hours.toFixed(1)} hours)
+            </p>
+          )}
         </div>
         <div className="bg-white dark:bg-slate-800 rounded-lg p-3 border border-indigo-100 dark:border-indigo-800">
           <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Confidence Range</p>
@@ -124,9 +142,55 @@ const ForecastPanel = ({ forecast, loading, error }) => {
         </div>
       </div>
 
+      {/* Multi-Destination Distance Info (no work time breakdown) */}
+      {isMultiDest && (
+        <div className="bg-white dark:bg-slate-800 rounded-lg p-3 border border-indigo-100 dark:border-indigo-800 mb-3">
+          <p className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-2">🚗 Route Summary</p>
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <div>
+              <span className="text-slate-500 dark:text-slate-400">Total Distance:</span>
+              <span className="ml-1 font-semibold text-blue-600 dark:text-blue-400">
+                {forecast.total_distance_km.toFixed(1)} km
+              </span>
+            </div>
+            <div>
+              <span className="text-slate-500 dark:text-slate-400">Travel Time:</span>
+              <span className="ml-1 font-semibold text-green-600 dark:text-green-400">
+                {Math.round(forecast.total_travel_time_minutes)} min
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Leg-by-Leg Details (for multi-destination) */}
+      {isMultiDest && forecast.legs && (
+        <div className="bg-white dark:bg-slate-800 rounded-lg p-3 border border-indigo-100 dark:border-indigo-800 mb-3">
+          <p className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-2">📍 Route Details</p>
+          <div className="space-y-2 max-h-40 overflow-y-auto">
+            {forecast.legs.map((leg, index) => (
+              <div key={index} className="flex items-start gap-2 text-xs">
+                <div className="flex-shrink-0 w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-[10px]">
+                  {leg.leg_number}
+                </div>
+                <div className="flex-1">
+                  <p className="font-medium text-slate-700 dark:text-slate-300">
+                    {leg.from_location} → {leg.to_location}
+                  </p>
+                  <p className="text-slate-500 dark:text-slate-400">
+                    {leg.distance_km.toFixed(1)} km • {Math.round(leg.travel_time_minutes)} min • Depart: {leg.departure_time} → Arrive: {leg.arrival_time}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Employee KPI */}
       {forecast.employee_kpi && (
         <div className="bg-white dark:bg-slate-800 rounded-lg p-3 border border-indigo-100 dark:border-indigo-800 mb-3">
-          <p className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-2">Employee Performance</p>
+          <p className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-2">👤 Employee Performance</p>
           <div className="grid grid-cols-2 gap-2 text-xs">
             <div>
               <span className="text-slate-500 dark:text-slate-400">Avg Duration:</span>
@@ -144,6 +208,7 @@ const ForecastPanel = ({ forecast, loading, error }) => {
         </div>
       )}
 
+      {/* Auto-Detected Context */}
       {forecast.auto_detected && (
         <div className="bg-white dark:bg-slate-800 rounded-lg p-3 border border-indigo-100 dark:border-indigo-800">
           <p className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-2">🤖 Auto-Detected Context</p>
@@ -217,7 +282,7 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
     const fetchUsers = async () => {
       try {
         setLoadingUsers(true);
-        const res = await api.getUsers();
+        const res = await API.getUsers();
         const assignableUsers = (res.data || []).filter(u => u.id !== currentUser?.id && u.role === 'user');
         setUsers(assignableUsers);
         if (assignableUsers.length > 0) {
@@ -239,43 +304,167 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
   }, [currentUser]);
 
   // 🎯 NEW: Auto-fetch forecast when key parameters change (simplified)
-  useEffect(() => {
-    const shouldFetchForecast = 
-      formData.assigned_to && 
-      formData.due_date && 
-      (formData.latitude || destinations.length > 0);
+  // 🎯 UPDATED: Auto-fetch forecast for BOTH single and multi-destination tasks
+// 🎯 UPDATED: Auto-fetch forecast for BOTH single and multi-destination tasks
+useEffect(() => {
+  // Determine if we should fetch forecast
+  const shouldFetchForecast = 
+    formData.assigned_to && 
+    formData.due_date && 
+    (
+      // Single destination: need lat/lng
+      (!formData.is_multi_destination && formData.latitude && formData.longitude) ||
+      // Multi destination: need at least 2 destinations
+      (formData.is_multi_destination && destinations.length >= 2)
+    );
 
-    if (!shouldFetchForecast) {
-      setForecast(null);
-      return;
-    }
+  if (!shouldFetchForecast) {
+    setForecast(null);
+    return;
+  }
 
-    const fetchForecast = async () => {
-      setForecastLoading(true);
-      setForecastError(null);
+  const fetchForecast = async () => {
+    setForecastLoading(true);
+    setForecastError(null);
 
-      try {
-        const selectedUser = users.find(u => u.id === parseInt(formData.assigned_to));
-        // ✅ Use database ID as ParticipantID to match your CSV format
-        const participantId = `P${String(selectedUser?.id).padStart(3, '0')}`; // P001, P002, etc.
+    try {
+      const selectedUser = users.find(u => u.id === parseInt(formData.assigned_to));
+      const participantId = `P${String(selectedUser?.id).padStart(3, '0')}`; // P001, P002, etc.
 
-        const dueDate = new Date(formData.due_date);
+      const dueDate = new Date(formData.due_date);
+      
+      // 🎯 BRANCH 1: Multi-Destination Forecast
+      if (formData.is_multi_destination && destinations.length >= 2) {
+        console.log('🗺️ Fetching MULTI-DESTINATION forecast...');
         
-        // 🎯 Simplified: Backend handles all auto-detection
-        const forecastData = {
-          Date: dueDate.toISOString().split('T')[0], // "2024-11-03"
-          StartTime: dueDate.toISOString(), // Full ISO string with time
-          latitude: parseFloat(formData.latitude || destinations[0]?.latitude) || 14.8781,
-          longitude: parseFloat(formData.longitude || destinations[0]?.longitude) || 120.9750,
-          ParticipantID: participantId,
-          // Optional overrides (not needed, backend auto-detects):
-          // City, Conditions, Method will be detected automatically
+        // Get current user location (use first destination as fallback)
+        const employeeLat = parseFloat(destinations[0].latitude) || 14.8781;
+        const employeeLng = parseFloat(destinations[0].longitude) || 120.9750;
+        
+        // 🎯 AUTO-DETECT CONDITIONS BASED ON TIME
+        const isRushHour = (dueDate.getHours() >= 7 && dueDate.getHours() <= 9) || 
+                           (dueDate.getHours() >= 17 && dueDate.getHours() <= 19);
+        const isWeekend = dueDate.getDay() === 0 || dueDate.getDay() === 6;
+        
+        // Determine conditions
+        let autoConditions = "Normal";
+        if (isRushHour && !isWeekend) {
+          autoConditions = "Rush Hour";
+        } else if (isWeekend) {
+          autoConditions = "Holiday";
+        }
+        
+        console.log(`🕐 Time-based conditions: ${autoConditions} (Hour: ${dueDate.getHours()}, Weekend: ${isWeekend})`);
+        
+        const multiDestRequest = {
+          employee_lat: employeeLat,
+          employee_lng: employeeLng,
+          destinations: destinations.map(dest => ({
+            sequence: dest.sequence,
+            location_name: dest.location_name,
+            latitude: parseFloat(dest.latitude),
+            longitude: parseFloat(dest.longitude)
+          })),
+          city: "Manila", // You can make this dynamic if needed
+          conditions: autoConditions, // 🎯 Use auto-detected conditions
+          method: "Drive", // Auto-detected by backend
+          scheduled_hour: dueDate.getHours(),
+          scheduled_day_of_week: dueDate.getDay() === 0 ? 6 : dueDate.getDay() - 1, // Convert to 0=Monday
+          scheduled_date: dueDate.toISOString().split('T')[0],
+          optimize_order: false // Set to true if you want route optimization
         };
 
-        console.log('📊 Sending forecast request:', forecastData);
-        const response = await api.getTaskForecast(forecastData);
+        console.log('📊 Sending multi-destination request:', multiDestRequest);
+        const response = await API.predictMultiDestination(multiDestRequest);
+
         
-        console.log('✅ Forecast response:', response.data);
+        console.log('✅ Multi-destination forecast response:', response.data);
+        
+        if (response.data) {
+          // Transform multi-destination response to match UI expectations
+          const transformedForecast = {
+            predicted_duration_minutes: response.data.predicted_duration_minutes,
+            predicted_duration_hours: response.data.predicted_duration_hours,
+            confidence_interval: {
+              lower_minutes: Math.round(response.data.confidence_interval_lower),
+              upper_minutes: Math.round(response.data.confidence_interval_upper)
+            },
+            employee_kpi: {
+              historical_avg_duration: Math.round(response.data.legs?.[0]?.work_time_minutes || 30),
+              reliability_pct: Math.round(response.data.employee_reliability)
+            },
+            auto_detected: {
+              city: response.data.city,
+              method: response.data.method,
+              is_rush_hour: dueDate.getHours() >= 7 && dueDate.getHours() <= 9 || dueDate.getHours() >= 17 && dueDate.getHours() <= 19,
+              conditions: response.data.condition_impact
+            },
+            // Multi-destination specific data
+            is_multi_destination: true,
+            total_distance_km: response.data.total_distance_km,
+            total_travel_time_minutes: response.data.total_travel_time_minutes,
+            total_work_time_minutes: response.data.total_work_time_minutes,
+            number_of_stops: response.data.number_of_stops,
+            legs: response.data.legs
+          };
+          
+          setForecast(transformedForecast);
+          
+          // Auto-fill estimated duration
+          if (!formData.estimated_duration) {
+            setFormData(prev => ({
+              ...prev,
+              estimated_duration: Math.round(response.data.predicted_duration_minutes)
+            }));
+          }
+          
+          toast.success(`🗺️ Multi-stop forecast: ${Math.round(response.data.predicted_duration_minutes)} min for ${response.data.number_of_stops} stops`);
+        }
+      } 
+      // 🎯 BRANCH 2: Single-Destination Forecast
+      else {
+        console.log('📍 Fetching SINGLE-DESTINATION forecast...');
+        
+        // Try to get employee's last known location from their user data
+        let employeeLat = 14.5995; // Default: Manila City Hall area
+        let employeeLng = 120.9842;
+        
+        // If the selected user has location data, use it
+        if (selectedUser?.last_location?.latitude && selectedUser?.last_location?.longitude) {
+          employeeLat = selectedUser.last_location.latitude;
+          employeeLng = selectedUser.last_location.longitude;
+          console.log(`✅ Using employee's last known location: (${employeeLat}, ${employeeLng})`);
+        } else {
+          console.log('⚠️ No employee location available, using default Manila location');
+        }
+        
+        const forecastData = {
+          // Employee location (where they start)
+          employee_lat: employeeLat,
+          employee_lng: employeeLng,
+          
+          // Task location (where they need to go)
+          task_lat: parseFloat(formData.latitude) || 14.8781,
+          task_lng: parseFloat(formData.longitude) || 120.9750,
+          
+          // Context
+          ParticipantID: participantId,
+          city: "Manila",
+          conditions: "Normal", // Will be auto-detected by backend
+          method: "Drive", // Will be auto-detected by backend
+          
+          // Timing
+          scheduled_hour: dueDate.getHours(),
+          scheduled_day_of_week: dueDate.getDay() === 0 ? 6 : dueDate.getDay() - 1, // Convert to 0=Monday
+          scheduled_date: dueDate.toISOString().split('T')[0]
+        };
+
+        console.log('📊 Sending single-destination request:', forecastData);
+        const response = await API.getForecast(forecastData);
+
+
+        
+        console.log('✅ Single-destination forecast response:', response.data);
         
         if (response.data && !response.data.error) {
           setForecast(response.data);
@@ -290,21 +479,31 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
         } else {
           setForecastError(response.data?.error || 'Forecast unavailable');
         }
-      } catch (err) {
-        console.error('❌ Forecast error details:', {
-          message: err.message,
-          response: err.response?.data,
-          status: err.response?.status
-        });
-        setForecastError(err.response?.data?.detail || 'Could not generate forecast');
-      } finally {
-        setForecastLoading(false);
       }
-    };
+    } catch (err) {
+      console.error('❌ Forecast error details:', {
+        message: err.message,
+        response: err.response?.data,
+        status: err.response?.status
+      });
+      setForecastError(err.response?.data?.detail || 'Could not generate forecast');
+    } finally {
+      setForecastLoading(false);
+    }
+  };
 
-    const timeoutId = setTimeout(fetchForecast, 800);
-    return () => clearTimeout(timeoutId);
-  }, [formData.assigned_to, formData.due_date, formData.latitude, destinations, users, formData.estimated_duration]);
+  const timeoutId = setTimeout(fetchForecast, 800);
+  return () => clearTimeout(timeoutId);
+}, [
+  formData.assigned_to, 
+  formData.due_date, 
+  formData.latitude, 
+  formData.longitude,
+  formData.is_multi_destination,
+  destinations, 
+  users, 
+  formData.estimated_duration
+]);
 
   // 🎯 NEW: Find nearest employees when location is set
   const handleFindNearestEmployees = async () => {
@@ -315,11 +514,12 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
 
     setLoadingNearest(true);
     try {
-      const response = await api.post('/api/v1/locations/employees/nearest', {
+      const response = await API.getNearestEmployee({
         latitude: parseFloat(formData.latitude),
         longitude: parseFloat(formData.longitude),
-        get_forecast: true, // Include forecasts for each employee
+        get_forecast: true,
       });
+
 
       setNearestEmployees(response.data);
       
@@ -462,7 +662,7 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
         toast.error('Could not get your location.');
       }
     );
-  }, [formData.is_multi_destination, destinations.length, mapCenter]);
+  }, [formData.is_multi_destination, destinations.length]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -497,7 +697,8 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
         payload.longitude = formData.longitude ? parseFloat(formData.longitude) : null;
       }
 
-      const res = await api.createTask(payload);
+      const res = await API.TaskAPI.createTask(payload);
+
       toast.success('Task created successfully!');
       if (typeof onSuccess === 'function') onSuccess(res.data);
       if (typeof onClose === 'function') onClose();
