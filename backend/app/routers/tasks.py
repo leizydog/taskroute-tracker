@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import desc
 from app.database import get_db
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.models.task import Task, TaskStatus
 from app.models.location import LocationLog
 from app.schemas.location import LocationLogCreate
@@ -159,6 +159,89 @@ async def update_task(
     return response_task
 
 
+@router.post("/{task_id}/seed-historical", response_model=TaskWithUsers)
+async def seed_historical_task(
+    task_id: int,
+    historical_data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Special endpoint for seeding historical task data - ADMIN ONLY
+    
+    Allows setting internal fields that are normally controlled by workflow:
+    - status: Task status (pending, in_progress, completed)
+    - started_at: When task was started (ISO format string)
+    - completed_at: When task was completed (ISO format string)
+    - quality_rating: Quality rating (1-5)
+    - actual_duration: Actual duration in seconds
+    
+    This endpoint bypasses normal task workflow validation for seeding purposes.
+    """
+    # Check admin permission
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admins can seed historical data"
+        )
+    
+    # Fetch task with relationships
+    task = db.query(Task).options(
+        joinedload(Task.assigned_user),
+        joinedload(Task.created_user)
+    ).filter(Task.id == task_id).first()
+    
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found"
+        )
+    
+    # Allow setting historical fields directly
+    try:
+        if "status" in historical_data:
+            # Handle both string and enum values
+            status_value = historical_data["status"]
+            if isinstance(status_value, str):
+                task.status = TaskStatus(status_value)
+            else:
+                task.status = status_value
+        
+        if "started_at" in historical_data and historical_data["started_at"]:
+            task.started_at = datetime.fromisoformat(historical_data["started_at"].replace('Z', '+00:00'))
+        
+        if "completed_at" in historical_data and historical_data["completed_at"]:
+            task.completed_at = datetime.fromisoformat(historical_data["completed_at"].replace('Z', '+00:00'))
+        
+        if "quality_rating" in historical_data and historical_data["quality_rating"] is not None:
+            task.quality_rating = historical_data["quality_rating"]
+        
+        if "actual_duration" in historical_data and historical_data["actual_duration"] is not None:
+            # Convert seconds to minutes if needed (check your model)
+            task.actual_duration = historical_data["actual_duration"]
+        
+        db.commit()
+        db.refresh(task)
+        
+        return TaskWithUsers(
+            **task.__dict__,
+            assigned_user_name=task.assigned_user.full_name,
+            created_user_name=task.created_user.full_name
+        )
+        
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid data format: {str(e)}"
+        )
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to seed historical data: {str(e)}"
+        )
+
+
 @router.post("/{task_id}/start", response_model=TaskWithUsers)
 async def start_task(
     task_id: int,
@@ -247,8 +330,6 @@ async def start_task(
     return response_task
 
 
-
-
 @router.post("/{task_id}/complete", response_model=TaskWithUsers)
 async def complete_task(
     task_id: int,
@@ -322,9 +403,6 @@ async def delete_task(
             detail="Task not found"
         )
 
-    # ✅ FIX: Compare against UserRole enum, not strings
-    from app.models.user import UserRole
-    
     # Allow admins and supervisors to delete any task
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPERVISOR] and task.created_by != current_user.id:
         raise HTTPException(
@@ -340,6 +418,7 @@ async def delete_task(
         "event": "task_deleted",
         "task_id": task_id_to_broadcast
     })
+
 
 @router.get("/stats/performance", response_model=TaskStats)
 async def get_task_statistics(
@@ -393,6 +472,7 @@ async def get_task_statistics(
         tasks_by_priority=tasks_by_priority
     )
     
+
 @router.get("/stats/ongoing-by-users", response_model=OngoingTasksByUser)
 async def get_ongoing_tasks_by_users(
     db: Session = Depends(get_db),
@@ -447,7 +527,7 @@ async def get_ongoing_tasks_by_users(
             user_role=user.role.value,
             ongoing_task_count=len(tasks),
             current_task=task_with_users,
-            current_location=latest_location  # Add current location
+            current_location=latest_location
         ))
     
     # Sort by user name

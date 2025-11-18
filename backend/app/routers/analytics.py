@@ -58,6 +58,16 @@ def np_to_python(obj):
         return [np_to_python(i) for i in obj]
     return obj
 
+def make_aware(dt):
+    """Convert naive datetime to UTC timezone-aware datetime"""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        # Naive datetime - assume it's UTC
+        from datetime import timezone
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
 
 # ============================================================================
 # FORECASTING SCHEMAS
@@ -650,5 +660,294 @@ def get_team_overview(
             "total_completed": total_team_tasks_completed,
             "team_completion_rate": round(overall_team_completion_rate, 1),
             "top_performer": top_performer_name
+        }
+    }
+
+# Add this endpoint to analytics.py
+
+# Fixed section of analytics.py - Replace the get_employee_kpis function
+
+@router.get("/employees/{employee_id}/kpis")
+def get_employee_kpis(
+    employee_id: int,
+    days: int = Query(30, ge=7, le=365),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    📊 Get comprehensive KPI dashboard for a specific employee
+    
+    Returns:
+    - Core KPIs (completion rate, quality, duration, reliability)
+    - Task statistics breakdown
+    - Performance trends over time
+    - Team comparisons
+    - Forecast accuracy metrics
+    """
+    
+    # Permission check: admin/supervisor can view anyone, users can only view themselves
+    if employee_id != current_user.id and current_user.role not in [UserRole.ADMIN, UserRole.SUPERVISOR]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only view your own performance data"
+        )
+    
+    # Verify employee exists
+    employee = db.query(User).filter(User.id == employee_id).first()
+    if not employee:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Employee {employee_id} not found"
+        )
+    
+    # Date range - FIXED: Use timezone-aware datetimes from the start
+    from datetime import timezone
+    end_date = datetime.now(timezone.utc)
+    start_date = end_date - timedelta(days=days)
+    
+    # Get tasks in date range
+    tasks = db.query(Task).filter(
+        and_(
+            Task.assigned_to == employee_id,
+            Task.created_at >= start_date,
+            Task.created_at <= end_date
+        )
+    ).order_by(Task.created_at.desc()).all()
+    
+    if not tasks:
+        return {
+            "employee_id": employee_id,
+            "employee_name": employee.full_name or employee.username,
+            "period_days": days,
+            "has_data": False,
+            "message": f"No tasks found in the last {days} days"
+        }
+    
+    # ========================================================================
+    # CORE KPI CALCULATIONS
+    # ========================================================================
+    
+    total_tasks = len(tasks)
+    completed_tasks = [t for t in tasks if t.status == TaskStatus.COMPLETED]
+    in_progress_tasks = [t for t in tasks if t.status == TaskStatus.IN_PROGRESS]
+    
+    # FIXED: Make sure due_date comparison uses timezone-aware datetime
+    overdue_tasks = [
+        t for t in tasks 
+        if t.due_date and make_aware(t.due_date) < end_date and t.status != TaskStatus.COMPLETED
+    ]
+    
+    # Completion Rate
+    completion_rate = len(completed_tasks) / total_tasks if total_tasks > 0 else 0
+    
+    # Average Quality Rating
+    rated_tasks = [t for t in completed_tasks if t.quality_rating is not None]
+    avg_quality = sum(t.quality_rating for t in rated_tasks) / len(rated_tasks) if rated_tasks else None
+    
+    # On-Time Completion Rate - FIXED: Ensure timezone-aware comparisons
+    on_time_tasks = [
+        t for t in completed_tasks 
+        if t.due_date and t.completed_at 
+        and make_aware(t.completed_at) <= make_aware(t.due_date)
+    ]
+    on_time_rate = len(on_time_tasks) / len(completed_tasks) if completed_tasks else 0
+    
+    # Average Task Duration (in minutes)
+    completed_with_duration = [t for t in completed_tasks if t.actual_duration is not None]
+    avg_duration_seconds = sum(t.actual_duration for t in completed_with_duration) / len(completed_with_duration) if completed_with_duration else None
+    avg_duration_minutes = avg_duration_seconds / 60 if avg_duration_seconds else None
+    
+    # Reliability (on-time rate as reliability proxy)
+    reliability = on_time_rate
+    
+    # Forecast Accuracy (if estimates exist)
+    tasks_with_estimates = [
+        t for t in completed_tasks 
+        if t.estimated_duration and t.actual_duration and t.estimated_duration > 0
+    ]
+    
+    forecast_accuracy = None
+    if tasks_with_estimates:
+        # Calculate mean absolute percentage error (MAPE)
+        errors = []
+        for task in tasks_with_estimates:
+            mape = abs(task.actual_duration - task.estimated_duration) / task.estimated_duration
+            errors.append(mape)
+        
+        avg_mape = sum(errors) / len(errors)
+        forecast_accuracy = max(0, 1 - avg_mape)  # Convert MAPE to accuracy (0-1)
+    
+    # ========================================================================
+    # PERFORMANCE TRENDS (Weekly Aggregations)
+    # ========================================================================
+    
+    num_weeks = min(8, (days + 6) // 7)  # Up to 8 weeks of data
+    
+    # Task Duration Trend - FIXED: Proper timezone handling
+    duration_trend = []
+    for week_num in range(num_weeks):
+        week_end = end_date - timedelta(weeks=week_num)
+        week_start = end_date - timedelta(weeks=week_num + 1)
+        
+        week_tasks = [
+            t for t in completed_tasks 
+            if t.completed_at and week_start < make_aware(t.completed_at) <= week_end and t.actual_duration
+        ]
+        
+        if week_tasks:
+            avg_week_duration = sum(t.actual_duration for t in week_tasks) / len(week_tasks)
+            duration_trend.append({
+                "week_label": f"Week {num_weeks - week_num}",
+                "week_start": week_start.strftime('%Y-%m-%d'),
+                "week_end": week_end.strftime('%Y-%m-%d'),
+                "avg_duration_minutes": round(avg_week_duration / 60, 1),
+                "task_count": len(week_tasks)
+            })
+    
+    duration_trend.reverse()
+    
+    # Completion Rate Trend - FIXED: Proper timezone handling
+    completion_trend = []
+    for week_num in range(num_weeks):
+        week_end = end_date - timedelta(weeks=week_num)
+        week_start = end_date - timedelta(weeks=week_num + 1)
+        
+        # FIXED: Make sure created_at comparisons work with timezone-aware week bounds
+        week_all_tasks = [
+            t for t in tasks 
+            if t.created_at and week_start < make_aware(t.created_at) <= week_end
+        ]
+        week_completed = [t for t in week_all_tasks if t.status == TaskStatus.COMPLETED]
+        
+        week_completion_rate = len(week_completed) / len(week_all_tasks) if week_all_tasks else 0
+        
+        completion_trend.append({
+            "week_label": f"Week {num_weeks - week_num}",
+            "week_start": week_start.strftime('%Y-%m-%d'),
+            "week_end": week_end.strftime('%Y-%m-%d'),
+            "completion_rate": round(week_completion_rate, 3),
+            "total_tasks": len(week_all_tasks),
+            "completed_tasks": len(week_completed)
+        })
+    
+    completion_trend.reverse()
+    
+    # Quality Score Trend - FIXED: Proper timezone handling
+    quality_trend = []
+    for week_num in range(num_weeks):
+        week_end = end_date - timedelta(weeks=week_num)
+        week_start = end_date - timedelta(weeks=week_num + 1)
+        
+        week_rated = [
+            t for t in rated_tasks 
+            if t.completed_at and week_start < make_aware(t.completed_at) <= week_end
+        ]
+        
+        if week_rated:
+            avg_week_quality = sum(t.quality_rating for t in week_rated) / len(week_rated)
+            quality_trend.append({
+                "week_label": f"Week {num_weeks - week_num}",
+                "week_start": week_start.strftime('%Y-%m-%d'),
+                "week_end": week_end.strftime('%Y-%m-%d'),
+                "avg_quality": round(avg_week_quality, 2),
+                "rated_tasks": len(week_rated)
+            })
+    
+    quality_trend.reverse()
+    
+    # ========================================================================
+    # TEAM COMPARISON
+    # ========================================================================
+    
+    # Get all active team members' stats for comparison
+    all_team_members = db.query(User).filter(User.is_active == True).all()
+    
+    team_completion_rates = []
+    team_quality_scores = []
+    team_durations = []
+    
+    for member in all_team_members:
+        if member.id == employee_id:
+            continue  # Skip current employee
+        
+        member_tasks = db.query(Task).filter(
+            and_(
+                Task.assigned_to == member.id,
+                Task.created_at >= start_date,
+                Task.created_at <= end_date
+            )
+        ).all()
+        
+        if not member_tasks:
+            continue
+        
+        # Completion rate
+        member_completed = [t for t in member_tasks if t.status == TaskStatus.COMPLETED]
+        member_completion_rate = len(member_completed) / len(member_tasks)
+        team_completion_rates.append(member_completion_rate)
+        
+        # Quality
+        member_rated = [t for t in member_completed if t.quality_rating is not None]
+        if member_rated:
+            member_avg_quality = sum(t.quality_rating for t in member_rated) / len(member_rated)
+            team_quality_scores.append(member_avg_quality)
+        
+        # Duration
+        member_with_duration = [t for t in member_completed if t.actual_duration]
+        if member_with_duration:
+            member_avg_duration = sum(t.actual_duration for t in member_with_duration) / len(member_with_duration)
+            team_durations.append(member_avg_duration / 60)  # Convert to minutes
+    
+    team_avg_completion = sum(team_completion_rates) / len(team_completion_rates) if team_completion_rates else None
+    team_avg_quality = sum(team_quality_scores) / len(team_quality_scores) if team_quality_scores else None
+    team_avg_duration = sum(team_durations) / len(team_durations) if team_durations else None
+    
+    # ========================================================================
+    # BUILD RESPONSE
+    # ========================================================================
+    
+    return {
+        "employee_id": employee_id,
+        "employee_name": employee.full_name or employee.username,
+        "period_days": days,
+        "has_data": True,
+        
+        # Core KPIs
+        "kpis": {
+            "completion_rate": round(completion_rate, 3),
+            "completion_rate_percent": round(completion_rate * 100, 1),
+            "average_quality_rating": round(avg_quality, 2) if avg_quality else None,
+            "on_time_rate": round(on_time_rate, 3),
+            "on_time_rate_percent": round(on_time_rate * 100, 1),
+            "avg_task_duration_minutes": round(avg_duration_minutes, 1) if avg_duration_minutes else None,
+            "reliability": round(reliability, 3),
+            "forecast_accuracy": round(forecast_accuracy, 3) if forecast_accuracy else None,
+            "forecast_accuracy_percent": round(forecast_accuracy * 100, 1) if forecast_accuracy else None
+        },
+        
+        # Task Statistics
+        "task_stats": {
+            "total_tasks": total_tasks,
+            "completed_tasks": len(completed_tasks),
+            "in_progress_tasks": len(in_progress_tasks),
+            "overdue_tasks": len(overdue_tasks),
+            "on_time_tasks": len(on_time_tasks),
+            "rated_tasks": len(rated_tasks),
+            "tasks_with_estimates": len(tasks_with_estimates)
+        },
+        
+        # Performance Trends
+        "trends": {
+            "task_duration": duration_trend,
+            "completion_rate": completion_trend,
+            "quality_score": quality_trend
+        },
+        
+        # Team Comparison
+        "team_comparison": {
+            "team_avg_completion_rate": round(team_avg_completion, 3) if team_avg_completion else None,
+            "team_avg_quality": round(team_avg_quality, 2) if team_avg_quality else None,
+            "team_avg_duration": round(team_avg_duration, 1) if team_avg_duration else None,
+            "team_member_count": len(all_team_members) - 1  # Exclude current employee
         }
     }
