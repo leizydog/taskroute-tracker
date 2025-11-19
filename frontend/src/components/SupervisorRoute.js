@@ -15,7 +15,7 @@ const SupervisorRoute = ({ children }) => {
   const userRole = user?.role?.toUpperCase(); // Normalize role
 
   // Allow supervisors and admins
-  const allowedRoles = ['SUPERVISOR', 'ADMIN'];
+  const allowedRoles = ['SUPERVISOR'];
   const hasAccess = allowedRoles.includes(userRole);
 
   if (!hasAccess) {

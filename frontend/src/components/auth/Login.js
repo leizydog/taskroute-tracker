@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Link, useNavigate } from 'react-router-dom';
 import { CheckCircle, Eye, EyeOff } from 'lucide-react';
+import { AuthAPI } from '../../services/api';
 
 const Login = () => {
   const [formData, setFormData] = useState({
@@ -22,17 +23,28 @@ const Login = () => {
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
+  e.preventDefault();
+  setLoading(true);
 
-    const result = await login(formData.email, formData.password);
-    
-    if (result.success) {
-      navigate('/dashboard');
+  const result = await login(formData.email, formData.password);
+
+  if (result.success) {
+    // Fetch real user info AFTER login
+    const userInfo = await AuthAPI.getCurrentUserInfo();
+    const role = userInfo.data.role?.toUpperCase();
+
+    if (role === "ADMIN") {
+      navigate("/admin");
+    } else if (role === "SUPERVISOR") {
+      navigate("/supervisor");
+    } else {
+      navigate("/dashboard");
     }
-    
-    setLoading(false);
-  };
+  }
+
+  setLoading(false);
+};
+
 
   const togglePasswordVisibility = () => {
     setShowPassword(!showPassword);
