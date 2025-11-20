@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, validator
 from datetime import datetime
 from typing import Optional
 from app.models.user import UserRole
@@ -52,3 +52,23 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     email: Optional[str] = None
+
+
+class PasswordChange(BaseModel):
+    """Schema for password change request"""
+    current_password: str
+    new_password: str
+    
+    @validator('new_password')
+    def validate_new_password(cls, v):
+        if len(v) < 8:
+            raise ValueError('Password must be at least 8 characters long')
+        return v
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "current_password": "OldPassword123!",
+                "new_password": "NewSecurePassword456!"
+            }
+        }

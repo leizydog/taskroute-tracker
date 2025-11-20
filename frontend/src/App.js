@@ -7,6 +7,10 @@ import SupervisorRoute from './components/SupervisorRoute';
 import Login from './components/auth/Login';
 import Register from './components/auth/Register';
 import SupervisorDashboard from './pages/SupervisorDashboard';
+import AccountSettings from './pages/AccountSettings';
+import AdminRoute from './components/AdminRoute';
+import AdminDashboard from './pages/AdminDashboard';
+
 import './App.css';
 
 // Landing page for non-authenticated users
@@ -47,6 +51,8 @@ const AppRoutes = () => {
     );
   }
 
+  
+
   return (
     <Routes>
       <Route 
@@ -55,6 +61,7 @@ const AppRoutes = () => {
       />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/account-settings" element={<ProtectedRoute><AccountSettings /></ProtectedRoute>} />
       
       {/* Supervisor Routes */}
       <Route 
@@ -67,6 +74,19 @@ const AppRoutes = () => {
           </ProtectedRoute>
         } 
       />
+
+      {/* Admin Routes */}
+      <Route 
+        path="/admin/*" 
+        element={
+          <ProtectedRoute>
+            <AdminRoute>
+              <AdminDashboard />
+            </AdminRoute>
+          </ProtectedRoute>
+        }
+      />
+
       
       {/* Redirect any unknown routes */}
       <Route path="*" element={<Navigate to="/" />} />

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Button, Input, Select, Card, Spinner } from '../atoms';
 import { FiPlus, FiSearch, FiFilter, FiGrid, FiList, FiMapPin, FiClock, FiCalendar, FiUser, FiEye, FiEdit, FiArchive, FiRotateCcw, FiTrash2 } from 'react-icons/fi';
 import api from '../../services/api';
@@ -22,6 +22,7 @@ export const TaskManagementPanel = ({
     const [filterStatus, setFilterStatus] = useState('all');
     const [filterPriority, setFilterPriority] = useState('all');
     const [showCreateModal, setShowCreateModal] = useState(false);
+    const [sortBy, setSortBy] = useState('due_date_desc');
     const [showEditModal, setShowEditModal] = useState(false);
     const [showDetailsModal, setShowDetailsModal] = useState(false);
     const [selectedTask, setSelectedTask] = useState(null);
@@ -38,11 +39,72 @@ export const TaskManagementPanel = ({
     const fetchTasks = async () => {
         try {
             setLoading(true);
-            const response = await api.getTasks();
-            const tasksData = response.data?.results || response.data || [];
-            setTasks(tasksData);
+            let allTasks = [];
+            let page = 1;
+            const limit = 100;
+            const MAX_PAGES = 20;
+
+            console.log('🔄 Starting to fetch tasks...');
+
+            while (page <= MAX_PAGES) {
+                const skip = (page - 1) * limit;
+                console.log(`📄 Fetching page ${page} (skip: ${skip}, limit: ${limit})`);
+                
+                const response = await api.getTasks({ skip, limit });
+                console.log(`🔍 API Response structure:`, {
+                    dataType: typeof response.data,
+                    isArray: Array.isArray(response.data),
+                    hasResults: !!response.data?.results,
+                    dataLength: Array.isArray(response.data) ? response.data.length : response.data?.results?.length
+                });
+                
+                const tasksData = Array.isArray(response.data) ? response.data : response.data?.results || [];
+                
+                // Log first and last task IDs to verify pagination
+                if (tasksData.length > 0) {
+                    console.log(`📊 Page ${page} task IDs: first=${tasksData[0].id}, last=${tasksData[tasksData.length - 1].id}`);
+                }
+                
+                console.log(`✅ Page ${page} returned ${tasksData.length} tasks`);
+                
+                if (tasksData.length === 0) {
+                    console.log('🛑 No more tasks, stopping pagination');
+                    break;
+                }
+
+                allTasks = [...allTasks, ...tasksData];
+                console.log(`📊 Total tasks collected so far: ${allTasks.length}`);
+                
+                // If we got fewer tasks than the limit, we've reached the end
+                if (tasksData.length < limit) {
+                    console.log('🏁 Last page reached (partial results)');
+                    break;
+                }
+                
+                page++;
+            }
+
+            console.log(`📦 Before deduplication: ${allTasks.length} tasks`);
+            
+            // Deduplicate by ID
+            const uniqueTasksMap = new Map();
+            allTasks.forEach(task => {
+                uniqueTasksMap.set(task.id, task);
+            });
+            const uniqueTasks = Array.from(uniqueTasksMap.values());
+            
+            console.log(`📦 After deduplication: ${uniqueTasks.length} tasks`);
+            console.log('✨ Total unique tasks loaded:', uniqueTasks.length);
+            console.log('📋 Task statuses breakdown:', {
+                pending: uniqueTasks.filter(t => t.status === 'pending').length,
+                in_progress: uniqueTasks.filter(t => t.status === 'in_progress').length,
+                completed: uniqueTasks.filter(t => t.status === 'completed').length
+            });
+            
+            setTasks(uniqueTasks);
+
         } catch (error) {
-            console.error('Error fetching tasks:', error);
+            console.error('❌ Error fetching tasks:', error);
             toast.error('Failed to load tasks');
         } finally {
             setLoading(false);
@@ -61,7 +123,12 @@ export const TaskManagementPanel = ({
 
     const handleTaskCreated = (newTask) => {
         setShowCreateModal(false);
-        setTasks(prevTasks => [newTask, ...prevTasks]);
+        setTasks(prevTasks => {
+            const newTasks = [newTask, ...prevTasks];
+            const uniqueTasksMap = new Map();
+            newTasks.forEach(task => uniqueTasksMap.set(task.id, task));
+            return Array.from(uniqueTasksMap.values());
+        });
         onTaskCreated?.(newTask);
     };
 
@@ -69,9 +136,16 @@ export const TaskManagementPanel = ({
         setShowEditModal(false);
         setShowDetailsModal(false);
         setSelectedTask(null);
-        setTasks(tasks.map(task => 
-            task.id === updatedTask.id ? updatedTask : task
-        ));
+        
+        setTasks(prevTasks => {
+            const updatedList = prevTasks.map(task => 
+                task.id === updatedTask.id ? updatedTask : task
+            );
+            
+            const uniqueTasksMap = new Map();
+            updatedList.forEach(task => uniqueTasksMap.set(task.id, task));
+            return Array.from(uniqueTasksMap.values());
+        });
         onTaskUpdated?.(updatedTask);
     };
 
@@ -92,7 +166,6 @@ export const TaskManagementPanel = ({
         }
 
         try {
-            // Move task to archived list before deleting
             const taskToArchive = tasks.find(t => t.id === taskId);
             if (taskToArchive) {
                 setArchivedTasks(prev => [taskToArchive, ...prev]);
@@ -117,8 +190,6 @@ export const TaskManagementPanel = ({
         }
 
         try {
-            // In a real app, you'd call an API to restore
-            // For now, we'll just move it back to active tasks
             setArchivedTasks(prev => prev.filter(t => t.id !== task.id));
             setTasks(prev => [task, ...prev]);
             toast.success('Task restored successfully');
@@ -142,27 +213,58 @@ export const TaskManagementPanel = ({
         }
     };
 
-    // Filter tasks based on active/archived view
-    const displayTasks = showArchived ? archivedTasks : tasks;
-    
-    const filteredTasks = displayTasks.filter(task => {
-        const matchesSearch = task.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                            task.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                            task.assigned_user_name?.toLowerCase().includes(searchTerm.toLowerCase());
+    // FIXED: Calculate statistics from ALL tasks, not filtered tasks
+    const taskStatistics = useMemo(() => {
+        const allActiveTasks = showArchived ? archivedTasks : tasks;
         
-        const matchesStatus = filterStatus === 'all' || task.status?.toLowerCase() === filterStatus.toLowerCase();
-        
-        const matchesPriority = filterPriority === 'all' || task.priority?.toLowerCase() === filterPriority.toLowerCase();
-        
-        return matchesSearch && matchesStatus && matchesPriority;
-    });
+        return {
+            total: allActiveTasks.length,
+            pending: allActiveTasks.filter(t => t.status?.toLowerCase() === 'pending').length,
+            in_progress: allActiveTasks.filter(t => 
+                t.status?.toLowerCase() === 'in_progress' || 
+                t.status?.toLowerCase() === 'in-progress'
+            ).length,
+            completed: allActiveTasks.filter(t => t.status?.toLowerCase() === 'completed').length
+        };
+    }, [tasks, archivedTasks, showArchived]);
 
-    // Group tasks by status for statistics
-    const tasksByStatus = {
-        pending: filteredTasks.filter(t => t.status?.toLowerCase() === 'pending'),
-        in_progress: filteredTasks.filter(t => t.status?.toLowerCase() === 'in_progress' || t.status?.toLowerCase() === 'in-progress'),
-        completed: filteredTasks.filter(t => t.status?.toLowerCase() === 'completed')
-    };
+    // Filter and sort tasks for display
+    const sortedAndFilteredTasks = useMemo(() => {
+        const displayTasks = showArchived ? archivedTasks : tasks;
+        
+        let filtered = displayTasks.filter(task => {
+            const matchesSearch = task.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                task.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                task.assigned_user_name?.toLowerCase().includes(searchTerm.toLowerCase());
+            
+            const matchesStatus = filterStatus === 'all' || task.status?.toLowerCase() === filterStatus.toLowerCase();
+            
+            const matchesPriority = filterPriority === 'all' || task.priority?.toLowerCase() === filterPriority.toLowerCase();
+            
+            return matchesSearch && matchesStatus && matchesPriority;
+        });
+
+        return filtered.sort((a, b) => {
+            if (sortBy === 'due_date_asc' || sortBy === 'due_date_desc') {
+                const dateA = a.due_date ? new Date(a.due_date).getTime() : 0;
+                const dateB = b.due_date ? new Date(b.due_date).getTime() : 0;
+
+                if (dateA === 0 && dateB !== 0) return 1;
+                if (dateA !== 0 && dateB === 0) return -1;
+                if (dateA === 0 && dateB === 0) return 0;
+                
+                return sortBy === 'due_date_asc' ? dateA - dateB : dateB - dateA;
+
+            } else if (sortBy === 'created_at_desc' || sortBy === 'created_at_asc') {
+                 const dateA = new Date(a.created_at).getTime();
+                 const dateB = new Date(b.created_at).getTime();
+                 return sortBy === 'created_at_desc' ? dateB - dateA : dateA - dateB;
+            }
+            
+            return 0;
+        });
+
+    }, [showArchived, archivedTasks, tasks, searchTerm, filterStatus, filterPriority, sortBy]);
 
     const getStatusColor = (status) => {
         const statusLower = status?.toLowerCase();
@@ -217,11 +319,11 @@ export const TaskManagementPanel = ({
         );
     }
 
-    // GRID VIEW Component
+    // Grid and List view components (unchanged, using sortedAndFilteredTasks)
     const GridView = () => (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <AnimatePresence mode="popLayout">
-                {filteredTasks.map((task) => (
+                {sortedAndFilteredTasks.map((task) => (
                     <motion.div
                         key={task.id}
                         layout
@@ -310,11 +412,10 @@ export const TaskManagementPanel = ({
         </div>
     );
 
-    // LIST VIEW Component
     const ListView = () => (
         <div className="space-y-4">
             <AnimatePresence mode="popLayout">
-                {filteredTasks.map((task) => (
+                {sortedAndFilteredTasks.map((task) => (
                     <motion.div
                         key={task.id}
                         layout
@@ -422,11 +523,10 @@ export const TaskManagementPanel = ({
                             {showArchived ? 'Archived Tasks' : 'Task Management'}
                         </h2>
                         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                            {filteredTasks.length} {filteredTasks.length === 1 ? 'task' : 'tasks'} found
+                            {sortedAndFilteredTasks.length} {sortedAndFilteredTasks.length === 1 ? 'task' : 'tasks'} found
                         </p>
                     </div>
                     <div className="flex items-center gap-3">
-                        {/* Archive Toggle Button */}
                         <Button
                             variant={showArchived ? 'primary' : 'secondary'}
                             size="sm"
@@ -436,7 +536,6 @@ export const TaskManagementPanel = ({
                             {showArchived ? 'View Active' : `Archived (${archivedTasks.length})`}
                         </Button>
 
-                        {/* View Mode Toggle */}
                         {!showArchived && (
                             <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 rounded-lg p-1 border border-slate-200 dark:border-slate-700">
                                 <button
@@ -514,14 +613,14 @@ export const TaskManagementPanel = ({
                     </div>
                 </Card>
 
-                {/* Task Statistics - Only show for active tasks */}
+                {/* Task Statistics - FIXED: Now uses taskStatistics instead of filtered tasks */}
                 {!showArchived && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                         <Card className="border-l-4 border-slate-500">
                             <div className="flex items-center justify-between">
                                 <div>
                                     <p className="text-sm text-slate-500 dark:text-slate-400">Total Tasks</p>
-                                    <p className="text-2xl font-bold text-slate-800 dark:text-slate-100">{tasks.length}</p>
+                                    <p className="text-2xl font-bold text-slate-800 dark:text-slate-100">{taskStatistics.total}</p>
                                 </div>
                             </div>
                         </Card>
@@ -529,7 +628,7 @@ export const TaskManagementPanel = ({
                             <div className="flex items-center justify-between">
                                 <div>
                                     <p className="text-sm text-slate-500 dark:text-slate-400">Pending</p>
-                                    <p className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{tasksByStatus.pending.length}</p>
+                                    <p className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{taskStatistics.pending}</p>
                                 </div>
                             </div>
                         </Card>
@@ -537,7 +636,7 @@ export const TaskManagementPanel = ({
                             <div className="flex items-center justify-between">
                                 <div>
                                     <p className="text-sm text-slate-500 dark:text-slate-400">In Progress</p>
-                                    <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{tasksByStatus.in_progress.length}</p>
+                                    <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{taskStatistics.in_progress}</p>
                                 </div>
                             </div>
                         </Card>
@@ -545,7 +644,7 @@ export const TaskManagementPanel = ({
                             <div className="flex items-center justify-between">
                                 <div>
                                     <p className="text-sm text-slate-500 dark:text-slate-400">Completed</p>
-                                    <p className="text-2xl font-bold text-green-600 dark:text-green-400">{tasksByStatus.completed.length}</p>
+                                    <p className="text-2xl font-bold text-green-600 dark:text-green-400">{taskStatistics.completed}</p>
                                 </div>
                             </div>
                         </Card>
@@ -553,7 +652,7 @@ export const TaskManagementPanel = ({
                 )}
 
                 {/* Task List/Grid */}
-                {filteredTasks.length === 0 ? (
+                {sortedAndFilteredTasks.length === 0 ? (
                     <Card>
                         <div className="text-center py-12">
                             <FiFilter className="mx-auto h-12 w-12 text-slate-300 dark:text-slate-600 mb-4" />

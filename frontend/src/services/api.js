@@ -39,11 +39,28 @@ export const AuthAPI = {
   register(data) {
     return apiClient.post("/auth/register", data);
   },
+  // ✅ NEW: Update current user profile
+  updateProfile(data) {
+    return apiClient.put("/auth/me", data);
+  },
+  // ✅ NEW: Change password
+  changePassword(data) {
+    return apiClient.put("/auth/me/password", data);
+  },
+  // ✅ NEW: Upload avatar
+  uploadAvatar(formData) {
+    return apiClient.post("/auth/me/avatar", formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    });
+  },
 };
 
 export const TaskAPI = {
-  getTasks() {
-    return apiClient.get("/tasks/");
+  // ✅ FIXED: Now accepts params object for pagination and filtering
+  getTasks(params = {}) {
+    return apiClient.get("/tasks/", { params });
   },
   createTask(data) {
     return apiClient.post("/tasks/", data);
@@ -63,6 +80,15 @@ export const UserAPI = {
   getUsers() {
     return apiClient.get("/users/");
   },
+  
+  // ✅ NEW: Admin Wipe Endpoints (from users.py)
+  wipeAllUsers() {
+    return apiClient.delete("/users/admin/wipe-users");
+  },
+  
+  wipeAllTasks() {
+    return apiClient.delete("/users/admin/wipe-tasks");
+  }
 };
 
 export const LocationAPI = {
@@ -116,6 +142,10 @@ export const AnalyticsAPI = {
   getEmployeeKPIs(employeeId, days = 30) {
     return apiClient.get(`/analytics/employees/${employeeId}/kpis?days=${days}`);
   },
+  // ✅ NEW: Check ML Model Health (from predictions.py)
+  getModelHealth() {
+    return apiClient.get("/predictions/health");
+  }
 };
 
 // -------------------------
@@ -134,6 +164,9 @@ const API = {
   login: AuthAPI.login,
   getCurrentUserInfo: AuthAPI.getCurrentUserInfo,
   register: AuthAPI.register,
+  updateProfile: AuthAPI.updateProfile,
+  changePassword: AuthAPI.changePassword,
+  uploadAvatar: AuthAPI.uploadAvatar,
 
   getTasks: TaskAPI.getTasks,
   createTask: TaskAPI.createTask,
@@ -157,6 +190,11 @@ const API = {
   getAnalytics: AnalyticsAPI.getAnalytics,
   // ✅ NEW: Employee KPI endpoint
   getEmployeeKPIs: AnalyticsAPI.getEmployeeKPIs,
+  
+  // Add the new methods to the default export
+  getModelHealth: AnalyticsAPI.getModelHealth,
+  wipeAllUsers: UserAPI.wipeAllUsers,
+  wipeAllTasks: UserAPI.wipeAllTasks,
 };
 
 export default API;

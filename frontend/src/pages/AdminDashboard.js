@@ -1,0 +1,1324 @@
+// src/pages/AdminDashboard.js
+import React, { useState, useEffect, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import api from '../services/api';
+import { toast } from 'react-hot-toast';
+import {
+  FiGrid, FiUsers, FiCheckSquare, FiTrendingUp, FiLogOut, FiMenu, FiBell, FiMoon, FiSun, FiX,
+  FiPlus, FiMapPin, FiShield, FiSettings, FiUserPlus, FiEdit2, FiTrash2, FiSearch, FiActivity, 
+  FiArchive, FiRefreshCw, FiAlertTriangle, FiInfo, FiCheckCircle, FiDatabase, FiCpu, FiDownload
+} from 'react-icons/fi';
+import { Button, Card, StatValue, Input, Select, Alert, Badge, Avatar } from '../components/atoms';
+import CreateTaskModal from '../components/organisms/CreateTaskModal';
+import { EmployeeKPIPanel, LiveLocationTracker, TaskManagementPanel } from '../components/organisms';
+import { useAuth } from '../contexts/AuthContext';
+import { useJsApiLoader } from '@react-google-maps/api';
+import FeatureImportanceChart from '../components/analytics/FeatureImportanceChart';
+import { useNavigate } from 'react-router-dom';
+
+const MAP_LOADER_ID = 'google-map-script';
+const MAP_LIBRARIES = ['places'];
+
+// --- Local Sub-Component: User List Item (Missing Component Fixed Here) ---
+const UserListItem = ({ employee, isSelected, onClick }) => (
+  <motion.div
+    whileHover={{ x: 3 }}
+    onClick={onClick}
+    className={`p-3 rounded-lg border cursor-pointer transition-all duration-150 flex items-center gap-3 ${
+      isSelected
+        ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 shadow-sm'
+        : 'border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-700 bg-white dark:bg-slate-800'
+    }`}
+  >
+    <div className="relative">
+      <Avatar name={employee?.full_name || employee?.username} size="sm" />
+      {employee?.role === 'admin' && (
+        <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] p-0.5 rounded-full" title="Admin">
+          <FiShield size={10} />
+        </span>
+      )}
+    </div>
+    <div className="flex-1 overflow-hidden">
+      <div className="flex justify-between items-center">
+          <h4 className="font-semibold text-sm text-slate-800 dark:text-slate-100 truncate">{employee?.full_name || employee?.username}</h4>
+          <Badge 
+              text={employee?.role} 
+              color={employee?.role === 'admin' ? 'red' : employee?.role === 'supervisor' ? 'purple' : 'blue'} 
+              size="xs" 
+          />
+      </div>
+      <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{employee?.email}</p>
+    </div>
+  </motion.div>
+);
+
+// --- Local Sub-Component: Enhanced Confirmation Modal ---
+const ConfirmationModal = ({ isOpen, title, message, type = 'danger', onConfirm, onClose, isLoading }) => {
+  if (!isOpen) return null;
+
+  const typeConfig = {
+    danger: {
+      icon: FiAlertTriangle,
+      color: 'red',
+      primaryColor: 'text-red-600 dark:text-red-400',
+      bgColor: 'bg-red-50 dark:bg-red-900/20',
+      borderColor: 'border-red-100 dark:border-red-800',
+      btnClass: 'bg-red-600 hover:bg-red-700 focus:ring-red-500 text-white'
+    },
+    warning: {
+      icon: FiArchive,
+      color: 'amber',
+      primaryColor: 'text-amber-600 dark:text-amber-400',
+      bgColor: 'bg-amber-50 dark:bg-amber-900/20',
+      borderColor: 'border-amber-100 dark:border-amber-800',
+      btnClass: 'bg-amber-600 hover:bg-amber-700 focus:ring-amber-500 text-white'
+    },
+    info: {
+      icon: FiInfo,
+      color: 'blue',
+      primaryColor: 'text-blue-600 dark:text-blue-400',
+      bgColor: 'bg-blue-50 dark:bg-blue-900/20',
+      borderColor: 'border-blue-100 dark:border-blue-800',
+      btnClass: 'bg-blue-600 hover:bg-blue-700 focus:ring-blue-500 text-white'
+    },
+    success: {
+        icon: FiCheckCircle,
+        color: 'green',
+        primaryColor: 'text-green-600 dark:text-green-400',
+        bgColor: 'bg-green-50 dark:bg-green-900/20',
+        borderColor: 'border-green-100 dark:border-green-800',
+        btnClass: 'bg-green-600 hover:bg-green-700 focus:ring-green-500 text-white'
+    }
+  };
+
+  const config = typeConfig[type] || typeConfig.info;
+  const Icon = config.icon;
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm transition-all duration-200">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 10 }}
+        transition={{ type: "spring", stiffness: 300, damping: 30 }}
+        className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-100 dark:border-slate-700 relative"
+      >
+        {/* Colored Accent Bar */}
+        <div className={`h-1.5 w-full ${config.btnClass.split(' ')[0]}`} />
+
+        <div className="p-6">
+          <div className="flex items-start gap-5">
+            <div className={`flex-shrink-0 w-12 h-12 rounded-full ${config.bgColor} ${config.borderColor} border flex items-center justify-center shadow-sm`}>
+               <Icon className={`w-6 h-6 ${config.primaryColor}`} />
+            </div>
+            <div className="flex-1 pt-1">
+              <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-2 leading-none">
+                {title}
+              </h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
+                {message}
+              </p>
+            </div>
+          </div>
+        </div>
+        <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-700 flex justify-end gap-3">
+          <button 
+            onClick={onClose}
+            className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 border border-transparent hover:border-slate-200 dark:hover:border-slate-600 rounded-lg transition-all focus:outline-none focus:ring-2 focus:ring-slate-200 dark:focus:ring-slate-700"
+            disabled={isLoading}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={isLoading}
+            className={`px-5 py-2 text-sm font-bold rounded-lg shadow-md hover:shadow-lg transform active:scale-95 transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-slate-800 flex items-center gap-2 ${config.btnClass}`}
+          >
+             {isLoading ? (
+               <>
+                 <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                 Processing...
+               </>
+             ) : (
+               <>
+                 {type === 'danger' ? 'Yes, Delete' : 'Confirm'}
+               </>
+             )}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
+// --- Local Sub-Component: Add/Edit User Modal ---
+const UserModal = ({ mode = 'add', user = null, onClose, onSuccess }) => {
+  // Initial state ensures role is set. Defaulting to 'user'.
+  const [formData, setFormData] = useState({
+    full_name: '',
+    username: '', // Added username field since backend likely requires it
+    email: '',
+    password: '',
+    role: 'user',
+    is_active: true,
+    ...user // overwrite with user data if editing
+  });
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      if (mode === 'add') {
+        // Ensure the payload matches what the backend expects.
+        const payload = {
+          email: formData.email,
+          password: formData.password,
+          full_name: formData.full_name,
+          role: formData.role,
+          // If your backend requires username, we map email to username or use a separate field
+          username: formData.username || formData.email.split('@')[0] 
+        };
+
+        // ✅ ROUTING LOGIC: Use different endpoints based on role
+        if (formData.role === 'supervisor') {
+            // Assuming endpoint is /auth/supervisor based on provided code
+            await api.apiClient.post('/auth/supervisor', payload);
+        } else if (formData.role === 'admin') {
+            // Assuming endpoint is /auth/admin/user
+            await api.apiClient.post('/auth/admin/user', payload);
+        } else {
+            // Standard user registration (often at /auth/register)
+            await api.register(payload);
+        }
+
+        toast.success(`User ${formData.full_name} created successfully`);
+      } else {
+        // Update logic
+        // Assuming endpoint: PUT /users/{id}
+        await api.apiClient.put(`/users/${user.id}`, formData);
+        toast.success(`User ${formData.full_name} updated successfully`);
+      }
+      onSuccess(formData);
+      onClose();
+    } catch (error) {
+      console.error(`${mode === 'add' ? 'Registration' : 'Update'} failed:`, error);
+      
+      // FIXED: Robust error parsing to prevent "Objects are not valid as React child"
+      let errorMessage = `Failed to ${mode} user`;
+      const detail = error.response?.data?.detail;
+
+      if (typeof detail === 'string') {
+        // Simple error message
+        errorMessage = detail;
+      } else if (Array.isArray(detail)) {
+        // Handle Pydantic validation array: [{ loc: [], msg: "", type: "" }]
+        errorMessage = detail.map(err => {
+            const field = err.loc && err.loc.length > 1 ? err.loc[err.loc.length - 1] : 'Field';
+            return `${field}: ${err.msg}`;
+        }).join(', ');
+      } else if (typeof detail === 'object' && detail !== null) {
+        // Handle generic object errors
+        errorMessage = Object.values(detail).join(', ');
+      } else if (error.message) {
+        // Fallback to JS error message
+        errorMessage = error.message;
+      }
+
+      toast.error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md overflow-hidden"
+      >
+        <div className="flex justify-between items-center p-6 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+          <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+            {mode === 'add' ? <FiUserPlus className="text-indigo-500" /> : <FiEdit2 className="text-indigo-500" />} 
+            {mode === 'add' ? 'Add New User' : 'Edit User'}
+          </h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+            <FiX size={20} />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Full Name</label>
+            <Input 
+              required 
+              placeholder="John Doe" 
+              value={formData.full_name} 
+              onChange={(e) => setFormData({...formData, full_name: e.target.value})} 
+            />
+          </div>
+          
+          {/* Optional: Add Username field if backend requires it distinctly */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Username (Optional)</label>
+            <Input 
+              placeholder="johndoe" 
+              value={formData.username} 
+              onChange={(e) => setFormData({...formData, username: e.target.value})} 
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Email Address</label>
+            <Input 
+              required 
+              type="email" 
+              placeholder="john@example.com" 
+              value={formData.email} 
+              onChange={(e) => setFormData({...formData, email: e.target.value})} 
+            />
+          </div>
+          {mode === 'add' && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Password</label>
+              <Input 
+                required 
+                type="password" 
+                placeholder="••••••••" 
+                value={formData.password} 
+                onChange={(e) => setFormData({...formData, password: e.target.value})} 
+              />
+            </div>
+          )}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Role</label>
+            <Select 
+              value={formData.role} 
+              onChange={(e) => setFormData({...formData, role: e.target.value})}
+              options={[
+                { value: 'user', label: 'Employee (User)' },
+                { value: 'supervisor', label: 'Supervisor' },
+                { value: 'admin', label: 'Administrator' }
+              ]}
+            />
+          </div>
+          <div className="pt-4 flex gap-3">
+             <Button variant="secondary" onClick={onClose} fullWidth>Cancel</Button>
+             <Button variant="primary" type="submit" loading={loading} fullWidth>
+               {mode === 'add' ? 'Create User' : 'Save Changes'}
+             </Button>
+          </div>
+        </form>
+      </motion.div>
+    </div>
+  );
+};
+
+const AdminDashboard = () => {
+  const { user, logout, isDarkMode, toggleDarkMode } = useAuth();
+  const navigate = useNavigate();
+
+  // --- State Management ---
+  const [activeTab, setActiveTab] = useState('overview');
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [selectedEmployee, setSelectedEmployee] = useState(null);
+  
+  // Dropdown States
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
+
+  // User Management States
+  const [showArchived, setShowArchived] = useState(false);
+
+  // Modals & Alerts
+  const [isCreateTaskModalOpen, setIsCreateTaskModalOpen] = useState(false);
+  const [userModalConfig, setUserModalConfig] = useState({ isOpen: false, mode: 'add', user: null });
+  const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', message: '', type: 'info', onConfirm: null });
+  
+  const [alerts, setAlerts] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterRole, setFilterRole] = useState('all');
+
+  // Data State
+  const [tasks, setTasks] = useState([]);
+  const [employees, setEmployees] = useState([]); 
+  const [kpiData, setKpiData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  
+  // System Health State
+  const [systemHealth, setSystemHealth] = useState(null);
+
+  const [employeeKpiData, setEmployeeKpiData] = useState(null);
+  const [loadingKpi, setLoadingKpi] = useState(false);
+  const [teamKpiData, setTeamKpiData] = useState(null);
+
+  const { isLoaded: isMapLoaded, loadError: mapLoadError } = useJsApiLoader({
+    id: MAP_LOADER_ID,
+    googleMapsApiKey: process.env.REACT_APP_GOOGLE_MAPS_API_KEY,
+    libraries: MAP_LIBRARIES,
+  });
+
+  // --- Navigation Config ---
+  const navItems = [
+    { id: 'overview', label: 'System Overview', icon: <FiGrid /> },
+    { id: 'employee_kpi', label: 'Employee KPI', icon: <FiActivity /> },
+    { id: 'user_management', label: 'User Management', icon: <FiUsers /> },
+    { id: 'tasks', label: 'All Tasks', icon: <FiCheckSquare /> },
+    { id: 'tracking', label: 'Global Tracking', icon: <FiMapPin /> },
+    { id: 'analytics', label: 'System Analytics', icon: <FiTrendingUp /> },
+    { id: 'settings', label: 'Settings & Maintenance', icon: <FiSettings /> },
+  ];
+
+  // --- Effects ---
+  useEffect(() => {
+    if (isMapLoaded) console.log('Google Maps API script loaded successfully.');
+    if (mapLoadError) toast.error("Map services could not be loaded.");
+  }, [isMapLoaded, mapLoadError]);
+
+  const fetchData = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      // 1. Fetch Tasks
+      let allTasks = [];
+      let page = 1;
+      const limit = 100;
+      const MAX_PAGES = 20;
+
+      while (page <= MAX_PAGES) {
+        const skip = (page - 1) * limit;
+        const tasksResponse = await api.getTasks({ skip, limit });
+        const tasksData = Array.isArray(tasksResponse.data) 
+          ? tasksResponse.data 
+          : tasksResponse.data?.results || [];
+        
+        if (tasksData.length === 0) break;
+        allTasks = [...allTasks, ...tasksData];
+        if (tasksData.length < limit) break;
+        page++;
+      }
+
+      const uniqueTasksMap = new Map();
+      allTasks.forEach(task => uniqueTasksMap.set(task.id, task));
+      const uniqueTasks = Array.from(uniqueTasksMap.values());
+
+      // 2. Fetch Users, Analytics & System Health
+      const [usersResponse, kpiResponse, teamResponse, healthResponse] = await Promise.all([
+        api.getUsers(),
+        api.getAnalyticsOverview(),
+        api.getTeamOverview().catch(() => ({ data: null })),
+        api.getModelHealth().catch(() => ({ data: { status: 'unknown' } }))
+      ]);
+
+      const usersData = usersResponse?.data?.results ?? usersResponse?.data ?? [];
+
+      setTasks(uniqueTasks);
+      
+      // Ensure employees have an is_active property (default to true if missing)
+      const processedUsers = (Array.isArray(usersData) ? usersData : []).map(u => ({
+          ...u,
+          is_active: u.is_active !== undefined ? u.is_active : true
+      }));
+      
+      setEmployees(processedUsers); 
+      setKpiData(kpiResponse?.data ?? null);
+      setTeamKpiData(teamResponse?.data ?? null);
+      setSystemHealth(healthResponse?.data);
+
+    } catch (err) {
+      console.error("Failed to load admin data:", err);
+      
+      // Handle 401 Unauthorized specifically to fix redirect loop
+      if (err.response && err.response.status === 401) {
+          if (!toast.isActive("session-expired")) {
+              toast.error("Session expired or unauthorized. Please login again.", { id: "session-expired" });
+          }
+          logout();
+          return;
+      }
+
+      toast.error("Failed to load admin dashboard data.");
+      setError("Could not load dashboard. Please try again later.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // FIX: Added [user] dependency so data refreshes when account switches
+  // Also added a role check to ensure we only fetch if the user is actually an admin
+  useEffect(() => {
+    if (user && user.role === 'admin') {
+        fetchData();
+    }
+  }, [user]); 
+
+  // KPI Loading for specific employee
+  useEffect(() => {
+    if (!selectedEmployee) {
+      setEmployeeKpiData(null);
+      return;
+    }
+    setLoadingKpi(true);
+    if (teamKpiData && Array.isArray(teamKpiData.employees)) {
+      const employeeData = teamKpiData.employees.find(
+        emp => emp.id === selectedEmployee.id || emp.employee_id === selectedEmployee.id
+      );
+      setEmployeeKpiData(employeeData || null);
+    } else {
+      setEmployeeKpiData(null);
+    }
+    setLoadingKpi(false);
+  }, [selectedEmployee, teamKpiData]);
+
+  // --- Helper Functions ---
+  const addAlert = (type, message) => {
+    const id = Date.now();
+    setAlerts(prev => [...prev, { id, type, message }]);
+    setTimeout(() => setAlerts(prev => prev.filter(a => a.id !== id)), 3000);
+  };
+
+  const handleTaskCreated = (newTask) => {
+    setIsCreateTaskModalOpen(false);
+    setTasks(prevTasks => [newTask, ...prevTasks]);
+    addAlert('success', 'Task created successfully!');
+  };
+
+  const handleUserSaved = (userData) => {
+    fetchData(); // Reload data completely to reflect changes
+    addAlert('success', 'User saved successfully.');
+  };
+
+  // --- Maintenance Handlers ---
+  const handleWipeUsers = () => {
+    setConfirmModal({
+      isOpen: true,
+      type: 'danger',
+      title: 'WIPE ALL USERS?',
+      message: 'DANGER: This will delete ALL users from the database except the current admin. This action cannot be undone.',
+      isLoading: false,
+      onConfirm: async () => {
+        setConfirmModal(prev => ({ ...prev, isLoading: true }));
+        try {
+          await api.wipeAllUsers();
+          toast.success("All users wiped successfully.");
+          fetchData();
+        } catch (err) {
+          toast.error("Failed to wipe users.");
+        } finally {
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        }
+      }
+    });
+  };
+
+  const handleWipeTasks = () => {
+    setConfirmModal({
+      isOpen: true,
+      type: 'danger',
+      title: 'WIPE ALL TASKS?',
+      message: 'DANGER: This will delete ALL tasks and location history. This action cannot be undone.',
+      isLoading: false,
+      onConfirm: async () => {
+        setConfirmModal(prev => ({ ...prev, isLoading: true }));
+        try {
+          await api.wipeAllTasks();
+          toast.success("All tasks wiped successfully.");
+          fetchData();
+        } catch (err) {
+          toast.error("Failed to wipe tasks.");
+        } finally {
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        }
+      }
+    });
+  };
+
+  // --- Data Export Handler ---
+  const handleExportUsers = () => {
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + "ID,Name,Email,Role,Status\n"
+      + employees.map(e => `${e.id},${e.full_name},${e.email},${e.role},${e.is_active ? 'Active' : 'Archived'}`).join("\n");
+    
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "users_export.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success("User list exported.");
+  };
+
+  // --- User Management Handlers with Custom Modal ---
+
+  const closeConfirmModal = () => setConfirmModal(prev => ({ ...prev, isOpen: false }));
+
+  const handleArchiveUser = (user) => {
+    setConfirmModal({
+        isOpen: true,
+        type: 'warning',
+        title: 'Archive User?',
+        message: `Are you sure you want to archive ${user.full_name}? They will lose access to the system but their data will be retained.`,
+        isLoading: false,
+        onConfirm: async () => {
+            setConfirmModal(prev => ({ ...prev, isLoading: true }));
+            try {
+                // ✅ API Call: Archive (update is_active = false)
+                // Assuming PUT /users/{id} accepts partial updates
+                await api.apiClient.put(`/users/${user.id}`, { is_active: false });
+                
+                setEmployees(prev => prev.map(e => e.id === user.id ? { ...e, is_active: false } : e));
+                toast.success(`${user.full_name} archived`);
+                addAlert('info', 'User archived successfully.');
+            } catch (err) {
+                console.error("Failed to archive user:", err);
+                
+                // Specific 404 Handling
+                if (err.response && err.response.status === 404) {
+                    toast.error(`Error: Endpoint PUT /users/${user.id} not found. Please check backend routers.`);
+                } else {
+                    toast.error("Failed to archive user. Please try again.");
+                }
+            } finally {
+                closeConfirmModal();
+            }
+        }
+    });
+  };
+
+  const handleRestoreUser = (user) => {
+    setConfirmModal({
+        isOpen: true,
+        type: 'success',
+        title: 'Restore User Access?',
+        message: `This will restore system access for ${user.full_name}. They will be able to log in immediately.`,
+        isLoading: false,
+        onConfirm: async () => {
+            setConfirmModal(prev => ({ ...prev, isLoading: true }));
+            try {
+                // ✅ API Call: Restore (update is_active = true)
+                await api.apiClient.put(`/users/${user.id}`, { is_active: true });
+
+                setEmployees(prev => prev.map(e => e.id === user.id ? { ...e, is_active: true } : e));
+                toast.success(`${user.full_name} restored`);
+                addAlert('success', 'User account restored.');
+            } catch (err) {
+                console.error("Failed to restore user:", err);
+                 // Specific 404 Handling
+                 if (err.response && err.response.status === 404) {
+                    toast.error(`Error: Endpoint PUT /users/${user.id} not found. Please check backend routers.`);
+                } else {
+                    toast.error("Failed to restore user.");
+                }
+            } finally {
+                closeConfirmModal();
+            }
+        }
+    });
+  };
+
+  const handleDeletePermanently = (user) => {
+    setConfirmModal({
+        isOpen: true,
+        type: 'danger',
+        title: 'Permanently Delete User?',
+        message: `WARNING: This action cannot be undone. This will permanently delete ${user.full_name} and all associated personal data from the database.`,
+        isLoading: false,
+        onConfirm: async () => {
+            setConfirmModal(prev => ({ ...prev, isLoading: true }));
+            try {
+                // ✅ API Call: Hard Delete
+                await api.apiClient.delete(`/users/${user.id}`);
+                
+                setEmployees(prev => prev.filter(e => e.id !== user.id));
+                toast.success(`${user.full_name} permanently deleted`);
+                addAlert('warning', 'User deleted from database.');
+            } catch (err) {
+                console.error("Failed to delete user:", err);
+                // Handle fallback if endpoint doesn't exist yet
+                if (err.response && err.response.status === 404) {
+                    toast.error(`Error: Endpoint DELETE /users/${user.id} not found. Please check backend routers.`);
+                } else {
+                    toast.error("Failed to delete user.");
+                }
+            } finally {
+                closeConfirmModal();
+            }
+        }
+    });
+  };
+
+  const getRelativeTime = (dateString) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    return `${diffDays}d ago`;
+  };
+
+  // --- Derived State ---
+  
+  // Filter employees for User Management based on Show Archive toggle
+  const filteredManagementEmployees = useMemo(() => {
+    return (Array.isArray(employees) ? employees : [])
+    .filter(emp => {
+        const matchesArchiveStatus = showArchived ? !emp.is_active : emp.is_active;
+        const name = emp.full_name || emp.email || '';
+        const matchesSearch = name.toLowerCase().includes((searchTerm || '').toLowerCase());
+        const matchesRole = (filterRole === 'all' || emp.role === filterRole);
+        return matchesArchiveStatus && matchesSearch && matchesRole;
+    });
+  }, [employees, searchTerm, filterRole, showArchived]);
+
+  // Filter employees for KPI tab (always show all or active)
+  const filteredKPIEmployees = useMemo(() => {
+    return (Array.isArray(employees) ? employees : [])
+    .filter(emp => {
+        return emp.is_active && (
+            (emp.full_name || '').toLowerCase().includes((searchTerm || '').toLowerCase())
+        );
+    });
+  }, [employees, searchTerm]);
+
+  const roles = useMemo(() => {
+    return Array.from(new Set((Array.isArray(employees) ? employees : []).map(e => e.role).filter(Boolean)));
+  }, [employees]);
+
+  const stats = useMemo(() => {
+    const totalUsers = employees.length;
+    const totalSupervisors = employees.filter(e => e.role === 'supervisor').length;
+    const activeTasks = tasks.filter(t => ['pending', 'in_progress', 'in-progress'].includes((t?.status || '').toLowerCase())).length;
+    const completedToday = tasks.filter(t => {
+      if (!t?.completed_at) return false;
+      const d = new Date(t.completed_at);
+      const today = new Date();
+      return d.getDate() === today.getDate() && d.getMonth() === today.getMonth() && d.getFullYear() === today.getFullYear();
+    }).length;
+
+    return { totalUsers, totalSupervisors, activeTasks, completedToday };
+  }, [employees, tasks]);
+
+  const recentActivity = useMemo(() => {
+    if (!Array.isArray(tasks)) return [];
+    const activities = [];
+    const sortedTasks = [...tasks].sort((a, b) => new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at));
+
+    sortedTasks.slice(0, 15).forEach(task => {
+      const user = task.assigned_user_name || task.assigned_user?.full_name || 'System';
+      if (task.completed_at) {
+        activities.push({ id: `c-${task.id}`, message: `${user} completed "${task.title}"`, time: task.completed_at, type: 'success', icon: <FiCheckSquare /> });
+      } else if (task.started_at) {
+        activities.push({ id: `s-${task.id}`, message: `${user} started "${task.title}"`, time: task.started_at, type: 'info', icon: <FiTrendingUp /> });
+      } else {
+        activities.push({ id: `n-${task.id}`, message: `Task "${task.title}" created`, time: task.created_at, type: 'neutral', icon: <FiPlus /> });
+      }
+    });
+    return activities.slice(0, 10);
+  }, [tasks]);
+
+  if (loading) {
+    return <div className="flex items-center justify-center h-screen bg-slate-100 dark:bg-slate-900"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div></div>;
+  }
+
+  if (error) {
+    return <div className="flex items-center justify-center h-screen bg-red-50 dark:bg-red-900/20 text-red-600">{error}</div>;
+  }
+
+  return (
+    <div className="flex h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-200 overflow-hidden">
+      {/* Sidebar */}
+      <aside className={`fixed z-30 inset-y-0 left-0 transform ${mobileOpen ? 'translate-x-0 shadow-xl' : '-translate-x-full'} md:translate-x-0 md:static transition-transform duration-300 ease-in-out w-64 bg-slate-900 text-slate-100 p-4 flex flex-col border-r border-slate-800`}>
+        <div className="flex items-center justify-between mb-8 px-2">
+          <div className="flex items-center gap-2">
+            <div className="bg-indigo-600 p-1.5 rounded-lg">
+                <FiShield className="text-white" size={20} />
+            </div>
+            <h1 className="text-xl font-bold text-white tracking-tight">AdminConsole</h1>
+          </div>
+          <button onClick={() => setMobileOpen(false)} className="md:hidden text-slate-400 hover:text-white"><FiX size={20} /></button>
+        </div>
+        
+        <div className="mb-6 px-2">
+            <div className="bg-slate-800/50 rounded-lg p-3 border border-slate-700">
+                <div className="flex items-center gap-3 mb-2">
+                    <Avatar name={user?.full_name} size="sm" />
+                    <div className="overflow-hidden">
+                        <p className="text-sm font-medium text-white truncate">{user?.full_name}</p>
+                        <p className="text-xs text-indigo-400 font-mono uppercase tracking-wider">Administrator</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <nav className="flex-1 space-y-1.5 overflow-y-auto px-2">
+          {navItems.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => { setActiveTab(item.id); setMobileOpen(false); }}
+              className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg text-sm transition-all duration-200 group ${
+                activeTab === item.id
+                  ? 'bg-indigo-600 text-white font-medium shadow-lg shadow-indigo-900/20'
+                  : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+              }`}
+            >
+              <span className={`${activeTab === item.id ? 'text-white' : 'text-slate-500 group-hover:text-indigo-400'}`}>{item.icon}</span>
+              <span>{item.label}</span>
+            </button>
+          ))}
+        </nav>
+      </aside>
+
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col overflow-hidden bg-slate-50 dark:bg-slate-950 relative">
+        {mobileOpen && <div onClick={() => setMobileOpen(false)} className="fixed inset-0 bg-black/50 z-20 md:hidden" />}
+
+        {/* Header */}
+        <header className="sticky top-0 z-10 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-6 py-3 flex items-center justify-between shadow-sm">
+          <div className="flex items-center gap-3">
+            <button onClick={() => setMobileOpen(true)} className="md:hidden p-2 text-slate-500"><FiMenu size={20} /></button>
+            <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                {navItems.find(item => item.id === activeTab)?.icon}
+                {navItems.find(item => item.id === activeTab)?.label}
+            </h2>
+          </div>
+          <div className="flex items-center gap-4">
+            <button onClick={toggleDarkMode} className="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full">
+                {isDarkMode ? <FiSun size={18} /> : <FiMoon size={18} />}
+            </button>
+            
+            {/* Notifications */}
+            <div className="relative">
+              <button 
+                onClick={() => setShowNotifications(!showNotifications)} 
+                className="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full relative transition-colors"
+              >
+                <FiBell size={18} />
+                {alerts.length > 0 && <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />}
+              </button>
+              
+              <AnimatePresence>
+                {showNotifications && (
+                    <>
+                        <div className="fixed inset-0 z-30" onClick={() => setShowNotifications(false)} />
+                        <motion.div 
+                            initial={{ opacity: 0, y: 5 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 5 }}
+                            className="absolute right-0 mt-2 w-80 bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-slate-200 dark:border-slate-700 z-40 max-h-96 overflow-hidden flex flex-col"
+                        >
+                            <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
+                                <h3 className="font-semibold text-slate-900 dark:text-slate-100">Notifications</h3>
+                                {alerts.length > 0 && <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">{alerts.length}</span>}
+                            </div>
+                            <div className="overflow-y-auto flex-1">
+                                {alerts.length > 0 ? (
+                                    alerts.map((alert) => (
+                                        <div key={alert.id} className="px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-700 border-b border-slate-100 dark:border-slate-700 last:border-0">
+                                            <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{alert.message}</p>
+                                            <p className="text-xs text-slate-500 mt-1">Just now</p>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div className="p-8 text-center text-slate-500">No new notifications</div>
+                                )}
+                            </div>
+                        </motion.div>
+                    </>
+                )}
+              </AnimatePresence>
+            </div>
+
+            <div className="h-8 w-px bg-slate-200 dark:bg-slate-700 mx-1"></div>
+            
+            {/* User Menu */}
+            <div className="relative">
+                <button 
+                    onClick={() => setShowUserMenu(!showUserMenu)}
+                    className="flex items-center gap-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors p-1 pr-3"
+                >
+                    <Avatar name={user?.full_name} size="sm" />
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300 hidden sm:inline">{user?.full_name}</span>
+                </button>
+
+                <AnimatePresence>
+                    {showUserMenu && (
+                        <>
+                            <div className="fixed inset-0 z-30" onClick={() => setShowUserMenu(false)} />
+                            <motion.div 
+                                initial={{ opacity: 0, y: 5 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: 5 }}
+                                className="absolute right-0 mt-2 w-64 bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-slate-200 dark:border-slate-700 z-40 overflow-hidden"
+                            >
+                                <div className="p-4 border-b border-slate-200 dark:border-slate-700">
+                                    <p className="font-medium text-slate-900 dark:text-slate-100">{user?.full_name}</p>
+                                    <p className="text-xs text-slate-500 truncate">{user?.email}</p>
+                                </div>
+                                <div className="py-1">
+                                    <button onClick={() => { setShowUserMenu(false); navigate('/account-settings'); }} className="w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2">
+                                        <FiUsers size={14} /> Manage Account
+                                    </button>
+                                    <div className="border-t border-slate-200 dark:border-slate-700 my-1"></div>
+                                    <button onClick={logout} className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2">
+                                        <FiLogOut size={14} /> Sign Out
+                                    </button>
+                                </div>
+                            </motion.div>
+                        </>
+                    )}
+                </AnimatePresence>
+            </div>
+          </div>
+        </header>
+
+        {/* Alerts Banner */}
+        <div className="fixed top-20 right-6 z-50 space-y-2 w-80 pointer-events-none">
+          {alerts.map((alert) => (
+            <div key={alert.id} className="pointer-events-auto">
+                <Alert type={alert.type} message={alert.message} onClose={() => setAlerts(prev => prev.filter(a => a.id !== alert.id))} />
+            </div>
+          ))}
+        </div>
+
+        {/* Content Area */}
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 scroll-smooth">
+          <motion.div
+             key={activeTab}
+             initial={{ opacity: 0, y: 10 }}
+             animate={{ opacity: 1, y: 0 }}
+             transition={{ duration: 0.2 }}
+             className="h-full"
+          >
+            {/* 1. OVERVIEW TAB */}
+            {activeTab === 'overview' && (
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <StatValue label="Total Users" value={stats.totalUsers} icon={<FiUsers className="text-blue-500" />} />
+                  <StatValue label="Supervisors" value={stats.totalSupervisors} icon={<FiShield className="text-purple-500" />} />
+                  <StatValue label="Active Tasks" value={stats.activeTasks} icon={<FiCheckSquare className="text-orange-500" />} />
+                  <StatValue label="Completed Today" value={stats.completedToday} icon={<FiTrendingUp className="text-green-500" />} />
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  <Card className="lg:col-span-2 h-full">
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 className="font-semibold text-slate-800 dark:text-slate-100">System Activity Log</h3>
+                        <Badge text="Live" color="green" size="xs" />
+                    </div>
+                    <div className="space-y-0 divide-y divide-slate-100 dark:divide-slate-700">
+                      {recentActivity.map((activity) => (
+                        <div key={activity.id} className="py-3 flex items-center gap-3">
+                            <div className={`p-2 rounded-full ${
+                                activity.type === 'success' ? 'bg-green-100 text-green-600' : 
+                                activity.type === 'info' ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-600'
+                            } dark:bg-opacity-20`}>
+                                {activity.icon}
+                            </div>
+                            <div className="flex-1">
+                                <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{activity.message}</p>
+                                <p className="text-xs text-slate-500">{getRelativeTime(activity.time)}</p>
+                            </div>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+                  
+                  <div className="space-y-6">
+                      <Card>
+                        <h3 className="font-semibold text-slate-800 dark:text-slate-100 mb-4">Admin Quick Actions</h3>
+                        <div className="space-y-3">
+                          <Button variant="primary" fullWidth onClick={() => setIsCreateTaskModalOpen(true)} icon={FiPlus}>System Task</Button>
+                          <Button variant="secondary" fullWidth onClick={() => { setActiveTab('user_management'); setTimeout(() => setUserModalConfig({ isOpen: true, mode: 'add', user: null }), 100); }} icon={FiUserPlus}>Register New User</Button>
+                          <Button variant="outline" fullWidth onClick={() => setActiveTab('analytics')} icon={FiTrendingUp}>Deep Analytics</Button>
+                        </div>
+                      </Card>
+                      <Card>
+                          <h3 className="font-semibold text-slate-800 dark:text-slate-100 mb-2">System Health</h3>
+                          <div className="space-y-3">
+                            <div>
+                                <div className="flex justify-between text-xs mb-1 text-slate-500">
+                                    <span>Model Accuracy</span>
+                                    <span>94%</span>
+                                </div>
+                                <div className="h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                                    <div className="h-full bg-green-500 w-[94%]"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div className="flex justify-between text-xs mb-1 text-slate-500">
+                                    <span>API Latency</span>
+                                    <span>45ms</span>
+                                </div>
+                                <div className="h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                                    <div className="h-full bg-blue-500 w-[80%]"></div>
+                                </div>
+                            </div>
+                          </div>
+                      </Card>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 2. EMPLOYEE KPI TAB */}
+            {activeTab === 'employee_kpi' && (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-8rem)]">
+                <div className="lg:col-span-1 flex flex-col h-full">
+                  <Card className="flex-1 flex flex-col p-0 overflow-hidden border-0 shadow-none bg-transparent">
+                    <div className="bg-white dark:bg-slate-800 p-4 rounded-t-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                        <h3 className="font-semibold text-slate-800 dark:text-slate-100 mb-3">KPI Selection</h3>
+                        <div className="space-y-2">
+                            <Input placeholder="Search employees..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                            <Select
+                                options={[{ value: 'all', label: 'All Roles' }, ...roles.map(r => ({ value: r, label: r.charAt(0).toUpperCase() + r.slice(1) }))]}
+                                value={filterRole}
+                                onChange={(e) => setFilterRole(e.target.value)}
+                            />
+                        </div>
+                    </div>
+                    <div className="flex-1 overflow-y-auto space-y-2 p-2 bg-slate-100 dark:bg-slate-900/50 border-x border-b border-slate-200 dark:border-slate-700 rounded-b-xl">
+                      {filteredKPIEmployees.length > 0
+                        ? filteredKPIEmployees.map((emp) => (
+                            <UserListItem
+                              key={emp.id}
+                              employee={emp}
+                              isSelected={selectedEmployee?.id === emp.id}
+                              onClick={() => setSelectedEmployee(emp)}
+                            />
+                          ))
+                        : (<div className="text-center py-8 text-slate-500">No matching users found</div>)
+                      }
+                    </div>
+                  </Card>
+                </div>
+                <div className="lg:col-span-2 h-full overflow-hidden flex flex-col">
+                  {selectedEmployee ? (
+                     <div className="h-full overflow-y-auto pr-2">
+                         <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 mb-6 shadow-sm">
+                            <div className="flex items-start justify-between">
+                                <div className="flex gap-4">
+                                    <Avatar name={selectedEmployee.full_name} size="xl" />
+                                    <div>
+                                        <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">{selectedEmployee.full_name}</h2>
+                                        <div className="flex items-center gap-2 mt-1 text-slate-500 dark:text-slate-400">
+                                            <span>{selectedEmployee.email}</span>
+                                            <span>•</span>
+                                            <span className="capitalize">{selectedEmployee.role}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                         </div>
+                         <EmployeeKPIPanel selectedEmployee={selectedEmployee} kpiData={employeeKpiData} loading={loadingKpi} />
+                     </div>
+                  ) : (
+                     <div className="h-full flex flex-col items-center justify-center text-slate-400 bg-slate-100 dark:bg-slate-800/30 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-700">
+                        <FiActivity size={48} className="mb-4 opacity-50" />
+                        <p className="text-lg font-medium">Select an employee to view KPI metrics</p>
+                     </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* 3. USER MANAGEMENT TAB */}
+            {activeTab === 'user_management' && (
+              <div className="space-y-6">
+                 <div className="flex justify-between items-center">
+                     <div>
+                         <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">
+                            {showArchived ? 'Archive Management' : 'User Management'}
+                         </h2>
+                         <p className="text-slate-500">
+                            {showArchived ? 'View and restore inactive users.' : 'Manage account access, roles, and archive users.'}
+                         </p>
+                     </div>
+                     <div className="flex gap-3">
+                        <Button 
+                            variant="secondary" 
+                            onClick={() => setShowArchived(!showArchived)} 
+                            icon={showArchived ? FiUsers : FiArchive}
+                        >
+                            {showArchived ? 'View Active Users' : 'View Archive'}
+                        </Button>
+                        <Button variant="outline" onClick={handleExportUsers} icon={FiDownload}>
+                           Export CSV
+                        </Button>
+                        {!showArchived && (
+                             <Button variant="primary" onClick={() => setUserModalConfig({ isOpen: true, mode: 'add', user: null })} icon={FiUserPlus}>
+                                Add New User
+                            </Button>
+                        )}
+                     </div>
+                 </div>
+
+                 <Card className="overflow-hidden p-0">
+                     <div className="p-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 flex gap-4">
+                         <div className="flex-1 relative">
+                            <FiSearch className="absolute left-3 top-3 text-slate-400" />
+                            <input 
+                                className="w-full pl-10 pr-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                                placeholder="Search users by name or email..."
+                                value={searchTerm} 
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                            />
+                         </div>
+                         <div className="w-48">
+                             <Select
+                                options={[{ value: 'all', label: 'All Roles' }, ...roles.map(r => ({ value: r, label: r.charAt(0).toUpperCase() + r.slice(1) }))]}
+                                value={filterRole}
+                                onChange={(e) => setFilterRole(e.target.value)}
+                            />
+                         </div>
+                     </div>
+                     <div className="overflow-x-auto">
+                         <table className="w-full text-left border-collapse">
+                             <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 text-xs uppercase tracking-wider">
+                                 <tr>
+                                     <th className="px-6 py-4 font-semibold">User</th>
+                                     <th className="px-6 py-4 font-semibold">Role</th>
+                                     <th className="px-6 py-4 font-semibold">Status</th>
+                                     <th className="px-6 py-4 font-semibold text-right">Actions</th>
+                                 </tr>
+                             </thead>
+                             <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+                                 {filteredManagementEmployees.map((emp) => (
+                                     <tr key={emp.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                                         <td className="px-6 py-4">
+                                             <div className="flex items-center gap-3">
+                                                 <Avatar name={emp.full_name} size="sm" />
+                                                 <div>
+                                                     <p className="font-medium text-slate-900 dark:text-slate-100">{emp.full_name}</p>
+                                                     <p className="text-xs text-slate-500">{emp.email}</p>
+                                                 </div>
+                                             </div>
+                                         </td>
+                                         <td className="px-6 py-4">
+                                            <Badge 
+                                                text={emp.role} 
+                                                color={emp.role === 'admin' ? 'red' : emp.role === 'supervisor' ? 'purple' : 'blue'} 
+                                                size="sm" 
+                                            />
+                                         </td>
+                                         <td className="px-6 py-4">
+                                            <Badge 
+                                                text={emp.is_active ? 'Active' : 'Inactive'} 
+                                                color={emp.is_active ? 'green' : 'gray'} 
+                                                size="sm" 
+                                            />
+                                         </td>
+                                         <td className="px-6 py-4 text-right">
+                                             <div className="flex items-center justify-end gap-2">
+                                                {!showArchived ? (
+                                                    <>
+                                                        <button 
+                                                            onClick={() => setUserModalConfig({ isOpen: true, mode: 'edit', user: emp })}
+                                                            className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" 
+                                                            title="Edit User"
+                                                        >
+                                                            <FiEdit2 size={16} />
+                                                        </button>
+                                                        <button 
+                                                            onClick={() => handleArchiveUser(emp)}
+                                                            className="p-2 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors" 
+                                                            title="Archive User"
+                                                        >
+                                                            <FiArchive size={16} />
+                                                        </button>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <button 
+                                                            onClick={() => handleRestoreUser(emp)}
+                                                            className="p-2 text-slate-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors" 
+                                                            title="Restore User"
+                                                        >
+                                                            <FiRefreshCw size={16} />
+                                                        </button>
+                                                        <button 
+                                                            onClick={() => handleDeletePermanently(emp)}
+                                                            className="p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" 
+                                                            title="Delete Permanently"
+                                                        >
+                                                            <FiTrash2 size={16} />
+                                                        </button>
+                                                    </>
+                                                )}
+                                             </div>
+                                         </td>
+                                     </tr>
+                                 ))}
+                             </tbody>
+                         </table>
+                         {filteredManagementEmployees.length === 0 && (
+                             <div className="p-8 text-center text-slate-500 dark:text-slate-400">
+                                 {showArchived 
+                                    ? "No archived users found." 
+                                    : "No active users found matching your criteria."}
+                             </div>
+                         )}
+                     </div>
+                 </Card>
+              </div>
+            )}
+
+            {/* 4. TASKS TAB */}
+            {activeTab === 'tasks' && (
+              <TaskManagementPanel 
+                isMapLoaded={isMapLoaded}
+                mapLoadError={mapLoadError}
+                onTaskCreated={handleTaskCreated}
+                onTaskDeleted={(taskId) => {
+                    setTasks(prev => prev.filter(t => t.id !== taskId));
+                    addAlert('success', 'Task deleted from system');
+                }}
+                onTaskUpdated={(updated) => {
+                    setTasks(prev => prev.map(t => t.id === updated.id ? updated : t));
+                    addAlert('success', 'Task updated');
+                }}
+              />
+            )}
+
+            {/* 5. TRACKING TAB */}
+            {activeTab === 'tracking' && (
+              <LiveLocationTracker isMapLoaded={isMapLoaded} mapLoadError={mapLoadError} />
+            )}
+
+            {/* 6. ANALYTICS TAB */}
+            {activeTab === 'analytics' && (
+              <div className="space-y-6">
+                <div className="bg-slate-900 rounded-xl p-8 text-white shadow-lg relative overflow-hidden">
+                    <div className="relative z-10">
+                        <h3 className="text-2xl font-bold mb-2">Predictive Intelligence</h3>
+                        <p className="text-slate-300 max-w-2xl">
+                            Our machine learning models analyze task patterns to identify critical success factors. 
+                            Use this data to optimize workflow assignments.
+                        </p>
+                    </div>
+                    <div className="absolute right-0 top-0 w-64 h-64 bg-indigo-500 rounded-full blur-3xl opacity-20 transform translate-x-1/3 -translate-y-1/3"></div>
+                </div>
+                
+                <Card className="p-6">
+                  <div className="mb-6 border-b border-slate-200 dark:border-slate-700 pb-4">
+                      <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                        <FiTrendingUp className="text-indigo-500" /> Feature Importance Analysis
+                      </h3>
+                      <p className="text-sm text-slate-500 mt-1">
+                          Determines which variables (e.g., location, time of day, employee experience) have the highest impact on task completion efficiency.
+                      </p>
+                  </div>
+                  <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-4 border border-slate-100 dark:border-slate-800">
+                      <FeatureImportanceChart />
+                  </div>
+                </Card>
+              </div>
+            )}
+
+            {/* 7. SETTINGS & MAINTENANCE TAB */}
+            {activeTab === 'settings' && (
+               <div className="space-y-6">
+                  <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100 mb-4">System & Maintenance</h2>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {/* Service Status Card */}
+                      <Card>
+                         <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
+                             <FiActivity /> Service Status
+                         </h3>
+                         <div className="space-y-4">
+                            <div className="flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-900/50 rounded-lg">
+                                <div className="flex items-center gap-3">
+                                    <FiDatabase className="text-blue-500" />
+                                    <span className="text-sm font-medium">Database</span>
+                                </div>
+                                <Badge text="Connected" color="green" size="xs" />
+                            </div>
+                            <div className="flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-900/50 rounded-lg">
+                                <div className="flex items-center gap-3">
+                                    <FiCpu className="text-purple-500" />
+                                    <span className="text-sm font-medium">ML Prediction Service</span>
+                                </div>
+                                <Badge 
+                                  text={systemHealth?.status === 'ready' ? 'Operational' : 'Offline'} 
+                                  color={systemHealth?.status === 'ready' ? 'green' : 'red'} 
+                                  size="xs" 
+                                />
+                            </div>
+                            <div className="flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-900/50 rounded-lg">
+                                <div className="flex items-center gap-3">
+                                    <FiMapPin className="text-orange-500" />
+                                    <span className="text-sm font-medium">Google Maps API</span>
+                                </div>
+                                <Badge 
+                                  text={systemHealth?.google_api_configured ? 'Configured' : 'Missing Key'} 
+                                  color={systemHealth?.google_api_configured ? 'green' : 'red'} 
+                                  size="xs" 
+                                />
+                            </div>
+                         </div>
+                      </Card>
+
+                      {/* Data Management (Danger Zone) */}
+                      <Card className="border-red-200 dark:border-red-900/50">
+                         <h3 className="text-lg font-bold text-red-600 dark:text-red-400 mb-2 flex items-center gap-2">
+                             <FiAlertTriangle /> Danger Zone
+                         </h3>
+                         <p className="text-xs text-slate-500 mb-4">
+                            These actions are irreversible. Please proceed with caution.
+                         </p>
+                         <div className="space-y-3">
+                            <Button variant="danger" fullWidth onClick={handleWipeUsers} icon={FiTrash2}>
+                                Wipe All Users
+                            </Button>
+                            <Button variant="danger" fullWidth onClick={handleWipeTasks} icon={FiTrash2}>
+                                Wipe All Tasks & Location History
+                            </Button>
+                         </div>
+                      </Card>
+                  </div>
+               </div>
+            )}
+          </motion.div>
+        </main>
+      </div>
+
+      {/* Modals */}
+      <AnimatePresence>
+        {isCreateTaskModalOpen && (
+            <CreateTaskModal
+                onClose={() => setIsCreateTaskModalOpen(false)}
+                onSuccess={handleTaskCreated}
+                isMapLoaded={isMapLoaded}
+                mapLoadError={mapLoadError}
+            />
+        )}
+        {userModalConfig.isOpen && (
+            <UserModal
+                mode={userModalConfig.mode}
+                user={userModalConfig.user}
+                onClose={() => setUserModalConfig({ ...userModalConfig, isOpen: false })}
+                onSuccess={handleUserSaved}
+            />
+        )}
+        {confirmModal.isOpen && (
+            <ConfirmationModal
+                isOpen={confirmModal.isOpen}
+                title={confirmModal.title}
+                message={confirmModal.message}
+                type={confirmModal.type}
+                onConfirm={confirmModal.onConfirm}
+                onClose={closeConfirmModal}
+            />
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+export default AdminDashboard;
