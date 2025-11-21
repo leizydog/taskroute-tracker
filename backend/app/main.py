@@ -1,8 +1,8 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine
-from app.models import user, task
-from app.routers import auth, tasks, locations, analytics, users, predictions
+from app.models import user, task, audit
+from app.routers import auth, tasks, locations, analytics, users, predictions, admin
 from app.websocket_manager import manager
 from dotenv import load_dotenv
 import os
@@ -44,6 +44,7 @@ else:
 # -------------------------
 user.Base.metadata.create_all(bind=engine)
 task.Base.metadata.create_all(bind=engine)
+audit.Base.metadata.create_all(bind=engine)
 
 # -------------------------
 # FastAPI app initialization
@@ -75,6 +76,7 @@ app.include_router(users.router, prefix="/api/v1")
 app.include_router(locations.router, prefix="/api/v1")
 app.include_router(analytics.router, prefix="/api/v1")
 app.include_router(predictions.router, prefix="/api/v1")
+app.include_router(admin.router, prefix="/api/v1")
 
 # WebSocket endpoint
 @app.websocket("/ws/location")

@@ -750,19 +750,6 @@ const SupervisorDashboard = () => {
             {activeTab === 'analytics' && (
               <div className="space-y-6">
                 <FeatureImportanceChart />
-                <Card>
-                  <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
-                    <FiTrendingUp /> Performance Forecasting
-                  </h3>
-                  <div className="space-y-4">
-                    <p className="text-sm text-slate-600 dark:text-slate-400">
-                      Use the tools below to forecast task durations based on conditions or view insights from the model.
-                    </p>
-                    <div className="mt-4">
-                      <TaskForecast />
-                    </div>
-                  </div>
-                </Card>
               </div>
             )}
           </motion.div>

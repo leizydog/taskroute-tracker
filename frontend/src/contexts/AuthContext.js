@@ -17,7 +17,8 @@ export const useAuth = () => {
 // Export the provider component
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [token, setToken] = useState(localStorage.getItem("token"));
+  // Initialize state directly from localStorage to avoid sync issues
+  const [token, setToken] = useState(() => localStorage.getItem("token"));
   const [loading, setLoading] = useState(true);
 
   // Dark mode state
@@ -26,12 +27,6 @@ export const AuthProvider = ({ children }) => {
     if (savedTheme) return savedTheme === "dark";
     return window.matchMedia("(prefers-color-scheme: dark)").matches;
   });
-
-  // Update localStorage when token changes
-  useEffect(() => {
-    if (token) localStorage.setItem("token", token);
-    else localStorage.removeItem("token");
-  }, [token]);
 
   // Apply dark mode to document
   useEffect(() => {
@@ -51,6 +46,8 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const loadUser = async () => {
       if (token) {
+        // Ensure header is set before request
+        api.apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
         try {
           const response = await api.getCurrentUserInfo();
           setUser(response.data);
@@ -68,14 +65,27 @@ export const AuthProvider = ({ children }) => {
     try {
       const response = await api.login({ email, password });
       const { access_token, user: userData } = response.data;
+      
+      // ✅ FIX: Save to LocalStorage IMMEDIATELY
+      localStorage.setItem("token", access_token);
+      
+      // Update state
       setToken(access_token);
-      if (userData) setUser(userData);
-      else {
-        const userResponse = await api.getCurrentUserInfo();
-        setUser(userResponse.data);
+
+      let finalUser = userData;
+
+      // If backend didn't return the user object, fetch it now
+      // Since we set localStorage above, this call will succeed
+      if (!finalUser) {
+         const userResponse = await api.getCurrentUserInfo();
+         finalUser = userResponse.data;
       }
+      
+      setUser(finalUser);
+      
       toast.success("Login successful!");
-      return { success: true };
+      // ✅ FIX: Return the user data so Login.js doesn't need to fetch it again
+      return { success: true, data: finalUser };
     } catch (error) {
       const message = error.response?.data?.detail || "Login failed";
       toast.error(message);
@@ -98,6 +108,8 @@ export const AuthProvider = ({ children }) => {
   const logout = () => {
     setToken(null);
     setUser(null);
+    localStorage.removeItem("token"); // Remove immediately
+    delete api.apiClient.defaults.headers.common['Authorization'];
     toast.success("Logged out successfully");
   };
 
@@ -118,5 +130,4 @@ export const AuthProvider = ({ children }) => {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-// Export context itself
 export default AuthContext;

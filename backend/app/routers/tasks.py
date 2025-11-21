@@ -7,6 +7,8 @@ from app.database import get_db
 from app.models.user import User, UserRole
 from app.models.task import Task, TaskStatus
 from app.models.location import LocationLog
+# ✅ Import AuditLog
+from app.models.audit import AuditLog
 from app.schemas.location import LocationLogCreate
 from app.schemas.task import (
     TaskCreate, TaskUpdate, TaskResponse, TaskStart,
@@ -40,6 +42,29 @@ async def create_task(
     db.add(db_task)
     db.commit()
     db.refresh(db_task)
+
+    # ✅ Audit Log: Task Creation
+    audit = AuditLog(
+        user_id=current_user.id,
+        action="TASK_CREATE",
+        target_resource=f"Task #{db_task.id}",
+        details=f"Title: {db_task.title}, Assigned to: {assigned_user.full_name}"
+    )
+    db.add(audit)
+    db.commit()
+
+    # ⚡ Real-time Audit Broadcast
+    await manager.broadcast_json({
+        "event": "audit_log_created",
+        "log": {
+            "id": audit.id,
+            "action": audit.action,
+            "target_resource": audit.target_resource,
+            "details": audit.details,
+            "timestamp": audit.timestamp.isoformat(),
+            "user_email": current_user.email
+        }
+    })
 
     # Re-query to load relationships before sending the response
     created_task_with_users = db.query(Task).options(
@@ -139,11 +164,41 @@ async def update_task(
         )
 
     update_data = task_update.dict(exclude_unset=True)
+    
+    # Capture changes for audit log
+    changes = []
     for field, value in update_data.items():
+        old_val = getattr(task, field)
+        if old_val != value:
+            changes.append(f"{field}: {old_val} -> {value}")
         setattr(task, field, value)
 
     db.commit()
     db.refresh(task)
+
+    # ✅ Audit Log: Task Update
+    if changes:
+        audit = AuditLog(
+            user_id=current_user.id,
+            action="TASK_UPDATE",
+            target_resource=f"Task #{task.id}",
+            details=", ".join(changes)[:500]  # Truncate if too long
+        )
+        db.add(audit)
+        db.commit()
+
+        # ⚡ Real-time Audit Broadcast
+        await manager.broadcast_json({
+            "event": "audit_log_created",
+            "log": {
+                "id": audit.id,
+                "action": audit.action,
+                "target_resource": audit.target_resource,
+                "details": audit.details,
+                "timestamp": audit.timestamp.isoformat(),
+                "user_email": current_user.email
+            }
+        })
 
     response_task = TaskWithUsers(
         **task.__dict__,
@@ -166,18 +221,6 @@ async def seed_historical_task(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    """
-    Special endpoint for seeding historical task data - ADMIN ONLY
-    
-    Allows setting internal fields that are normally controlled by workflow:
-    - status: Task status (pending, in_progress, completed)
-    - started_at: When task was started (ISO format string)
-    - completed_at: When task was completed (ISO format string)
-    - quality_rating: Quality rating (1-5)
-    - actual_duration: Actual duration in seconds
-    
-    This endpoint bypasses normal task workflow validation for seeding purposes.
-    """
     # Check admin permission
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(
@@ -303,6 +346,29 @@ async def start_task(
     db.commit()
     db.refresh(task)
 
+    # ✅ Audit Log: Task Started
+    audit = AuditLog(
+        user_id=current_user.id,
+        action="TASK_START",
+        target_resource=f"Task #{task.id}",
+        details=f"Started by user. Loc: {start_data.latitude},{start_data.longitude}"
+    )
+    db.add(audit)
+    db.commit()
+
+    # ⚡ Real-time Audit Broadcast
+    await manager.broadcast_json({
+        "event": "audit_log_created",
+        "log": {
+            "id": audit.id,
+            "action": audit.action,
+            "target_resource": audit.target_resource,
+            "details": audit.details,
+            "timestamp": audit.timestamp.isoformat(),
+            "user_email": current_user.email
+        }
+    })
+
     # Prepare the response object
     response_task = TaskWithUsers(
         **task.__dict__,
@@ -376,6 +442,29 @@ async def complete_task(
     db.commit()
     db.refresh(task)
 
+    # ✅ Audit Log: Task Completed
+    audit = AuditLog(
+        user_id=current_user.id,
+        action="TASK_COMPLETE",
+        target_resource=f"Task #{task.id}",
+        details=f"Duration: {task.actual_duration}m, Rating: {task.quality_rating}"
+    )
+    db.add(audit)
+    db.commit()
+
+    # ⚡ Real-time Audit Broadcast
+    await manager.broadcast_json({
+        "event": "audit_log_created",
+        "log": {
+            "id": audit.id,
+            "action": audit.action,
+            "target_resource": audit.target_resource,
+            "details": audit.details,
+            "timestamp": audit.timestamp.isoformat(),
+            "user_email": current_user.email
+        }
+    })
+
     response_task = TaskWithUsers(
         **task.__dict__,
         assigned_user_name=task.assigned_user.full_name,
@@ -410,10 +499,34 @@ async def delete_task(
             detail="You can only delete tasks you created"
         )
 
+    task_title = task.title
     task_id_to_broadcast = task.id
     db.delete(task)
     db.commit()
     
+    # ✅ Audit Log: Task Deletion
+    audit = AuditLog(
+        user_id=current_user.id,
+        action="TASK_DELETE",
+        target_resource=f"Task #{task_id_to_broadcast}",
+        details=f"Deleted task: {task_title}"
+    )
+    db.add(audit)
+    db.commit()
+    
+    # ⚡ Real-time Audit Broadcast
+    await manager.broadcast_json({
+        "event": "audit_log_created",
+        "log": {
+            "id": audit.id,
+            "action": audit.action,
+            "target_resource": audit.target_resource,
+            "details": audit.details,
+            "timestamp": audit.timestamp.isoformat(),
+            "user_email": current_user.email
+        }
+    })
+
     await manager.broadcast_json({
         "event": "task_deleted",
         "task_id": task_id_to_broadcast

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
 
@@ -7,7 +7,10 @@ from app.models.user import User
 from app.schemas.user import UserResponse
 from app.core.auth import get_current_active_user, get_current_admin
 from app.models.task import Task
-from fastapi import HTTPException, status
+# ✅ Import AuditLog
+from app.models.audit import AuditLog
+# ✅ Import Manager for WebSocket
+from app.websocket_manager import manager
 
 router = APIRouter(tags=["Users"])
 
@@ -25,54 +28,167 @@ def get_all_users(
 # -----------------------
 
 @router.delete("/users/admin/wipe-users")
-def wipe_all_users(
+async def wipe_all_users(
     db: Session = Depends(get_db),
     admin: User = Depends(get_current_admin)
 ):
-    db.query(User).delete()
+    count = db.query(User).filter(User.id != admin.id).delete()
     db.commit()
+    
+    # ✅ Audit Log
+    audit = AuditLog(
+        user_id=admin.id,
+        action="SYSTEM_WIPE_USERS",
+        target_resource="All Users",
+        details=f"Admin deleted {count} users (Admin account preserved)"
+    )
+    db.add(audit)
+    db.commit()
+
+    # ⚡ Real-time Audit Broadcast
+    await manager.broadcast_json({
+        "event": "audit_log_created",
+        "log": {
+            "id": audit.id,
+            "action": audit.action,
+            "target_resource": audit.target_resource,
+            "details": audit.details,
+            "timestamp": audit.timestamp.isoformat(),
+            "user_email": admin.email
+        }
+    })
+    
     return {"message": "All users deleted"}
 
 
 @router.delete("/users/admin/wipe-tasks")
-def wipe_all_tasks(
+async def wipe_all_tasks(
     db: Session = Depends(get_db),
     admin: User = Depends(get_current_admin)
 ):
-    db.query(Task).delete()
+    count = db.query(Task).delete()
     db.commit()
+    
+    # ✅ Audit Log
+    audit = AuditLog(
+        user_id=admin.id,
+        action="SYSTEM_WIPE_TASKS",
+        target_resource="All Tasks",
+        details=f"Admin deleted {count} tasks"
+    )
+    db.add(audit)
+    db.commit()
+
+    # ⚡ Real-time Audit Broadcast
+    await manager.broadcast_json({
+        "event": "audit_log_created",
+        "log": {
+            "id": audit.id,
+            "action": audit.action,
+            "target_resource": audit.target_resource,
+            "details": audit.details,
+            "timestamp": audit.timestamp.isoformat(),
+            "user_email": admin.email
+        }
+    })
+
     return {"message": "All tasks deleted"}
 
 
 @router.put("/users/{user_id}", response_model=UserResponse)
-def update_user(
+async def update_user(
     user_id: int, 
-    user_update: dict, # Or create a UserUpdate schema
+    user_update: dict, 
     db: Session = Depends(get_db),
-    # admin: User = Depends(get_current_admin) # Optional: Protect this route
+    # ✅ Update: Require Admin permission to update other users
+    admin: User = Depends(get_current_admin) 
 ):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    # Update fields (like is_active)
+    # Track changes and detect Archiving/Restoring
+    changes = []
+    action_type = "USER_UPDATE" # Default action
+
     for key, value in user_update.items():
-        setattr(user, key, value)
+        old_val = getattr(user, key, None)
+        if old_val != value:
+            setattr(user, key, value)
+            changes.append(f"{key}: {old_val} -> {value}")
+            
+            # ✅ Detect Archive/Restore Actions
+            if key == "is_active":
+                if value is False:
+                    action_type = "USER_ARCHIVE"
+                elif value is True:
+                    action_type = "USER_RESTORE"
     
     db.commit()
     db.refresh(user)
+    
+    # ✅ Audit Log
+    if changes:
+        audit = AuditLog(
+            user_id=admin.id,
+            action=action_type,
+            target_resource=f"User #{user.id} ({user.username})",
+            details=", ".join(changes)
+        )
+        db.add(audit)
+        db.commit()
+
+        # ⚡ Real-time Audit Broadcast
+        await manager.broadcast_json({
+            "event": "audit_log_created",
+            "log": {
+                "id": audit.id,
+                "action": audit.action,
+                "target_resource": audit.target_resource,
+                "details": audit.details,
+                "timestamp": audit.timestamp.isoformat(),
+                "user_email": admin.email
+            }
+        })
+        
     return user
 
 @router.delete("/users/{user_id}")
-def delete_user(
+async def delete_user(
     user_id: int, 
     db: Session = Depends(get_db),
-    # admin: User = Depends(get_current_admin) # Optional: Protect this route
+    # ✅ Update: Require Admin permission to delete users
+    admin: User = Depends(get_current_admin) 
 ):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
+    username = user.username
     db.delete(user)
     db.commit()
+    
+    # ✅ Audit Log
+    audit = AuditLog(
+        user_id=admin.id,
+        action="USER_DELETE",
+        target_resource=f"User #{user_id} ({username})",
+        details="User permanently deleted by admin"
+    )
+    db.add(audit)
+    db.commit()
+
+    # ⚡ Real-time Audit Broadcast
+    await manager.broadcast_json({
+        "event": "audit_log_created",
+        "log": {
+            "id": audit.id,
+            "action": audit.action,
+            "target_resource": audit.target_resource,
+            "details": audit.details,
+            "timestamp": audit.timestamp.isoformat(),
+            "user_email": admin.email
+        }
+    })
+    
     return {"message": "User deleted"}

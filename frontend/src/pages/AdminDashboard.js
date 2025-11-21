@@ -6,7 +6,8 @@ import { toast } from 'react-hot-toast';
 import {
   FiGrid, FiUsers, FiCheckSquare, FiTrendingUp, FiLogOut, FiMenu, FiBell, FiMoon, FiSun, FiX,
   FiPlus, FiMapPin, FiShield, FiSettings, FiUserPlus, FiEdit2, FiTrash2, FiSearch, FiActivity, 
-  FiArchive, FiRefreshCw, FiAlertTriangle, FiInfo, FiCheckCircle, FiDatabase, FiCpu, FiDownload
+  FiArchive, FiRefreshCw, FiAlertTriangle, FiInfo, FiCheckCircle, FiDatabase, FiCpu, FiDownload,
+  FiList, FiTerminal
 } from 'react-icons/fi';
 import { Button, Card, StatValue, Input, Select, Alert, Badge, Avatar } from '../components/atoms';
 import CreateTaskModal from '../components/organisms/CreateTaskModal';
@@ -19,7 +20,7 @@ import { useNavigate } from 'react-router-dom';
 const MAP_LOADER_ID = 'google-map-script';
 const MAP_LIBRARIES = ['places'];
 
-// --- Local Sub-Component: User List Item (Missing Component Fixed Here) ---
+// --- Local Sub-Component: User List Item ---
 const UserListItem = ({ employee, isSelected, onClick }) => (
   <motion.div
     whileHover={{ x: 3 }}
@@ -103,7 +104,6 @@ const ConfirmationModal = ({ isOpen, title, message, type = 'danger', onConfirm,
         transition={{ type: "spring", stiffness: 300, damping: 30 }}
         className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-100 dark:border-slate-700 relative"
       >
-        {/* Colored Accent Bar */}
         <div className={`h-1.5 w-full ${config.btnClass.split(' ')[0]}`} />
 
         <div className="p-6">
@@ -151,17 +151,15 @@ const ConfirmationModal = ({ isOpen, title, message, type = 'danger', onConfirm,
   );
 };
 
-// --- Local Sub-Component: Add/Edit User Modal ---
 const UserModal = ({ mode = 'add', user = null, onClose, onSuccess }) => {
-  // Initial state ensures role is set. Defaulting to 'user'.
   const [formData, setFormData] = useState({
     full_name: '',
-    username: '', // Added username field since backend likely requires it
+    username: '', 
     email: '',
     password: '',
     role: 'user',
     is_active: true,
-    ...user // overwrite with user data if editing
+    ...user
   });
   const [loading, setLoading] = useState(false);
 
@@ -170,32 +168,24 @@ const UserModal = ({ mode = 'add', user = null, onClose, onSuccess }) => {
     setLoading(true);
     try {
       if (mode === 'add') {
-        // Ensure the payload matches what the backend expects.
         const payload = {
           email: formData.email,
           password: formData.password,
           full_name: formData.full_name,
           role: formData.role,
-          // If your backend requires username, we map email to username or use a separate field
           username: formData.username || formData.email.split('@')[0] 
         };
 
-        // ✅ ROUTING LOGIC: Use different endpoints based on role
         if (formData.role === 'supervisor') {
-            // Assuming endpoint is /auth/supervisor based on provided code
             await api.apiClient.post('/auth/supervisor', payload);
         } else if (formData.role === 'admin') {
-            // Assuming endpoint is /auth/admin/user
             await api.apiClient.post('/auth/admin/user', payload);
         } else {
-            // Standard user registration (often at /auth/register)
             await api.register(payload);
         }
 
         toast.success(`User ${formData.full_name} created successfully`);
       } else {
-        // Update logic
-        // Assuming endpoint: PUT /users/{id}
         await api.apiClient.put(`/users/${user.id}`, formData);
         toast.success(`User ${formData.full_name} updated successfully`);
       }
@@ -204,24 +194,19 @@ const UserModal = ({ mode = 'add', user = null, onClose, onSuccess }) => {
     } catch (error) {
       console.error(`${mode === 'add' ? 'Registration' : 'Update'} failed:`, error);
       
-      // FIXED: Robust error parsing to prevent "Objects are not valid as React child"
       let errorMessage = `Failed to ${mode} user`;
       const detail = error.response?.data?.detail;
 
       if (typeof detail === 'string') {
-        // Simple error message
         errorMessage = detail;
       } else if (Array.isArray(detail)) {
-        // Handle Pydantic validation array: [{ loc: [], msg: "", type: "" }]
         errorMessage = detail.map(err => {
             const field = err.loc && err.loc.length > 1 ? err.loc[err.loc.length - 1] : 'Field';
             return `${field}: ${err.msg}`;
         }).join(', ');
       } else if (typeof detail === 'object' && detail !== null) {
-        // Handle generic object errors
         errorMessage = Object.values(detail).join(', ');
       } else if (error.message) {
-        // Fallback to JS error message
         errorMessage = error.message;
       }
 
@@ -258,7 +243,6 @@ const UserModal = ({ mode = 'add', user = null, onClose, onSuccess }) => {
             />
           </div>
           
-          {/* Optional: Add Username field if backend requires it distinctly */}
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Username (Optional)</label>
             <Input 
@@ -318,19 +302,15 @@ const AdminDashboard = () => {
   const { user, logout, isDarkMode, toggleDarkMode } = useAuth();
   const navigate = useNavigate();
 
-  // --- State Management ---
   const [activeTab, setActiveTab] = useState('overview');
   const [mobileOpen, setMobileOpen] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   
-  // Dropdown States
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
 
-  // User Management States
   const [showArchived, setShowArchived] = useState(false);
 
-  // Modals & Alerts
   const [isCreateTaskModalOpen, setIsCreateTaskModalOpen] = useState(false);
   const [userModalConfig, setUserModalConfig] = useState({ isOpen: false, mode: 'add', user: null });
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', message: '', type: 'info', onConfirm: null });
@@ -339,14 +319,16 @@ const AdminDashboard = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRole, setFilterRole] = useState('all');
 
-  // Data State
   const [tasks, setTasks] = useState([]);
   const [employees, setEmployees] = useState([]); 
   const [kpiData, setKpiData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   
-  // System Health State
+  // NEW STATE FOR AUDIT AND RETRAINING
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [retrainStatus, setRetrainStatus] = useState({ loading: false, logs: [] });
+
   const [systemHealth, setSystemHealth] = useState(null);
 
   const [employeeKpiData, setEmployeeKpiData] = useState(null);
@@ -359,28 +341,65 @@ const AdminDashboard = () => {
     libraries: MAP_LIBRARIES,
   });
 
-  // --- Navigation Config ---
   const navItems = [
     { id: 'overview', label: 'System Overview', icon: <FiGrid /> },
     { id: 'employee_kpi', label: 'Employee KPI', icon: <FiActivity /> },
     { id: 'user_management', label: 'User Management', icon: <FiUsers /> },
     { id: 'tasks', label: 'All Tasks', icon: <FiCheckSquare /> },
+    { id: 'audit', label: 'Audit Trail', icon: <FiList /> }, // <--- NEW TAB
     { id: 'tracking', label: 'Global Tracking', icon: <FiMapPin /> },
     { id: 'analytics', label: 'System Analytics', icon: <FiTrendingUp /> },
     { id: 'settings', label: 'Settings & Maintenance', icon: <FiSettings /> },
   ];
 
-  // --- Effects ---
   useEffect(() => {
     if (isMapLoaded) console.log('Google Maps API script loaded successfully.');
     if (mapLoadError) toast.error("Map services could not be loaded.");
   }, [isMapLoaded, mapLoadError]);
 
+  // ✅ NEW: WebSocket Connection for Real-Time Audits
+  useEffect(() => {
+    if (user?.role !== 'admin') return;
+
+    const connectWebSocket = () => {
+        const apiUrl = process.env.REACT_APP_API_URL || "http://localhost:8000/api/v1";
+        const urlObj = new URL(apiUrl);
+        const protocol = urlObj.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${urlObj.host}/ws/location`;
+        
+        const ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+            console.log('Connected to Audit/Location Stream');
+        };
+
+        ws.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                // Listen for 'audit_log_created' event
+                if (data.event === 'audit_log_created' && data.log) {
+                    setAuditLogs(prev => [data.log, ...prev].slice(0, 50));
+                    // Optional: Toast notification for specific critical actions
+                    if (['SYSTEM_WIPE_USERS', 'SYSTEM_WIPE_TASKS'].includes(data.log.action)) {
+                         toast.error(`CRITICAL: ${data.log.action}`);
+                    }
+                }
+            } catch (e) {
+                console.error('WS Message Error', e);
+            }
+        };
+        
+        return ws;
+    };
+
+    const ws = connectWebSocket();
+    return () => ws?.close();
+  }, [user]);
+
   const fetchData = async () => {
     setLoading(true);
     setError(null);
     try {
-      // 1. Fetch Tasks
       let allTasks = [];
       let page = 1;
       const limit = 100;
@@ -403,7 +422,6 @@ const AdminDashboard = () => {
       allTasks.forEach(task => uniqueTasksMap.set(task.id, task));
       const uniqueTasks = Array.from(uniqueTasksMap.values());
 
-      // 2. Fetch Users, Analytics & System Health
       const [usersResponse, kpiResponse, teamResponse, healthResponse] = await Promise.all([
         api.getUsers(),
         api.getAnalyticsOverview(),
@@ -415,7 +433,6 @@ const AdminDashboard = () => {
 
       setTasks(uniqueTasks);
       
-      // Ensure employees have an is_active property (default to true if missing)
       const processedUsers = (Array.isArray(usersData) ? usersData : []).map(u => ({
           ...u,
           is_active: u.is_active !== undefined ? u.is_active : true
@@ -426,10 +443,19 @@ const AdminDashboard = () => {
       setTeamKpiData(teamResponse?.data ?? null);
       setSystemHealth(healthResponse?.data);
 
+      // Fetch Audit Logs if admin
+      if (user?.role === 'admin') {
+        try {
+          const auditRes = await api.getAuditLogs({ limit: 50 });
+          setAuditLogs(auditRes.data);
+        } catch (e) {
+          console.warn("Failed to fetch audit logs", e);
+        }
+      }
+
     } catch (err) {
       console.error("Failed to load admin data:", err);
       
-      // Handle 401 Unauthorized specifically to fix redirect loop
       if (err.response && err.response.status === 401) {
           if (!toast.isActive("session-expired")) {
               toast.error("Session expired or unauthorized. Please login again.", { id: "session-expired" });
@@ -445,15 +471,12 @@ const AdminDashboard = () => {
     }
   };
 
-  // FIX: Added [user] dependency so data refreshes when account switches
-  // Also added a role check to ensure we only fetch if the user is actually an admin
   useEffect(() => {
     if (user && user.role === 'admin') {
         fetchData();
     }
   }, [user]); 
 
-  // KPI Loading for specific employee
   useEffect(() => {
     if (!selectedEmployee) {
       setEmployeeKpiData(null);
@@ -471,7 +494,6 @@ const AdminDashboard = () => {
     setLoadingKpi(false);
   }, [selectedEmployee, teamKpiData]);
 
-  // --- Helper Functions ---
   const addAlert = (type, message) => {
     const id = Date.now();
     setAlerts(prev => [...prev, { id, type, message }]);
@@ -485,11 +507,10 @@ const AdminDashboard = () => {
   };
 
   const handleUserSaved = (userData) => {
-    fetchData(); // Reload data completely to reflect changes
+    fetchData();
     addAlert('success', 'User saved successfully.');
   };
 
-  // --- Maintenance Handlers ---
   const handleWipeUsers = () => {
     setConfirmModal({
       isOpen: true,
@@ -534,7 +555,31 @@ const AdminDashboard = () => {
     });
   };
 
-  // --- Data Export Handler ---
+  const handleRetrainModel = async () => {
+    setRetrainStatus({ loading: true, logs: ['Initializing request...'] });
+    try {
+        const res = await api.triggerRetrain();
+        setRetrainStatus({ 
+            loading: false, 
+            logs: res.data.logs, 
+            success: res.data.success 
+        });
+        if (res.data.success) {
+            toast.success("Model retrained successfully!");
+            fetchData(); 
+        } else {
+            toast.error("Retraining failed: " + res.data.message);
+        }
+    } catch (err) {
+        setRetrainStatus({ 
+            loading: false, 
+            logs: ['❌ Error contacting server', err.message], 
+            success: false 
+        });
+        toast.error("Failed to trigger retraining");
+    }
+  };
+
   const handleExportUsers = () => {
     const csvContent = "data:text/csv;charset=utf-8," 
       + "ID,Name,Email,Role,Status\n"
@@ -550,8 +595,6 @@ const AdminDashboard = () => {
     toast.success("User list exported.");
   };
 
-  // --- User Management Handlers with Custom Modal ---
-
   const closeConfirmModal = () => setConfirmModal(prev => ({ ...prev, isOpen: false }));
 
   const handleArchiveUser = (user) => {
@@ -564,21 +607,16 @@ const AdminDashboard = () => {
         onConfirm: async () => {
             setConfirmModal(prev => ({ ...prev, isLoading: true }));
             try {
-                // ✅ API Call: Archive (update is_active = false)
-                // Assuming PUT /users/{id} accepts partial updates
                 await api.apiClient.put(`/users/${user.id}`, { is_active: false });
-                
                 setEmployees(prev => prev.map(e => e.id === user.id ? { ...e, is_active: false } : e));
                 toast.success(`${user.full_name} archived`);
                 addAlert('info', 'User archived successfully.');
             } catch (err) {
                 console.error("Failed to archive user:", err);
-                
-                // Specific 404 Handling
                 if (err.response && err.response.status === 404) {
-                    toast.error(`Error: Endpoint PUT /users/${user.id} not found. Please check backend routers.`);
+                    toast.error(`Error: Endpoint PUT /users/${user.id} not found.`);
                 } else {
-                    toast.error("Failed to archive user. Please try again.");
+                    toast.error("Failed to archive user.");
                 }
             } finally {
                 closeConfirmModal();
@@ -592,25 +630,17 @@ const AdminDashboard = () => {
         isOpen: true,
         type: 'success',
         title: 'Restore User Access?',
-        message: `This will restore system access for ${user.full_name}. They will be able to log in immediately.`,
+        message: `This will restore system access for ${user.full_name}.`,
         isLoading: false,
         onConfirm: async () => {
             setConfirmModal(prev => ({ ...prev, isLoading: true }));
             try {
-                // ✅ API Call: Restore (update is_active = true)
                 await api.apiClient.put(`/users/${user.id}`, { is_active: true });
-
                 setEmployees(prev => prev.map(e => e.id === user.id ? { ...e, is_active: true } : e));
                 toast.success(`${user.full_name} restored`);
                 addAlert('success', 'User account restored.');
             } catch (err) {
-                console.error("Failed to restore user:", err);
-                 // Specific 404 Handling
-                 if (err.response && err.response.status === 404) {
-                    toast.error(`Error: Endpoint PUT /users/${user.id} not found. Please check backend routers.`);
-                } else {
-                    toast.error("Failed to restore user.");
-                }
+                toast.error("Failed to restore user.");
             } finally {
                 closeConfirmModal();
             }
@@ -623,25 +653,16 @@ const AdminDashboard = () => {
         isOpen: true,
         type: 'danger',
         title: 'Permanently Delete User?',
-        message: `WARNING: This action cannot be undone. This will permanently delete ${user.full_name} and all associated personal data from the database.`,
+        message: `WARNING: This action cannot be undone.`,
         isLoading: false,
         onConfirm: async () => {
             setConfirmModal(prev => ({ ...prev, isLoading: true }));
             try {
-                // ✅ API Call: Hard Delete
                 await api.apiClient.delete(`/users/${user.id}`);
-                
                 setEmployees(prev => prev.filter(e => e.id !== user.id));
                 toast.success(`${user.full_name} permanently deleted`);
-                addAlert('warning', 'User deleted from database.');
             } catch (err) {
-                console.error("Failed to delete user:", err);
-                // Handle fallback if endpoint doesn't exist yet
-                if (err.response && err.response.status === 404) {
-                    toast.error(`Error: Endpoint DELETE /users/${user.id} not found. Please check backend routers.`);
-                } else {
-                    toast.error("Failed to delete user.");
-                }
+                toast.error("Failed to delete user.");
             } finally {
                 closeConfirmModal();
             }
@@ -662,9 +683,6 @@ const AdminDashboard = () => {
     return `${diffDays}d ago`;
   };
 
-  // --- Derived State ---
-  
-  // Filter employees for User Management based on Show Archive toggle
   const filteredManagementEmployees = useMemo(() => {
     return (Array.isArray(employees) ? employees : [])
     .filter(emp => {
@@ -676,7 +694,6 @@ const AdminDashboard = () => {
     });
   }, [employees, searchTerm, filterRole, showArchived]);
 
-  // Filter employees for KPI tab (always show all or active)
   const filteredKPIEmployees = useMemo(() => {
     return (Array.isArray(employees) ? employees : [])
     .filter(emp => {
@@ -1185,12 +1202,79 @@ const AdminDashboard = () => {
               />
             )}
 
-            {/* 5. TRACKING TAB */}
+            {/* 5. AUDIT TRAIL TAB (NEW) */}
+            {activeTab === 'audit' && (
+                <Card className="h-[calc(100vh-8rem)] flex flex-col">
+                    <div className="flex justify-between items-center mb-6">
+                        <div>
+                            <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                                System Audit Log
+                                <Badge text="Live" color="green" size="xs" className="animate-pulse" />
+                            </h3>
+                            <p className="text-sm text-slate-500">Track sensitive actions and system events in real-time.</p>
+                        </div>
+                        <Button variant="outline" onClick={fetchData} icon={FiRefreshCw}>Refresh</Button>
+                    </div>
+                    <div className="flex-1 overflow-auto border rounded-lg border-slate-200 dark:border-slate-700">
+                        <table className="w-full text-left border-collapse">
+                            <thead className="bg-slate-50 dark:bg-slate-800/50 sticky top-0 shadow-sm">
+                                <tr>
+                                    <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Timestamp</th>
+                                    <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">User</th>
+                                    <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Action</th>
+                                    <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Target</th>
+                                    <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Details</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+                                <AnimatePresence initial={false}>
+                                    {auditLogs.map((log) => (
+                                        <motion.tr 
+                                            key={log.id} 
+                                            initial={{ opacity: 0, y: -10, backgroundColor: "rgba(99, 102, 241, 0.1)" }}
+                                            animate={{ opacity: 1, y: 0, backgroundColor: "transparent" }}
+                                            transition={{ duration: 0.5 }}
+                                            className="hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                                        >
+                                            <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-400 font-mono whitespace-nowrap">
+                                                {new Date(log.timestamp).toLocaleString()}
+                                            </td>
+                                            <td className="px-4 py-3 text-sm font-medium text-slate-800 dark:text-slate-200">
+                                                {log.user_email}
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <Badge 
+                                                    text={log.action} 
+                                                    color={log.action.includes('DELETE') || log.action.includes('WIPE') ? 'red' : log.action.includes('RETRAIN') ? 'purple' : 'blue'} 
+                                                    size="xs" 
+                                                />
+                                            </td>
+                                            <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-400">
+                                                {log.target_resource || '-'}
+                                            </td>
+                                            <td className="px-4 py-3 text-sm text-slate-500 truncate max-w-xs" title={log.details}>
+                                                {log.details}
+                                            </td>
+                                        </motion.tr>
+                                    ))}
+                                </AnimatePresence>
+                                {auditLogs.length === 0 && (
+                                    <tr>
+                                        <td colSpan="5" className="text-center py-8 text-slate-500">No audit logs found.</td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </Card>
+            )}
+
+            {/* 6. TRACKING TAB */}
             {activeTab === 'tracking' && (
               <LiveLocationTracker isMapLoaded={isMapLoaded} mapLoadError={mapLoadError} />
             )}
 
-            {/* 6. ANALYTICS TAB */}
+            {/* 7. ANALYTICS TAB */}
             {activeTab === 'analytics' && (
               <div className="space-y-6">
                 <div className="bg-slate-900 rounded-xl p-8 text-white shadow-lg relative overflow-hidden">
@@ -1220,7 +1304,7 @@ const AdminDashboard = () => {
               </div>
             )}
 
-            {/* 7. SETTINGS & MAINTENANCE TAB */}
+            {/* 8. SETTINGS & MAINTENANCE TAB */}
             {activeTab === 'settings' && (
                <div className="space-y-6">
                   <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100 mb-4">System & Maintenance</h2>
@@ -1239,14 +1323,16 @@ const AdminDashboard = () => {
                                 </div>
                                 <Badge text="Connected" color="green" size="xs" />
                             </div>
+                            {/* ML Prediction Service Status */}
                             <div className="flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-900/50 rounded-lg">
                                 <div className="flex items-center gap-3">
                                     <FiCpu className="text-purple-500" />
                                     <span className="text-sm font-medium">ML Prediction Service</span>
                                 </div>
                                 <Badge 
-                                  text={systemHealth?.status === 'ready' ? 'Operational' : 'Offline'} 
-                                  color={systemHealth?.status === 'ready' ? 'green' : 'red'} 
+                                  /* ✅ FIX: Check for 'healthy' instead of 'ready' */
+                                  text={systemHealth?.status === 'healthy' ? 'Operational' : 'Offline'} 
+                                  color={systemHealth?.status === 'healthy' ? 'green' : 'red'} 
                                   size="xs" 
                                 />
                             </div>
@@ -1263,6 +1349,49 @@ const AdminDashboard = () => {
                             </div>
                          </div>
                       </Card>
+                      
+                      {/* AI Model Management (NEW) */}
+                      <Card className="border-indigo-100 dark:border-indigo-900/30 md:col-span-2 lg:col-span-1">
+                        <div className="flex justify-between items-start mb-4">
+                            <div>
+                                <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                                    <FiCpu className="text-indigo-500" /> AI Model Management
+                                </h3>
+                                <p className="text-sm text-slate-500 mt-1">
+                                    Manually trigger the training pipeline using the latest task data.
+                                </p>
+                            </div>
+                        </div>
+                        
+                        <div className="bg-slate-900 rounded-lg p-4 font-mono text-xs text-green-400 h-40 overflow-y-auto shadow-inner mb-4">
+                            <div className="flex items-center gap-2 text-slate-500 border-b border-slate-800 pb-2 mb-2">
+                                <FiTerminal /> System Output
+                            </div>
+                            {retrainStatus.logs.length === 0 ? (
+                                <span className="text-slate-600 italic">Ready to start. Click 'Retrain Model Now' to begin.</span>
+                            ) : (
+                                retrainStatus.logs.map((log, i) => (
+                                    <div key={i} className="mb-1">
+                                        <span className="text-slate-500 mr-2">[{new Date().toLocaleTimeString()}]</span>
+                                        {log}
+                                    </div>
+                                ))
+                            )}
+                            {retrainStatus.loading && (
+                                <div className="animate-pulse">_</div>
+                            )}
+                        </div>
+
+                        <Button 
+                            variant="primary" 
+                            fullWidth
+                            onClick={handleRetrainModel} 
+                            loading={retrainStatus.loading}
+                            icon={FiTerminal}
+                        >
+                            {retrainStatus.loading ? 'Training in Progress...' : 'Retrain Model Now'}
+                        </Button>
+                    </Card>
 
                       {/* Data Management (Danger Zone) */}
                       <Card className="border-red-200 dark:border-red-900/50">

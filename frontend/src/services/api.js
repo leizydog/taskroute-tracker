@@ -149,7 +149,19 @@ export const AnalyticsAPI = {
 };
 
 // -------------------------
-// 4. DEFAULT EXPORT (BACKWARD-COMPATIBLE)
+// 4. Admin Operations (✅ NEW ADDITION)
+// -------------------------
+export const AdminAPI = {
+  getAuditLogs(params) {
+    return apiClient.get('/admin/audit-logs', { params });
+  },
+  triggerRetrain() {
+    return apiClient.post('/admin/retrain-model');
+  }
+};
+
+// -------------------------
+// 5. DEFAULT EXPORT (BACKWARD-COMPATIBLE)
 // -------------------------
 const API = {
   apiClient,
@@ -159,6 +171,7 @@ const API = {
   LocationAPI,
   ForecastAPI,
   AnalyticsAPI,
+  AdminAPI, // ✅ NEW
 
   // Flatten for backward compatibility
   login: AuthAPI.login,
@@ -195,6 +208,10 @@ const API = {
   getModelHealth: AnalyticsAPI.getModelHealth,
   wipeAllUsers: UserAPI.wipeAllUsers,
   wipeAllTasks: UserAPI.wipeAllTasks,
+  
+  // ✅ NEW: Admin Helpers
+  getAuditLogs: AdminAPI.getAuditLogs,
+  triggerRetrain: AdminAPI.triggerRetrain,
 };
 
 export default API;

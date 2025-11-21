@@ -6,6 +6,10 @@ from pydantic import BaseModel
 from app.database import get_db  # Remove 'backend.' prefix
 from app.models.user import User  # Remove 'backend.' prefix
 from app.models.user import User, UserRole
+# ✅ Import AuditLog
+from app.models.audit import AuditLog
+# ✅ Import Manager for WebSocket
+from app.websocket_manager import manager
 from app.schemas.user import UserCreate, UserResponse, Token, UserLogin, UserUpdate, PasswordChange  # Remove 'backend.' prefix
 from app.core.auth import (  # Remove 'backend.' prefix
     get_password_hash,
@@ -169,11 +173,13 @@ def protected_route(current_user: User = Depends(get_current_active_user)):
     # 🎯 APPLY THE ADMIN DEPENDENCY HERE 
     #dependencies=[Depends(get_current_admin_user)]
 )
-def create_admin_user(
+async def create_admin_user(
     user_data: UserCreate, 
     db: Session = Depends(get_db), 
     # The actual current_user object is consumed by the dependency above, 
     # we don't need it here, but the dependency runs first!
+    # ✅ Update: Inject admin user to log the action
+    current_user: User = Depends(get_current_admin_user)
 ):
     """
     Creates a new user with any specified role (Admin ONLY endpoint).
@@ -200,6 +206,29 @@ def create_admin_user(
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
+
+    # ✅ Audit Log: Admin created a user
+    audit = AuditLog(
+        user_id=current_user.id,
+        action="USER_CREATE_ADMIN",
+        target_resource=f"User #{db_user.id} ({db_user.username})",
+        details=f"Role: {db_user.role.value}"
+    )
+    db.add(audit)
+    db.commit()
+
+    # ⚡ Real-time Audit Broadcast
+    await manager.broadcast_json({
+        "event": "audit_log_created",
+        "log": {
+            "id": audit.id,
+            "action": audit.action,
+            "target_resource": audit.target_resource,
+            "details": audit.details,
+            "timestamp": audit.timestamp.isoformat(),
+            "user_email": current_user.email
+        }
+    })
     
     return db_user
 
@@ -208,11 +237,13 @@ def create_admin_user(
     response_model=UserResponse, 
     status_code=status.HTTP_201_CREATED,
     # 🎯 Protection: Only allow users with the ADMIN role
-    dependencies=[Depends(get_current_admin_user)]
+    # dependencies=[Depends(get_current_admin_user)]
 )
-def register_supervisor(
+async def register_supervisor(
     user_data: UserCreate, 
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    # ✅ Update: Inject admin user to log the action
+    current_user: User = Depends(get_current_admin_user)
 ):
     """
     Creates a new supervisor (MANAGER role). 
@@ -248,6 +279,29 @@ def register_supervisor(
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
+    
+    # ✅ Audit Log: Supervisor Created
+    audit = AuditLog(
+        user_id=current_user.id,
+        action="USER_CREATE_SUPERVISOR",
+        target_resource=f"User #{db_user.id} ({db_user.username})",
+        details=f"Role: {db_user.role.value}"
+    )
+    db.add(audit)
+    db.commit()
+
+    # ⚡ Real-time Audit Broadcast
+    await manager.broadcast_json({
+        "event": "audit_log_created",
+        "log": {
+            "id": audit.id,
+            "action": audit.action,
+            "target_resource": audit.target_resource,
+            "details": audit.details,
+            "timestamp": audit.timestamp.isoformat(),
+            "user_email": current_user.email
+        }
+    })
     
     return db_user
 
