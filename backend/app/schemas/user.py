@@ -78,3 +78,16 @@ class PasswordChange(BaseModel):
                 "new_password": "NewSecurePassword456!"
             }
         }
+
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+class PasswordResetConfirm(BaseModel):
+    token: str
+    new_password: str
+    
+    @validator('new_password')
+    def validate_new_password(cls, v):
+        if len(v) < 8:
+            raise ValueError('Password must be at least 8 characters long')
+        return v

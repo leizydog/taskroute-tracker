@@ -1,23 +1,31 @@
 from datetime import timedelta
+from app.core.email import send_reset_email
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 import shutil
 from pathlib import Path
+from jose import jwt, JWTError # ✅ Added
 
 from app.database import get_db
 from app.models.user import User, UserRole
 from app.models.audit import AuditLog
 from app.websocket_manager import manager
-from app.schemas.user import UserCreate, UserResponse, Token, UserLogin, UserUpdate, PasswordChange
+from app.schemas.user import (
+    UserCreate, UserResponse, Token, UserLogin, UserUpdate, PasswordChange,
+    PasswordResetRequest, PasswordResetConfirm # ✅ Added
+)
 from app.core.auth import (
     get_password_hash,
     authenticate_user,
     create_access_token,
     get_current_admin_user,
     get_current_active_user,
-    ACCESS_TOKEN_EXPIRE_MINUTES
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    RESET_TOKEN_EXPIRE_MINUTES, # ✅ Added
+    SECRET_KEY, # ✅ Added
+    ALGORITHM   # ✅ Added
 )
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -356,6 +364,87 @@ def change_password(
     
     return {"message": "Password updated successfully"}
 
+# ✅ NEW: Forgot Password Endpoint
+@router.post("/forgot-password")
+async def forgot_password(request: PasswordResetRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == request.email).first()
+    if not user:
+        return {"message": "If the email exists, a reset link has been sent."}
+
+    expires = timedelta(minutes=RESET_TOKEN_EXPIRE_MINUTES)
+    reset_token = create_access_token(
+        data={"sub": user.email, "type": "reset"},
+        expires_delta=expires
+    )
+    
+    reset_link = f"http://localhost:3000/reset-password?token={reset_token}"
+
+    # ✅ SEND REAL EMAIL
+    try:
+        await send_reset_email(user.email, reset_link)
+        print(f"✅ Email sent to {user.email}")
+    except Exception as e:
+        print(f"❌ Failed to send email: {e}")
+        # In production, logging the error is enough. Don't crash the request.
+
+    return {"message": "If the email exists, a reset link has been sent."}
+
+
+# ✅ NEW: Reset Password Endpoint
+@router.post("/reset-password")
+async def reset_password(
+    request: PasswordResetConfirm,
+    db: Session = Depends(get_db)
+):
+    """
+    Verifies the reset token and updates the user's password.
+    """
+    try:
+        # Decode & Verify Token
+        payload = jwt.decode(request.token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+        token_type: str = payload.get("type")
+        
+        # Ensure it's a reset token, not a login token
+        if email is None or token_type != "reset":
+            raise HTTPException(status_code=400, detail="Invalid token type")
+            
+    except JWTError:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+
+    # Fetch User
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Update Password
+    user.hashed_password = get_password_hash(request.new_password)
+    db.commit()
+
+    # ✅ Audit Log: Password Reset
+    audit = AuditLog(
+        user_id=user.id,
+        action="PASSWORD_RESET",
+        target_resource="User Account",
+        details="Password reset via email link"
+    )
+    db.add(audit)
+    db.commit()
+
+    # ⚡ Real-time Audit Broadcast
+    await manager.broadcast_json({
+        "event": "audit_log_created",
+        "log": {
+            "id": audit.id,
+            "action": audit.action,
+            "target_resource": audit.target_resource,
+            "details": audit.details,
+            "timestamp": audit.timestamp.isoformat(),
+            "user_email": user.email
+        }
+    })
+    
+    return {"message": "Password updated successfully"}
 
 # ✅ NEW: Implemented Avatar Upload Endpoint
 @router.post("/me/avatar")

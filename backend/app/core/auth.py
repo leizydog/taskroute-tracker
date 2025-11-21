@@ -13,6 +13,7 @@ from app.schemas.user import TokenData
 SECRET_KEY = "your-secret-key-change-this-in-production"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
+RESET_TOKEN_EXPIRE_MINUTES = 15  # ✅ Added for password reset tokens
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 

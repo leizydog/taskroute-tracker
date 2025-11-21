@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles  # ✅ Import this
 from pathlib import Path # ✅ Import this
 from app.database import engine
 from app.models import user, task, audit
-from app.routers import auth, tasks, locations, analytics, users, predictions, admin
+from app.routers import auth, tasks, locations, analytics, users, predictions, admin, reports
 from app.websocket_manager import manager
 from dotenv import load_dotenv
 import os
@@ -88,6 +88,7 @@ app.include_router(locations.router, prefix="/api/v1")
 app.include_router(analytics.router, prefix="/api/v1")
 app.include_router(predictions.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
+app.include_router(reports.router, prefix="/api/v1") # Register it
 
 # WebSocket endpoint
 @app.websocket("/ws/location")
