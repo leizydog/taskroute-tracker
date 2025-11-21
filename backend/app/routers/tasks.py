@@ -221,6 +221,9 @@ async def seed_historical_task(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
+    """
+    Special endpoint for seeding historical task data - ADMIN ONLY
+    """
     # Check admin permission
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(
@@ -243,7 +246,6 @@ async def seed_historical_task(
     # Allow setting historical fields directly
     try:
         if "status" in historical_data:
-            # Handle both string and enum values
             status_value = historical_data["status"]
             if isinstance(status_value, str):
                 task.status = TaskStatus(status_value)
@@ -260,7 +262,6 @@ async def seed_historical_task(
             task.quality_rating = historical_data["quality_rating"]
         
         if "actual_duration" in historical_data and historical_data["actual_duration"] is not None:
-            # Convert seconds to minutes if needed (check your model)
             task.actual_duration = historical_data["actual_duration"]
         
         db.commit()
@@ -335,7 +336,6 @@ async def start_task(
             task_id=task.id,
             location_type="task_start"
         )
-        # Changed from .dict() to .model_dump() for compatibility with Pydantic v2+
         db_location_log = LocationLog(**location_log_data.model_dump(), user_id=current_user.id)
         db.add(db_location_log)
 
@@ -407,33 +407,32 @@ async def complete_task(
         joinedload(Task.assigned_user),
         joinedload(Task.created_user)
     ).filter(Task.id == task_id).first()
+    
     if not task:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Task not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
 
     if task.assigned_to != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You can only complete tasks assigned to you"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only complete tasks assigned to you")
+    
     if task.status != TaskStatus.IN_PROGRESS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Task must be in progress to be completed"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Task must be in progress to be completed")
 
+    # Calculate Duration
     completion_time = datetime.utcnow()
     if task.started_at:
         duration_seconds = (completion_time - task.started_at).total_seconds()
         task.actual_duration = int(duration_seconds / 60)
 
+    # Update Status
     task.status = TaskStatus.COMPLETED
     task.completed_at = completion_time
+    
+    # ✅ Update Completion Details
     task.completion_notes = complete_data.completion_notes
     task.quality_rating = complete_data.quality_rating
+    task.signature_url = complete_data.signature_url # Save the signature path
 
+    # Location update on complete
     if complete_data.latitude is not None:
         task.latitude = complete_data.latitude
     if complete_data.longitude is not None:
@@ -442,7 +441,7 @@ async def complete_task(
     db.commit()
     db.refresh(task)
 
-    # ✅ Audit Log: Task Completed
+    # Audit Log
     audit = AuditLog(
         user_id=current_user.id,
         action="TASK_COMPLETE",
@@ -452,7 +451,7 @@ async def complete_task(
     db.add(audit)
     db.commit()
 
-    # ⚡ Real-time Audit Broadcast
+    # Broadcast
     await manager.broadcast_json({
         "event": "audit_log_created",
         "log": {

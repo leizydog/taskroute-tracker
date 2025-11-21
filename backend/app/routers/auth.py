@@ -1,17 +1,17 @@
 from datetime import timedelta
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from app.database import get_db  # Remove 'backend.' prefix
-from app.models.user import User  # Remove 'backend.' prefix
+import shutil
+from pathlib import Path
+
+from app.database import get_db
 from app.models.user import User, UserRole
-# ✅ Import AuditLog
 from app.models.audit import AuditLog
-# ✅ Import Manager for WebSocket
 from app.websocket_manager import manager
-from app.schemas.user import UserCreate, UserResponse, Token, UserLogin, UserUpdate, PasswordChange  # Remove 'backend.' prefix
-from app.core.auth import (  # Remove 'backend.' prefix
+from app.schemas.user import UserCreate, UserResponse, Token, UserLogin, UserUpdate, PasswordChange
+from app.core.auth import (
     get_password_hash,
     authenticate_user,
     create_access_token,
@@ -46,30 +46,17 @@ def register_user(user_data: UserCreate, db: Session = Depends(get_db)):
     
     # Check if the Pydantic UserCreate schema contains a role field.
     # If not, we explicitly set the default role here.
-    
-    # Assuming the default role for new registrations is 'user' 
-    # and that the role attribute on the SQL model is the string or the Enum value.
-    
-    # --- START OF CHANGE ---
     db_user = User(
         email=user_data.email,
         username=user_data.username,
         full_name=user_data.full_name,
         hashed_password=hashed_password,
-        # Ensure the role is explicitly set. 
-        # If your User model defaults role to 'user', this is optional but good practice.
-        # If user_data contains a role, use it: user_data.role.value 
-        # If you want to force 'user' on registration:
         role=UserRole.USER 
     )
-    # --- END OF CHANGE ---
     
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
-    
-    # If your User model uses a Python Enum for the role, the returned db_user 
-    # will correctly serialize because FastAPI handles Pydantic's serialization of model objects.
     
     return db_user
 
@@ -97,8 +84,6 @@ def login_user(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = D
     # Create access token
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        # ✅ FIX: Include the user's role in the JWT data payload
-        # ✅ FIX: Convert user.role to a string (use .value if it's a standard Python Enum)
         data={"sub": user.email, "role": user.role.value},
         expires_delta=access_token_expires
     )
@@ -128,7 +113,6 @@ def login_user_json(user_credentials: UserLogin, db: Session = Depends(get_db)):
     # Create access token
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        # ✅ FIX: Include the user's role in the JWT data payload
         data={"sub": user.email, "role": user.role.value}, 
         expires_delta=access_token_expires
     )
@@ -144,6 +128,7 @@ def login_user_json(user_credentials: UserLogin, db: Session = Depends(get_db)):
             "full_name": user.full_name,
             "is_active": user.is_active,
             "role": user.role,
+            "avatar_url": user.avatar_url, # ✅ Added avatar_url here
             "created_at": user.created_at.isoformat(),
             "updated_at": user.updated_at.isoformat() if user.updated_at else None
         }
@@ -170,15 +155,10 @@ def protected_route(current_user: User = Depends(get_current_active_user)):
     "/admin/user", 
     response_model=UserResponse, 
     status_code=status.HTTP_201_CREATED,
-    # 🎯 APPLY THE ADMIN DEPENDENCY HERE 
-    #dependencies=[Depends(get_current_admin_user)]
 )
 async def create_admin_user(
     user_data: UserCreate, 
     db: Session = Depends(get_db), 
-    # The actual current_user object is consumed by the dependency above, 
-    # we don't need it here, but the dependency runs first!
-    # ✅ Update: Inject admin user to log the action
     current_user: User = Depends(get_current_admin_user)
 ):
     """
@@ -198,8 +178,7 @@ async def create_admin_user(
         username=user_data.username,
         full_name=user_data.full_name,
         hashed_password=hashed_password,
-        # ✅ FIX: Use the role from the input data, as it's a controlled endpoint
-        role=user_data.role # Pydantic converts "admin" string to UserRole.ADMIN
+        role=user_data.role
     )
     
     # 3. Commit
@@ -236,13 +215,10 @@ async def create_admin_user(
     "/supervisor", 
     response_model=UserResponse, 
     status_code=status.HTTP_201_CREATED,
-    # 🎯 Protection: Only allow users with the ADMIN role
-    # dependencies=[Depends(get_current_admin_user)]
 )
 async def register_supervisor(
     user_data: UserCreate, 
     db: Session = Depends(get_db),
-    # ✅ Update: Inject admin user to log the action
     current_user: User = Depends(get_current_admin_user)
 ):
     """
@@ -271,7 +247,6 @@ async def register_supervisor(
         username=user_data.username,
         full_name=user_data.full_name,
         hashed_password=hashed_password,
-        # ✅ Core Logic: Explicitly set the role to MANAGER
         role=user_data.role
     )
     
@@ -382,13 +357,43 @@ def change_password(
     return {"message": "Password updated successfully"}
 
 
+# ✅ NEW: Implemented Avatar Upload Endpoint
 @router.post("/me/avatar")
 def upload_avatar(
+    avatar: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    """Placeholder for avatar upload - not yet implemented"""
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Avatar upload feature is not yet implemented"
-    )
+    """Upload user avatar and update profile."""
+    
+    # 1. Validate File Type
+    if not avatar.content_type.startswith("image/"):
+        raise HTTPException(400, detail="File must be an image")
+        
+    # 2. Define Storage Path
+    # We rename the file to user_id to avoid collisions
+    file_extension = Path(avatar.filename).suffix or ".png"
+    filename = f"user_{current_user.id}{file_extension}"
+    
+    # Ensure directory exists (matches main.py config)
+    save_path = Path("static/avatars")
+    save_path.mkdir(parents=True, exist_ok=True)
+    
+    file_location = save_path / filename
+    
+    # 3. Save File
+    try:
+        with file_location.open("wb") as buffer:
+            shutil.copyfileobj(avatar.file, buffer)
+    except Exception as e:
+        raise HTTPException(500, detail=f"Could not save file: {str(e)}")
+        
+    # 4. Update Database
+    # The URL must match the mount point in main.py ("/static")
+    avatar_url = f"/static/avatars/{filename}"
+    
+    current_user.avatar_url = avatar_url
+    db.commit()
+    db.refresh(current_user)
+    
+    return {"message": "Avatar updated", "avatar_url": avatar_url}

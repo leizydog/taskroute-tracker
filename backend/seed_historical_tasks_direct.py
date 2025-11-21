@@ -100,7 +100,7 @@ def generate_tasks():
             
             # 3. Calculate final duration
             actual_minutes = int(estimated_minutes * performance_factor * noise)
-            actual_duration_seconds = actual_minutes * 60
+            # actual_duration_seconds = actual_minutes * 60  <-- REMOVED
             
             # Calculate completed_at based on the actual duration
             completed_at = task_date + timedelta(minutes=actual_minutes)
@@ -118,7 +118,7 @@ def generate_tasks():
                 latitude=template["latitude"],
                 longitude=template["longitude"],
                 estimated_duration=estimated_minutes,  # In minutes
-                actual_duration=actual_duration_seconds,  # In seconds
+                actual_duration=actual_minutes,        # ✅ UPDATED: In minutes (was seconds)
                 started_at=task_date,
                 completed_at=completed_at,
                 created_at=task_date,  # Task created when started for historical accuracy

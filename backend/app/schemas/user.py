@@ -9,6 +9,8 @@ class UserBase(BaseModel):
     email: EmailStr
     username: str = Field(..., min_length=3, max_length=50)
     full_name: str = Field(..., min_length=1, max_length=100)
+    # ✅ Added phone number (optional)
+    phone: Optional[str] = None
 
 
 # Schema for user creation (registration)
@@ -28,6 +30,8 @@ class UserResponse(UserBase):
     id: int
     is_active: bool
     role: UserRole
+    # ✅ Added avatar_url so frontend knows where the image is
+    avatar_url: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
 
@@ -40,6 +44,8 @@ class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
     username: Optional[str] = Field(None, min_length=3, max_length=50)
     full_name: Optional[str] = Field(None, min_length=1, max_length=100)
+    # ✅ Added phone number to update schema
+    phone: Optional[str] = None
     is_active: Optional[bool] = None
     role: Optional[UserRole] = None
 
@@ -66,7 +72,7 @@ class PasswordChange(BaseModel):
         return v
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "current_password": "OldPassword123!",
                 "new_password": "NewSecurePassword456!"

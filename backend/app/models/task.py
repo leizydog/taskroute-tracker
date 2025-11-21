@@ -1,23 +1,20 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, Enum, ForeignKey, Boolean, Float, JSON
-from sqlalchemy.sql import func
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Float, Enum, Text
 from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
 from app.database import Base
 import enum
 
-
-class TaskStatus(enum.Enum):
+class TaskStatus(str, enum.Enum):
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
 
-
-class TaskPriority(enum.Enum):
+class TaskPriority(str, enum.Enum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
     URGENT = "urgent"
-
 
 class Task(Base):
     __tablename__ = "tasks"
@@ -32,18 +29,19 @@ class Task(Base):
     assigned_to = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     
-    # ✅ NEW: Multi-destination support
+    # Multi-destination support
     is_multi_destination = Column(Boolean, default=False)
-    destinations = Column(JSON)  # Array of {location_name, latitude, longitude, sequence}
+    destinations = Column(Text) # JSON string or specialized JSON type depending on DB
     
-    # Location data (for single destination tasks - backward compatible)
+    # Location data
     location_name = Column(String(200))
     latitude = Column(Float)
     longitude = Column(Float)
+    address = Column(String, nullable=True) # Added for address string
     
-    # Time tracking
-    estimated_duration = Column(Integer)  # minutes
-    actual_duration = Column(Integer)  # minutes
+    # Time tracking & Forecasts
+    estimated_duration = Column(Integer)  # AI Predicted duration (minutes)
+    actual_duration = Column(Integer)     # Real duration (minutes)
     due_date = Column(DateTime)
     started_at = Column(DateTime)
     completed_at = Column(DateTime)
@@ -52,9 +50,11 @@ class Task(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
-    # Notes and completion details
+    # Completion Details
     completion_notes = Column(Text)
-    quality_rating = Column(Integer)  # 1-5 scale for ML analysis
+    quality_rating = Column(Integer) # 1-5
+    # ✅ NEW: Signature Image Path
+    signature_url = Column(String(500), nullable=True)
     
     # Relationships
     assigned_user = relationship("User", foreign_keys=[assigned_to], backref="assigned_tasks")

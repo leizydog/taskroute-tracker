@@ -1,5 +1,7 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles  # ✅ Import this
+from pathlib import Path # ✅ Import this
 from app.database import engine
 from app.models import user, task, audit
 from app.routers import auth, tasks, locations, analytics, users, predictions, admin
@@ -10,7 +12,7 @@ import os
 # -------------------------
 # Load environment variables
 # -------------------------
-load_dotenv()  # <- This loads .env automatically
+load_dotenv() 
 
 # -------------------------
 # Initialize predictors
@@ -55,13 +57,22 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# ✅ NEW: Setup Static Directory for Images
+# This ensures a 'static/avatars' folder exists
+STATIC_DIR = Path("static")
+AVATAR_DIR = STATIC_DIR / "avatars"
+AVATAR_DIR.mkdir(parents=True, exist_ok=True)
+
+# Mount the static directory to serve files
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
         "http://127.0.0.1:3000",
-        "http://frontend:3000",  # Docker container name
+        "http://frontend:3000", 
         "https://taskroute-frontend.vercel.app",
     ],
     allow_credentials=True,
@@ -69,7 +80,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers with /api/v1 prefix
+# Include routers
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(tasks.router, prefix="/api/v1")
 app.include_router(users.router, prefix="/api/v1")

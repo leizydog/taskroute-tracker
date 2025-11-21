@@ -304,8 +304,8 @@ def generate_historical_tasks(user_ids: Dict[int, int], user_tiers: Dict[int, st
                 "location_name": template["location"],
                 "latitude": template["lat"],
                 "longitude": template["lng"],
-                "estimated_duration": template["duration"] * 60,  # Convert to seconds
-                "actual_duration": actual_duration * 60 if actual_duration else None,
+                "estimated_duration": template["duration"],  # ✅ UPDATED: Now in minutes
+                "actual_duration": actual_duration if actual_duration else None, # ✅ UPDATED: Now in minutes
                 "due_date": due_date.isoformat(),
                 "completed_at": completed_at.isoformat() if completed_at else None,
                 "quality_rating": quality,

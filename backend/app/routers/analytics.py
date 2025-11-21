@@ -1,5 +1,5 @@
 # Updated: backend/app/routers/analytics.py
-# âœ… MIGRATED TO USE task_duration_predictor.py
+# ✅ MIGRATED TO USE task_duration_predictor.py
 
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
@@ -17,7 +17,7 @@ from app.models.user import User, UserRole
 from app.models.task import Task, TaskStatus
 from app.core.auth import get_current_active_user
 
-# âœ… NEW: Import the Google Directions-based predictor
+# ✅ NEW: Import the Google Directions-based predictor
 from app.services.task_duration_predictor import TaskDurationPredictor
 from dotenv import load_dotenv
 
@@ -36,15 +36,15 @@ if GOOGLE_API_KEY:
     try:
         models_loaded = predictor.load_models(model_dir='./app/ml_models')
         if models_loaded:
-            print("âœ… ML models loaded successfully for analytics")
+            print("✅ ML models loaded successfully for analytics")
         else:
-            print("âš ï¸  Warning: Could not load ML models")
+            print("⚠️  Warning: Could not load ML models")
             predictor = None
     except Exception as e:
-        print(f"âš ï¸  Warning: Could not load ML models: {e}")
+        print(f"⚠️  Warning: Could not load ML models: {e}")
         predictor = None
 else:
-    print("âš ï¸  Warning: GOOGLE_DIRECTIONS_API_KEY not set")
+    print("⚠️  Warning: GOOGLE_DIRECTIONS_API_KEY not set")
 
 
 # Add this helper somewhere at the top of analytics.py
@@ -96,7 +96,7 @@ class TaskForecastInput(BaseModel):
     ParticipantID: Optional[str] = None
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "employee_lat": 14.5657,
                 "employee_lng": 121.0346,
@@ -144,7 +144,7 @@ async def get_task_forecast(
     db: Session = Depends(get_db)
 ):
     """
-    ðŸŽ¯ Main forecasting endpoint - predicts task duration using Google Directions API.
+    🎯 Main forecasting endpoint - predicts task duration using Google Directions API.
     
     Returns:
     - Total predicted duration
@@ -198,6 +198,9 @@ async def get_task_forecast(
         
     except Exception as e:
         print(f"Prediction error: {e}")
+        # Add detailed error logging
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Prediction failed: {str(e)}"
@@ -211,7 +214,7 @@ async def compare_employee_forecasts(
     db: Session = Depends(get_db)
 ):
     """
-    ðŸ” Compare multiple employees for the same task.
+    🔍 Compare multiple employees for the same task.
     
     Returns forecasts sorted by predicted duration (fastest first).
     Useful for supervisors to choose the best employee for a task.
@@ -309,7 +312,7 @@ async def compare_employee_forecasts(
 @router.get("/forecast/model-status")
 async def get_model_status():
     """
-    ðŸ“Š Check if forecasting model is loaded and ready.
+    📊 Check if forecasting model is loaded and ready.
     
     Returns model metadata and health status.
     """
@@ -336,7 +339,7 @@ async def get_model_status():
 @router.get("/feature-importance")
 async def get_feature_importance():
     """
-    ðŸ“ˆ Returns the top 15 features affecting task duration prediction.
+    📈 Returns the top 15 features affecting task duration prediction.
     
     Helps understand what factors most influence task completion time.
     """
@@ -385,7 +388,7 @@ def get_kpi_overview(
     current_user: User = Depends(get_current_active_user)
 ):
     """
-    ðŸ“Š Get comprehensive KPI overview for performance assessment.
+    📊 Get comprehensive KPI overview for performance assessment.
     
     Includes:
     - Task completion metrics
@@ -547,7 +550,7 @@ def get_team_overview(
     current_user: User = Depends(get_current_active_user)
 ):
     """
-    ðŸ‘¥ Get team performance overview (managers, supervisors, and admins only).
+    👥 Get team performance overview (managers, supervisors, and admins only).
     
     Shows performance metrics for all team members.
     """
