@@ -2,10 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { Link, useNavigate } from 'react-router-dom';
-import { CheckCircle, Eye, EyeOff } from 'lucide-react';
-// Removed unused AuthAPI import to prevent accidental usage
-import { Eye, EyeOff } from 'lucide-react'; 
-
+import { Eye, EyeOff } from 'lucide-react'; // ✅ Fixed: Consolidated import
 import logo from '../../assets/Logo.png'; 
 
 const Login = () => {
@@ -31,53 +28,27 @@ const Login = () => {
     e.preventDefault();
     setLoading(true);
 
-    const result = await login(formData.email, formData.password);
-
-    if (result.success) {
-      // ✅ FIX: Use the user data returned directly from login()
-      // Do NOT call AuthAPI.getCurrentUserInfo() here, as it causes the race condition
-      const userInfo = result.data;
-      const role = userInfo.role?.toUpperCase(); // Ensure role exists
-
-      if (role === "ADMIN") {
-        navigate("/admin");
-      } else if (role === "SUPERVISOR") {
-        navigate("/supervisor");
-      } else {
-        navigate("/dashboard");
-      }
-    }
-
-    setLoading(false);
     try {
       const result = await login(formData.email, formData.password);
 
       if (result.success) {
-        console.log('🔥 Login successful, scheduling toast...'); // DEBUG
-        
-        // ✅ Schedule toast BAGO mag-navigate (saves to sessionStorage)
         toast.successAfterNav('Login successful! Welcome back.');
-        
-        console.log('📦 sessionStorage after save:', sessionStorage.getItem('pendingToast')); // DEBUG
 
-        // ✅ Navigate agad (NO delay)
-        const initialRole = result.role || result.user?.role;
-        
-        if (initialRole) {
-            const role = initialRole.toUpperCase();
-            console.log('🎯 Navigating to role:', role); // DEBUG
-            if (role === "ADMIN") navigate("/admin");
-            else if (role === "SUPERVISOR") navigate("/supervisor");
-            else navigate("/dashboard");
+        const userInfo = result.data;
+        const role = userInfo?.role?.toUpperCase();
+
+        if (role === "ADMIN") {
+          navigate("/admin");
+        } else if (role === "SUPERVISOR") {
+          navigate("/supervisor");
         } else {
-            console.log('🎯 Navigating to default dashboard'); // DEBUG
-            navigate("/dashboard");
+          navigate("/dashboard");
         }
-      } 
-      
+      }
     } catch (error) {
       console.error("Login error:", error);
       toast.error("Invalid email or password.");
+    } finally {
       setLoading(false);
     }
   };
