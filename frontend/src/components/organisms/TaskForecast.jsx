@@ -22,6 +22,7 @@ const TaskForecast = () => {
     
     try {
       const token = localStorage.getItem('token');
+      // TANDAAN: Siguraduhing tama ang URL na ito (kung 8000 or 8080)
       const response = await axios.post(
         'http://localhost:8000/api/v1/analytics/forecast',
         formData,
@@ -35,8 +36,31 @@ const TaskForecast = () => {
       
       setPrediction(response.data);
     } catch (err) {
-      setError(err.response?.data?.detail || 'Prediction failed');
-      console.error(err);
+      console.error("Forecast Error:", err);
+
+      // --- FIX START: Safe Error Handling ---
+      let errorMessage = 'Prediction failed. Please try again.';
+
+      if (err.response && err.response.data) {
+        const { detail } = err.response.data;
+
+        if (Array.isArray(detail)) {
+          // Kung array (Validation Error), kunin ang msg ng unang error
+          // Ex: [{loc:..., msg: "Field required", type:...}]
+          errorMessage = detail.map(d => d.msg).join(', ');
+        } else if (typeof detail === 'string') {
+          // Kung string na mismo
+          errorMessage = detail;
+        } else if (typeof detail === 'object') {
+          // Kung object pa rin pero hindi array
+          errorMessage = JSON.stringify(detail);
+        }
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      // --- FIX END ---
+
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }

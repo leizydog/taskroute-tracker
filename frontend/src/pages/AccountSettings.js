@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   User, Mail, Lock, Camera, Save, Phone, Briefcase, 
@@ -11,18 +11,28 @@ const AccountSettings = () => {
   const [activeTab, setActiveTab] = useState('profile');
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
+  
+  // ✅ FIX 1: Separate state para sa Preview (Local Image)
+  const [previewImage, setPreviewImage] = useState(null);
+  
+  // ✅ FIX 2: State para sa timestamp (Para hindi mag-refresh ang image maya't maya)
+  const [imgVersion, setImgVersion] = useState(Date.now());
+
   const [showPassword, setShowPassword] = useState({
     current: false,
     new: false,
     confirm: false
   });
 
+  const fileInputRef = useRef(null);
+
   const [profileData, setProfileData] = useState({
     full_name: '',
     email: '',
     username: '',
     phone: '',
-    role: ''
+    role: '',
+    avatar_url: '' 
   });
 
   const [originalProfileData, setOriginalProfileData] = useState({});
@@ -33,7 +43,6 @@ const AccountSettings = () => {
     confirm_password: '',
   });
 
-  // Fetch current user data on mount
   useEffect(() => {
     fetchUserData();
   }, []);
@@ -49,7 +58,8 @@ const AccountSettings = () => {
         email: userData.email || '',
         username: userData.username || '',
         phone: userData.phone || '',
-        role: userData.role || ''
+        role: userData.role || '',
+        avatar_url: userData.avatar_url || '' 
       };
       
       setProfileData(formattedData);
@@ -66,33 +76,59 @@ const AccountSettings = () => {
     window.history.back();
   };
 
-  const handleAvatarChange = async () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.onchange = async (e) => {
-      const file = e.target.files[0];
-      if (file) {
-        // Validate file size (max 5MB)
-        if (file.size > 5 * 1024 * 1024) {
-          toast.error('Image must be less than 5MB');
-          return;
-        }
+  const handleAvatarClick = () => {
+    fileInputRef.current.click();
+  };
 
-        try {
-          const formData = new FormData();
-          formData.append('avatar', file);
-          
-          await API.uploadAvatar(formData);
-          toast.success('Avatar updated successfully!');
-          await fetchUserData();
-        } catch (error) {
-          console.error('Error uploading avatar:', error);
-          toast.error(error.message || 'Failed to upload avatar');
-        }
-      }
+  // ✅ FIX 3: Improved File Handler using FileReader (Base64) for instant, stable preview
+  const handleFileChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Validations
+    if (!file.type.startsWith('image/')) {
+        toast.error('Please select an image file');
+        return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Image must be less than 5MB');
+      return;
+    }
+
+    // 1. Create Instant Preview using FileReader (More stable than Blob for this)
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setPreviewImage(reader.result); // Show immediately
     };
-    input.click();
+    reader.readAsDataURL(file);
+
+    // 2. Upload in Background
+    try {
+      const toastId = toast.loading('Uploading avatar...');
+      const formData = new FormData();
+      formData.append('avatar', file); 
+      
+      await API.uploadAvatar(formData);
+      
+      toast.dismiss(toastId);
+      toast.success('Avatar updated successfully!');
+      
+      // Update version timestamp to refresh server cache ONLY after success
+      setImgVersion(Date.now());
+      
+    } catch (error) {
+      console.error('Error uploading avatar:', error);
+      toast.dismiss();
+      toast.error('Failed to upload. Please try again.');
+      
+      // Revert preview only on failure
+      setPreviewImage(null);
+    } finally {
+        if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+        }
+    }
   };
 
   const handleLogout = () => {
@@ -109,16 +145,15 @@ const AccountSettings = () => {
     setLoading(true);
     
     try {
-      // Only send changed fields
       const changedFields = {};
       Object.keys(profileData).forEach(key => {
-        if (profileData[key] !== originalProfileData[key] && key !== 'role') {
+        if (profileData[key] !== originalProfileData[key] && key !== 'role' && key !== 'avatar_url') {
           changedFields[key] = profileData[key];
         }
       });
 
       if (Object.keys(changedFields).length === 0) {
-        toast.info('No changes to save');
+        toast('No changes to save', { icon: 'ℹ️' });
         setLoading(false);
         return;
       }
@@ -126,8 +161,6 @@ const AccountSettings = () => {
       await API.updateProfile(changedFields);
       setOriginalProfileData(profileData);
       toast.success('Profile updated successfully!');
-      
-      // Refresh user data to ensure sync
       await fetchUserData();
     } catch (error) {
       console.error('Error updating profile:', error);
@@ -215,6 +248,21 @@ const AccountSettings = () => {
     { id: 'security', label: 'Security', icon: Shield },
   ];
 
+  // ✅ FIX 4: Image Source Logic
+  const getImageSource = () => {
+    // 1. Kung may bagong upload (preview), yun ang ipakita
+    if (previewImage) return previewImage;
+    
+    // 2. Kung wala, gamitin ang server URL na may FIXED timestamp
+    if (profileData.avatar_url) {
+        return `${profileData.avatar_url}?t=${imgVersion}`;
+    }
+    
+    return null;
+  };
+
+  const activeImageSrc = getImageSource();
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
       {initialLoading ? (
@@ -223,6 +271,15 @@ const AccountSettings = () => {
         </div>
       ) : (
         <>
+          {/* HIDDEN INPUT */}
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            onChange={handleFileChange} 
+            className="hidden" 
+            accept="image/*"
+          />
+
           {/* Header */}
           <header className="sticky top-0 z-10 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-sm">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
@@ -245,34 +302,41 @@ const AccountSettings = () => {
 
           {/* Content */}
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-            {/* Profile Header Card */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               className="mb-6"
             >
               <div className="bg-white dark:bg-slate-900 rounded-lg shadow-lg border border-slate-200 dark:border-slate-800 overflow-hidden">
-                {/* Gradient Banner */}
                 <div className="relative h-32 bg-gradient-to-r from-indigo-600 to-purple-600"></div>
 
-                {/* Profile Content */}
                 <div className="relative px-6 pb-6">
                   <div className="flex flex-col sm:flex-row items-center sm:items-end gap-4 -mt-16">
-                    {/* Avatar */}
+                    
+                    {/* ✅ AVATAR IMAGE DISPLAY */}
                     <div className="relative group">
-                      <div className="w-28 h-28 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-3xl font-bold ring-4 ring-white dark:ring-slate-900 shadow-xl">
-                        {profileData.full_name ? profileData.full_name.charAt(0).toUpperCase() : 'U'}
-                      </div>
+                      {activeImageSrc ? (
+                          <img 
+                            src={activeImageSrc} 
+                            alt="Profile" 
+                            className="w-28 h-28 rounded-full object-cover ring-4 ring-white dark:ring-slate-900 shadow-xl bg-white"
+                          />
+                      ) : (
+                          <div className="w-28 h-28 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-3xl font-bold ring-4 ring-white dark:ring-slate-900 shadow-xl">
+                            {profileData.full_name ? profileData.full_name.charAt(0).toUpperCase() : 'U'}
+                          </div>
+                      )}
+                      
                       <button 
-                        onClick={handleAvatarChange}
+                        onClick={handleAvatarClick}
                         type="button"
-                        className="absolute bottom-1 right-1 p-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-lg transition-colors"
+                        className="absolute bottom-1 right-1 p-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-lg transition-colors cursor-pointer z-10"
+                        title="Change Profile Picture"
                       >
                         <Camera className="w-4 h-4" />
                       </button>
                     </div>
 
-                    {/* User Info */}
                     <div className="flex-1 text-center sm:text-left sm:mb-3">
                       <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-1">
                         {profileData.full_name || 'User'}
@@ -297,8 +361,8 @@ const AccountSettings = () => {
               </div>
             </motion.div>
 
+            {/* The rest of the component is unchanged from your original */}
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-              {/* Sidebar Navigation */}
               <motion.div
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
@@ -332,7 +396,6 @@ const AccountSettings = () => {
                       );
                     })}
 
-                    {/* Logout Button */}
                     <button
                       onClick={handleLogout}
                       className="w-full flex items-center gap-3 px-3 py-3 rounded-lg text-left text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all border-t border-slate-100 dark:border-slate-800 mt-3 pt-3"
@@ -348,7 +411,6 @@ const AccountSettings = () => {
                 </div>
               </motion.div>
 
-              {/* Main Content */}
               <div className="lg:col-span-3">
                 <AnimatePresence mode="wait">
                   {activeTab === 'profile' && (
@@ -497,6 +559,7 @@ const AccountSettings = () => {
                       transition={{ duration: 0.2 }}
                       className="space-y-5"
                     >
+                      {/* Security Content Same as Before */}
                       <div className="bg-white dark:bg-slate-900 rounded-lg shadow-lg border border-slate-200 dark:border-slate-800 p-6">
                         <div className="flex items-center gap-3 mb-6 pb-4 border-b border-slate-200 dark:border-slate-800">
                           <div className="w-12 h-12 rounded-lg bg-red-600 flex items-center justify-center">
@@ -509,6 +572,7 @@ const AccountSettings = () => {
                         </div>
 
                         <form onSubmit={handlePasswordChange} className="space-y-5">
+                          {/* Password Form Fields */}
                           <div>
                             <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
                               Current Password
@@ -580,22 +644,10 @@ const AccountSettings = () => {
                                   />
                                 </div>
                                 <div className="grid grid-cols-2 gap-2 mt-3">
-                                  <PasswordRequirement 
-                                    met={passwordData.new_password.length >= 8}
-                                    text="8+ characters"
-                                  />
-                                  <PasswordRequirement 
-                                    met={/[a-z]/.test(passwordData.new_password) && /[A-Z]/.test(passwordData.new_password)}
-                                    text="Upper & lowercase"
-                                  />
-                                  <PasswordRequirement 
-                                    met={/\d/.test(passwordData.new_password)}
-                                    text="Contains number"
-                                  />
-                                  <PasswordRequirement 
-                                    met={/[^a-zA-Z\d]/.test(passwordData.new_password)}
-                                    text="Special character"
-                                  />
+                                  <PasswordRequirement met={passwordData.new_password.length >= 8} text="8+ characters" />
+                                  <PasswordRequirement met={/[a-z]/.test(passwordData.new_password) && /[A-Z]/.test(passwordData.new_password)} text="Upper & lowercase" />
+                                  <PasswordRequirement met={/\d/.test(passwordData.new_password)} text="Contains number" />
+                                  <PasswordRequirement met={/[^a-zA-Z\d]/.test(passwordData.new_password)} text="Special character" />
                                 </div>
                               </motion.div>
                             )}
@@ -677,7 +729,6 @@ const AccountSettings = () => {
                         </form>
                       </div>
 
-                      {/* Security Tips */}
                       <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-6">
                         <div className="flex items-start gap-4">
                           <div className="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center flex-shrink-0">
