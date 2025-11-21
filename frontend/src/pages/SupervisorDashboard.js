@@ -1,13 +1,12 @@
-// src/pages/SupervisorDashboard.js
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
 import api from '../services/api';
-import { toast } from 'react-hot-toast';
+import { useToast } from '../contexts/ToastContext';
 import {
   FiGrid, FiUsers, FiCheckSquare, FiTrendingUp, FiLogOut, FiMenu, FiBell, FiMoon, FiSun, FiX,
   FiPlus, FiMapPin
 } from 'react-icons/fi';
-import { Button, Card, StatValue, Input, Select, Alert, Badge, Avatar } from '../components/atoms';
+import { Button, Card, StatValue, Input, Select, Badge, Avatar } from '../components/atoms';
 import CreateTaskModal from '../components/organisms/CreateTaskModal';
 import { EmployeeKPIPanel, LiveLocationTracker, TaskManagementPanel } from '../components/organisms';
 import { useAuth } from '../contexts/AuthContext';
@@ -16,39 +15,41 @@ import FeatureImportanceChart from '../components/analytics/FeatureImportanceCha
 import TaskForecast from '../components/organisms/TaskForecast';
 import { useNavigate } from 'react-router-dom';
 
+// ✅ IMPORT LOGO
+import logo from '../assets/Logo.png';
+
 const MAP_LOADER_ID = 'google-map-script';
 const MAP_LIBRARIES = ['places'];
 
 const SupervisorDashboard = () => {
   const { user, logout, isDarkMode, toggleDarkMode } = useAuth();
+  const toast = useToast();
   const navigate = useNavigate();
   const userMenuRef = useRef(null);
   const notificationRef = useRef(null);
-
-  useEffect(() => {
-    console.log('🔑 API Key:', process.env.REACT_APP_GOOGLE_MAPS_API_KEY);
-  }, []);   
 
   const [activeTab, setActiveTab] = useState('overview');
   const [mobileOpen, setMobileOpen] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [isCreateTaskModalOpen, setIsCreateTaskModalOpen] = useState(false);
-  const [alerts, setAlerts] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRole, setFilterRole] = useState('all');
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
 
+  // Data States
   const [tasks, setTasks] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [kpiData, setKpiData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  // KPI States
   const [employeeKpiData, setEmployeeKpiData] = useState(null);
   const [loadingKpi, setLoadingKpi] = useState(false);
   const [teamKpiData, setTeamKpiData] = useState(null);
 
+  // Map Loader
   const { isLoaded: isMapLoaded, loadError: mapLoadError } = useJsApiLoader({
     id: MAP_LOADER_ID,
     googleMapsApiKey: process.env.REACT_APP_GOOGLE_MAPS_API_KEY,
@@ -64,87 +65,88 @@ const SupervisorDashboard = () => {
   ];
 
   useEffect(() => {
-    if (isMapLoaded) {
-      console.log('Google Maps API script loaded successfully.');
-    }
     if (mapLoadError) {
       console.error('Error loading Google Maps API:', mapLoadError);
-      toast.error("Map services could not be loaded.");
     }
-  }, [isMapLoaded, mapLoadError]);
+  }, [mapLoadError]);
 
   // Fetch initial data
   useEffect(() => {
+    let isMounted = true;
+
     const fetchData = async () => {
+      if (!isMounted) return;
       setLoading(true);
       setError(null);
+
       try {
-        // Fetch all tasks with pagination (same logic as TaskManagementPanel)
+        // 1. Fetch Tasks (Pagination Logic)
         let allTasks = [];
         let page = 1;
         const limit = 100;
         const MAX_PAGES = 20;
 
-        console.log('📄 Starting to fetch all tasks...');
-
         while (page <= MAX_PAGES) {
-          const skip = (page - 1) * limit;
-          const tasksResponse = await api.getTasks({ skip, limit });
-          const tasksData = Array.isArray(tasksResponse.data) 
-            ? tasksResponse.data 
-            : tasksResponse.data?.results || [];
-          
-          if (tasksData.length === 0) {
-            break;
-          }
+          try {
+            const skip = (page - 1) * limit;
+            const tasksResponse = await api.getTasks({ skip, limit });
+            const tasksData = Array.isArray(tasksResponse.data) 
+              ? tasksResponse.data 
+              : tasksResponse.data?.results || [];
+            
+            if (tasksData.length === 0) break;
 
-          allTasks = [...allTasks, ...tasksData];
-          
-          if (tasksData.length < limit) {
+            allTasks = [...allTasks, ...tasksData];
+            if (tasksData.length < limit) break;
+            page++;
+          } catch (err) {
+            console.warn("Error fetching page of tasks", err);
             break;
           }
-          
-          page++;
         }
 
-        // Deduplicate tasks by ID
+        // Deduplicate tasks
         const uniqueTasksMap = new Map();
         allTasks.forEach(task => uniqueTasksMap.set(task.id, task));
         const uniqueTasks = Array.from(uniqueTasksMap.values());
 
-        console.log('✨ Total unique tasks loaded:', uniqueTasks.length);
-
-        // Fetch other data in parallel
+        // 2. Fetch Other Data in Parallel
         const [employeesResponse, kpiResponse, teamResponse] = await Promise.all([
-          api.getUsers(),
-          api.getAnalyticsOverview(),
+          api.getUsers().catch(err => { console.error("User fetch failed", err); return { data: [] }; }),
+          api.getAnalyticsOverview().catch(() => ({ data: null })),
           api.getTeamOverview().catch(() => ({ data: null })),
         ]);
 
-        const usersData = employeesResponse?.data?.results ?? employeesResponse?.data ?? [];
+        if (isMounted) {
+            const usersData = employeesResponse?.data?.results ?? employeesResponse?.data ?? [];
 
-        setTasks(uniqueTasks);
-        
-        setEmployees(
-          Array.isArray(usersData)
-            ? usersData.filter(u => u.role === 'user' || u.role === 'supervisor')
-            : []
-        );
-        
-        setKpiData(kpiResponse?.data ?? null);
-        setTeamKpiData(teamResponse?.data ?? null);
+            setTasks(uniqueTasks);
+            setEmployees(
+                Array.isArray(usersData)
+                ? usersData.filter(u => u.role === 'user' || u.role === 'supervisor')
+                : []
+            );
+            setKpiData(kpiResponse?.data ?? null);
+            setTeamKpiData(teamResponse?.data ?? null);
+        }
       } catch (err) {
         console.error("Failed to load initial dashboard data:", err);
-        toast.error("Failed to load initial dashboard data.");
-        setError("Could not load dashboard. Please try again later.");
+        if (isMounted) {
+            setError("Could not fully load dashboard. Please refresh.");
+        }
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     };
 
     fetchData();
-  }, []);
 
+    return () => {
+      isMounted = false;
+    };
+  }, []); 
+
+  // KPI Selection Effect
   useEffect(() => {
     if (!selectedEmployee) {
       setEmployeeKpiData(null);
@@ -165,16 +167,10 @@ const SupervisorDashboard = () => {
     setLoadingKpi(false);
   }, [selectedEmployee, teamKpiData]);
 
-  const addAlert = (type, message) => {
-    const id = Date.now();
-    setAlerts(prev => [...prev, { id, type, message }]);
-    setTimeout(() => setAlerts(prev => prev.filter(a => a.id !== id)), 3000);
-  };
-
   const handleTaskCreated = (newTask) => {
     setIsCreateTaskModalOpen(false);
     setTasks(prevTasks => [newTask, ...prevTasks]);
-    addAlert('success', 'Task created successfully!');
+    toast.success('Task created successfully!');
   };
 
   const filteredEmployees = (Array.isArray(employees) ? employees : []).filter(emp => {
@@ -188,6 +184,7 @@ const SupervisorDashboard = () => {
 
   // Helper function to format relative time
   const getRelativeTime = (dateString) => {
+    if (!dateString) return '';
     const date = new Date(dateString);
     const now = new Date();
     const diffMs = now - date;
@@ -202,7 +199,7 @@ const SupervisorDashboard = () => {
     return date.toLocaleDateString();
   };
 
-  // Calculate active tasks (in_progress or pending)
+  // Calculate active tasks
   const activeTasksCount = useMemo(() => {
     if (!Array.isArray(tasks)) return 0;
     return tasks.filter(t => {
@@ -213,21 +210,18 @@ const SupervisorDashboard = () => {
     }).length;
   }, [tasks]);
 
-  // Get recent activity from tasks (last 10 activities)
+  // Get recent activity
   const recentActivity = useMemo(() => {
     if (!Array.isArray(tasks)) return [];
     
     const activities = [];
-    
-    // Get all tasks and sort by their most recent timestamp
     const sortedTasks = [...tasks].sort((a, b) => {
-      const aTime = new Date(a.completed_at || a.started_at || a.created_at).getTime();
-      const bTime = new Date(b.completed_at || b.started_at || b.created_at).getTime();
-      return bTime - aTime; // Most recent first
+      const aTime = new Date(a.completed_at || a.started_at || a.created_at || 0).getTime();
+      const bTime = new Date(b.completed_at || b.started_at || b.created_at || 0).getTime();
+      return bTime - aTime;
     });
 
     sortedTasks.forEach(task => {
-      // Completed tasks
       if (task.completed_at) {
         activities.push({
           id: `completed-${task.id}`,
@@ -236,9 +230,7 @@ const SupervisorDashboard = () => {
           type: 'completed',
           icon: '✓'
         });
-      }
-      // Started tasks
-      else if (task.started_at) {
+      } else if (task.started_at) {
         activities.push({
           id: `started-${task.id}`,
           message: `${task.assigned_user_name || task.assigned_user?.full_name || 'Someone'} started working on "${task.title}"`,
@@ -246,9 +238,7 @@ const SupervisorDashboard = () => {
           type: 'started',
           icon: '▶'
         });
-      }
-      // Created/assigned tasks
-      else if (task.created_at) {
+      } else if (task.created_at) {
         activities.push({
           id: `created-${task.id}`,
           message: `New task "${task.title}" assigned to ${task.assigned_user_name || task.assigned_user?.full_name || 'someone'}`,
@@ -259,7 +249,6 @@ const SupervisorDashboard = () => {
       }
     });
 
-    // Sort by time and return top 10
     return activities
       .sort((a, b) => new Date(b.time) - new Date(a.time))
       .slice(0, 10);
@@ -278,11 +267,10 @@ const SupervisorDashboard = () => {
     }).length;
   }, [tasks]);
 
-  // Generate notifications based on task data
+  // Notifications
   const notifications = useMemo(() => {
     const notifs = [];
     
-    // Overdue tasks
     const overdueTasks = tasks.filter(t => {
       if (t.status?.toLowerCase() === 'completed') return false;
       if (!t.due_date) return false;
@@ -300,7 +288,6 @@ const SupervisorDashboard = () => {
       });
     }
 
-    // Tasks due today
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
@@ -321,24 +308,6 @@ const SupervisorDashboard = () => {
         message: `${dueTodayTasks.length} task${dueTodayTasks.length > 1 ? 's need' : ' needs'} attention today`,
         time: new Date(),
         icon: '📅'
-      });
-    }
-
-    // Recent completions (from last 2 hours)
-    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
-    const recentCompletions = tasks.filter(t => {
-      if (!t.completed_at) return false;
-      return new Date(t.completed_at) > twoHoursAgo;
-    });
-    
-    if (recentCompletions.length > 0) {
-      notifs.push({
-        id: 'recent-completions',
-        type: 'success',
-        title: `${recentCompletions.length} Task${recentCompletions.length > 1 ? 's' : ''} Completed`,
-        message: `${recentCompletions.length} task${recentCompletions.length > 1 ? 's were' : ' was'} completed recently`,
-        time: new Date(),
-        icon: '✅'
       });
     }
 
@@ -365,7 +334,7 @@ const SupervisorDashboard = () => {
   );
 
   if (loading) {
-    return <div className="flex items-center justify-center h-screen bg-slate-100 dark:bg-slate-900 text-slate-500 font-semibold text-lg">Loading Dashboard Data...</div>;
+    return <div className="flex items-center justify-center h-screen bg-slate-100 dark:bg-slate-900 text-slate-500 dark:text-slate-400 font-semibold text-lg">Loading Dashboard Data...</div>;
   }
 
   if (error) {
@@ -374,13 +343,26 @@ const SupervisorDashboard = () => {
 
   return (
     <div className="flex h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-200 overflow-hidden">
+      {/* SIDEBAR */}
       <aside
-        className={`fixed z-30 inset-y-0 left-0 transform ${mobileOpen ? 'translate-x-0 shadow-xl' : '-translate-x-full'} md:translate-x-0 md:static transition-transform duration-300 ease-in-out w-60 bg-slate-800 text-slate-100 p-4 flex flex-col border-r border-slate-700`}
+        className={`fixed z-30 inset-y-0 left-0 transform ${mobileOpen ? 'translate-x-0 shadow-xl' : '-translate-x-full'} md:translate-x-0 md:static transition-transform duration-300 ease-in-out w-60 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 p-4 flex flex-col border-r border-slate-200 dark:border-slate-800`}
       >
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-xl font-bold text-indigo-400">TaskRoute</h1>
-          <button onClick={() => setMobileOpen(false)} className="md:hidden p-1 text-slate-400 hover:text-white"><FiX size={20} /></button>
+        {/* ✅ SIDEBAR LOGO UPDATE (Option 1: Visible in Light Mode) */}
+        <div className="flex items-center justify-between mb-6 px-1">
+          <div className="flex items-center gap-3">
+            <img 
+              src={logo} 
+              alt="TaskRoute Logo" 
+              // Added: border border-slate-200, shadow-md, p-0.5
+              className="w-9 h-9 rounded-full object-contain bg-white p-0.5 shadow-md border border-slate-200 dark:border-slate-700"
+            />
+            <h1 className="text-xl font-bold text-indigo-600 dark:text-indigo-400 tracking-tight">
+              TaskRoute
+            </h1>
+          </div>
+          <button onClick={() => setMobileOpen(false)} className="md:hidden p-1 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"><FiX size={20} /></button>
         </div>
+
         <nav className="flex-1 space-y-1.5 overflow-y-auto">
           {navItems.map((item) => (
             <button
@@ -388,8 +370,8 @@ const SupervisorDashboard = () => {
               onClick={() => { setActiveTab(item.id); setMobileOpen(false); }}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-all duration-150 ease-in-out group ${
                 activeTab === item.id
-                  ? 'bg-indigo-600 text-white font-medium shadow-sm'
-                  : 'text-slate-300 hover:bg-slate-700 hover:text-white'
+                  ? 'bg-indigo-600 dark:bg-indigo-500 text-white font-medium shadow-sm'
+                  : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               <span className={`transition-transform duration-150 ${activeTab === item.id ? 'scale-110' : 'group-hover:scale-105'}`}>{item.icon}</span>
@@ -397,7 +379,6 @@ const SupervisorDashboard = () => {
             </button>
           ))}
         </nav>
-       
       </aside>
 
       {mobileOpen && <div onClick={() => setMobileOpen(false)} className="fixed inset-0 bg-black/50 z-20 md:hidden" />}
@@ -420,13 +401,9 @@ const SupervisorDashboard = () => {
                 )}
               </button>
               
-              {/* Notifications Dropdown */}
               {showNotifications && (
                 <>
-                  <div 
-                    className="fixed inset-0 z-30" 
-                    onClick={() => setShowNotifications(false)}
-                  />
+                  <div className="fixed inset-0 z-30" onClick={() => setShowNotifications(false)} />
                   <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-slate-200 dark:border-slate-700 z-40 max-h-96 overflow-hidden flex flex-col">
                     <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
                       <h3 className="font-semibold text-slate-900 dark:text-slate-100">Notifications</h3>
@@ -436,7 +413,6 @@ const SupervisorDashboard = () => {
                         </span>
                       )}
                     </div>
-                    
                     <div className="overflow-y-auto flex-1">
                       {notifications.length > 0 ? (
                         notifications.map((notif) => (
@@ -453,15 +429,9 @@ const SupervisorDashboard = () => {
                             <div className="flex items-start gap-3">
                               <span className="text-xl flex-shrink-0">{notif.icon}</span>
                               <div className="flex-1 min-w-0">
-                                <p className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-1">
-                                  {notif.title}
-                                </p>
-                                <p className="text-xs text-slate-600 dark:text-slate-400">
-                                  {notif.message}
-                                </p>
-                                <p className="text-xs text-slate-500 dark:text-slate-500 mt-1">
-                                  {getRelativeTime(notif.time)}
-                                </p>
+                                <p className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-1">{notif.title}</p>
+                                <p className="text-xs text-slate-600 dark:text-slate-400">{notif.message}</p>
+                                <p className="text-xs text-slate-500 dark:text-slate-500 mt-1">{getRelativeTime(notif.time)}</p>
                               </div>
                             </div>
                           </div>
@@ -469,9 +439,7 @@ const SupervisorDashboard = () => {
                       ) : (
                         <div className="px-4 py-8 text-center">
                           <FiBell className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
-                          <p className="text-sm text-slate-500 dark:text-slate-400">
-                            No new notifications
-                          </p>
+                          <p className="text-sm text-slate-500 dark:text-slate-400">No new notifications</p>
                         </div>
                       )}
                     </div>
@@ -480,7 +448,7 @@ const SupervisorDashboard = () => {
               )}
             </div>
             
-            {/* User Menu Dropdown */}
+            {/* User Menu */}
             <div className="relative">
               <button 
                 onClick={() => setShowUserMenu(!showUserMenu)}
@@ -490,37 +458,21 @@ const SupervisorDashboard = () => {
                 <span className="text-sm font-medium text-slate-700 dark:text-slate-300 hidden sm:inline">{user?.full_name || user?.email}</span>
               </button>
 
-              {/* User Menu Dropdown */}
               {showUserMenu && (
                 <>
-                  <div 
-                    className="fixed inset-0 z-30" 
-                    onClick={() => setShowUserMenu(false)}
-                  />
+                  <div className="fixed inset-0 z-30" onClick={() => setShowUserMenu(false)} />
                   <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-slate-200 dark:border-slate-700 z-40 overflow-hidden">
-                    {/* User Info Section */}
                     <div className="p-6 text-center border-b border-slate-200 dark:border-slate-700">
                       <div className="flex justify-center mb-3">
                         <Avatar name={user?.full_name || user?.email} size="lg" />
                       </div>
-                      <h3 className="font-semibold text-slate-900 dark:text-slate-100 text-lg mb-1">
-                        {user?.full_name || 'User'}
-                      </h3>
-                      <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">
-                        {user?.email}
-                      </p>
-                      <p className="text-xs text-slate-500 dark:text-slate-500 capitalize">
-                        {user?.role || 'Supervisor'}
-                      </p>
+                      <h3 className="font-semibold text-slate-900 dark:text-slate-100 text-lg mb-1">{user?.full_name || 'User'}</h3>
+                      <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">{user?.email}</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-500 capitalize">{user?.role || 'Supervisor'}</p>
                     </div>
-
-                    {/* Menu Options */}
                     <div className="p-2">
                       <button
-                        onClick={() => {
-                          setShowUserMenu(false);
-                          navigate('/account-settings');
-                        }}
+                        onClick={() => { setShowUserMenu(false); navigate('/account-settings'); }}
                         className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
                       >
                         <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center">
@@ -545,13 +497,16 @@ const SupervisorDashboard = () => {
                         </div>
                       </button>
                     </div>
-
-                    {/* Logout Button */}
+                    
+                    {/* LOGOUT BUTTON - UPDATED WITH TOAST */}
                     <div className="p-2 border-t border-slate-200 dark:border-slate-700">
                       <button
                         onClick={() => {
                           setShowUserMenu(false);
-                          logout();
+                          toast.success("You have been logged out successfully. See you soon!");
+                          setTimeout(() => {
+                            logout();
+                          }, 500);
                         }}
                         className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
                       >
@@ -570,10 +525,6 @@ const SupervisorDashboard = () => {
             </div>
           </div>
         </header>
-
-        <div className="fixed top-20 right-4 z-40 space-y-2 w-full max-w-xs sm:max-w-sm">
-          {alerts.map((alert) => (<Alert key={alert.id} type={alert.type} message={alert.message} onClose={() => setAlerts(prev => prev.filter(a => a.id !== alert.id))} />))}
-        </div>
 
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-100 dark:bg-slate-950">
           <motion.div
@@ -625,27 +576,19 @@ const SupervisorDashboard = () => {
                               {activity.icon}
                             </span>
                             <div className="flex-1 min-w-0">
-                              <p className="text-slate-700 dark:text-slate-300">
-                                {activity.message}
-                              </p>
-                              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                                {getRelativeTime(activity.time)}
-                              </p>
+                              <p className="text-slate-700 dark:text-slate-300">{activity.message}</p>
+                              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{getRelativeTime(activity.time)}</p>
                             </div>
                           </div>
                         ))
                       ) : (
-                        <p className="text-sm text-slate-500 dark:text-slate-400 py-4 text-center">
-                          No recent activity to display
-                        </p>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 py-4 text-center">No recent activity to display</p>
                       )}
                     </div>
                   </Card>
                   
                   <Card>
-                    <h3 className="text-base font-semibold text-slate-800 dark:text-slate-100 mb-3">
-                      Quick Actions
-                    </h3>
+                    <h3 className="text-base font-semibold text-slate-800 dark:text-slate-100 mb-3">Quick Actions</h3>
                     <div className="space-y-2">
                       <Button 
                         variant="primary" 
@@ -728,17 +671,15 @@ const SupervisorDashboard = () => {
                 mapLoadError={mapLoadError}
                 onTaskCreated={(newTask) => {
                   setTasks(prevTasks => [newTask, ...prevTasks]);
-                  addAlert('success', 'Task created successfully!');
+                  toast.success('Task created successfully!');
                 }}
                 onTaskDeleted={(taskId) => {
                   setTasks(prevTasks => prevTasks.filter(t => t.id !== taskId));
-                  addAlert('success', 'Task deleted successfully!');
+                  toast.success('Task deleted successfully!');
                 }}
                 onTaskUpdated={(updatedTask) => {
-                  setTasks(prevTasks => prevTasks.map(t => 
-                    t.id === updatedTask.id ? updatedTask : t
-                  ));
-                  addAlert('success', 'Task updated successfully!');
+                  setTasks(prevTasks => prevTasks.map(t => t.id === updatedTask.id ? updatedTask : t));
+                  toast.success('Task updated successfully!');
                 }}
               />
             )}

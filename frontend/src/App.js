@@ -1,45 +1,27 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { ToastProvider } from './contexts/ToastContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import SupervisorRoute from './components/SupervisorRoute';
+import AdminRoute from './components/AdminRoute';
+
+// ✅ AUTH COMPONENTS
 import Login from './components/auth/Login';
 import Register from './components/auth/Register';
+import ForgotPassword from './components/auth/ForgotPassword';
+
+// ✅ PAGES
 import SupervisorDashboard from './pages/SupervisorDashboard';
-import AccountSettings from './pages/AccountSettings';
-import AdminRoute from './components/AdminRoute';
 import AdminDashboard from './pages/AdminDashboard';
+import AccountSettings from './pages/AccountSettings';
+import LandingPage from './pages/LandingPage';
 
 import './App.css';
 
-// Landing page for non-authenticated users
-const LandingPage = () => {
-  return (
-    <div className="min-h-screen bg-gradient-to-r from-blue-900 to-white dark:from-slate-900 dark:to-slate-700 flex items-center justify-center">
-      <div className="text-center text-white">
-        <h1 className="text-6xl font-bold mb-4">TaskRoute Tracker</h1>
-        <p className="text-xl mb-8">GPS-enabled task management with ML-powered performance analytics</p>
-        <div className="space-x-4">
-          <a
-            href="/login"
-            className="bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 px-6 py-3 rounded-lg font-semibold hover:bg-gray-100 dark:hover:bg-slate-700 transition duration-200"
-          >
-            Sign In
-          </a>
-          <a
-            href="/register"
-            className="border-2 border-white text-white px-6 py-3 rounded-lg font-semibold hover:bg-white hover:text-blue-600 dark:hover:bg-slate-800 dark:hover:border-slate-600 transition duration-200"
-          >
-            Get Started
-          </a>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// Component to handle authenticated/non-authenticated routing
+// -----------------------
+// AppRoutes Component
+// -----------------------
 const AppRoutes = () => {
   const { isAuthenticated, loading } = useAuth();
 
@@ -51,19 +33,30 @@ const AppRoutes = () => {
     );
   }
 
-  
-
   return (
     <Routes>
+      {/* Public Route - Landing Page */}
       <Route 
         path="/" 
         element={isAuthenticated ? <Navigate to="/supervisor" /> : <LandingPage />} 
       />
+
+      {/* Auth Routes */}
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
-      <Route path="/account-settings" element={<ProtectedRoute><AccountSettings /></ProtectedRoute>} />
-      
-      {/* Supervisor Routes */}
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+
+      {/* Account Settings (Protected) */}
+      <Route
+        path="/account-settings"
+        element={
+          <ProtectedRoute>
+            <AccountSettings />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Supervisor Routes (Protected) */}
       <Route 
         path="/supervisor/*" 
         element={
@@ -72,10 +65,10 @@ const AppRoutes = () => {
               <SupervisorDashboard />
             </SupervisorRoute>
           </ProtectedRoute>
-        } 
+        }
       />
 
-      {/* Admin Routes */}
+      {/* Admin Routes (Protected) */}
       <Route 
         path="/admin/*" 
         element={
@@ -87,32 +80,27 @@ const AppRoutes = () => {
         }
       />
 
-      
-      {/* Redirect any unknown routes */}
+      {/* Catch-all Route */}
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>
   );
 };
 
+// -----------------------
+// Main App Component
+// -----------------------
 function App() {
   return (
-    <AuthProvider>
-      <Router>
-        <div className="App">
-          <AppRoutes />
-          <Toaster 
-            position="top-right"
-            toastOptions={{
-              // Dark mode support for toasts
-              style: {
-                background: 'var(--modal-bg)',
-                color: 'var(--text-primary)',
-              },
-            }}
-          />
-        </div>
-      </Router>
-    </AuthProvider>
+    <Router>
+      {/* ✅ SWAPPED: Mas maganda kung nasa labas si ToastProvider */}
+      <ToastProvider> 
+        <AuthProvider>
+          <div className="App">
+            <AppRoutes />
+          </div>
+        </AuthProvider>
+      </ToastProvider>
+    </Router>
   );
 }
 
