@@ -4,8 +4,10 @@ import 'package:provider/provider.dart';
 import 'providers/auth_provider.dart' as auth;
 import 'providers/task_provider.dart';
 import 'providers/location_provider.dart';
+import 'providers/theme_provider.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/home/home_screen.dart';
+import 'screens/splash_screen.dart';
 import 'services/storage_service.dart';
 import 'utils/app_theme.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -13,14 +15,9 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Initialize storage service
   await StorageService.instance.init();
-
-// Tell dotenv to load the correct file based on the environment
   await dotenv.load(fileName: ".env");
-
   
-  // Set system UI overlay style
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -38,17 +35,24 @@ class TaskRouteApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => auth.AuthProvider()),
         ChangeNotifierProvider(create: (_) => TaskProvider()),
         ChangeNotifierProvider(create: (_) => LocationProvider()),
       ],
-      child: MaterialApp(
-        title: 'TaskRoute Mobile',
-        theme: AppTheme.lightTheme,
-        darkTheme: AppTheme.darkTheme,
-        themeMode: ThemeMode.system,
-        home: const AuthWrapper(),
-        debugShowCheckedModeBanner: false,
+      child: Consumer<ThemeProvider>(
+        builder: (context, themeProvider, _) {
+          return MaterialApp(
+            title: 'TaskRoute Tracker',
+            theme: AppTheme.lightTheme,
+            darkTheme: AppTheme.darkTheme,
+            themeMode: themeProvider.themeMode,
+            home: const SplashScreen(
+              nextScreen: AuthWrapper(),
+            ),
+            debugShowCheckedModeBanner: false,
+          );
+        },
       ),
     );
   }
@@ -77,11 +81,6 @@ class _AuthWrapperState extends State<AuthWrapper> {
       _isLoading = false;
     });
   }
-
-  Future<void> main() async {
-  await dotenv.load(fileName: ".env");
-  runApp(const TaskRouteApp());
-}
 
   @override
   Widget build(BuildContext context) {

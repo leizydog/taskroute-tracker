@@ -11,9 +11,15 @@ class AppTheme {
   static ThemeData get lightTheme {
     return ThemeData(
       useMaterial3: true,
+      brightness: Brightness.light,
       colorScheme: ColorScheme.fromSeed(
         seedColor: primaryColor,
         brightness: Brightness.light,
+        primary: primaryColor,
+        secondary: secondaryColor,
+        error: errorColor,
+        surface: surfaceColor,
+        background: backgroundColor,
       ),
       primarySwatch: Colors.blue,
       primaryColor: primaryColor,
@@ -25,6 +31,7 @@ class AppTheme {
         centerTitle: true,
         backgroundColor: Colors.transparent,
         foregroundColor: Colors.black87,
+        iconTheme: IconThemeData(color: Colors.black87),
         titleTextStyle: TextStyle(
           color: Colors.black87,
           fontSize: 18,
@@ -63,6 +70,7 @@ class AppTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(8),
           ),
+          side: BorderSide(color: Colors.grey[400]!),
           textStyle: const TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w600,
@@ -104,9 +112,15 @@ class AppTheme {
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: errorColor),
         ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: errorColor, width: 2),
+        ),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        labelStyle: TextStyle(color: Colors.grey[600]),
+        labelStyle: TextStyle(color: Colors.grey[700]),
         hintStyle: TextStyle(color: Colors.grey[500]),
+        prefixIconColor: Colors.grey[600],
+        suffixIconColor: Colors.grey[600],
       ),
 
       // Bottom Navigation Bar Theme
@@ -123,6 +137,28 @@ class AppTheme {
         backgroundColor: primaryColor,
         foregroundColor: Colors.white,
         elevation: 4,
+      ),
+
+      // Switch Theme
+      switchTheme: SwitchThemeData(
+        thumbColor: MaterialStateProperty.resolveWith((states) {
+          if (states.contains(MaterialState.selected)) {
+            return primaryColor;
+          }
+          return Colors.grey[400];
+        }),
+        trackColor: MaterialStateProperty.resolveWith((states) {
+          if (states.contains(MaterialState.selected)) {
+            return primaryColor.withOpacity(0.5);
+          }
+          return Colors.grey[300];
+        }),
+      ),
+
+      // Divider Theme
+      dividerTheme: DividerThemeData(
+        color: Colors.grey[300],
+        thickness: 1,
       ),
 
       // Text Theme
@@ -191,9 +227,15 @@ class AppTheme {
   static ThemeData get darkTheme {
     return ThemeData(
       useMaterial3: true,
+      brightness: Brightness.dark,
       colorScheme: ColorScheme.fromSeed(
         seedColor: primaryColor,
         brightness: Brightness.dark,
+        primary: primaryColor,
+        secondary: secondaryColor,
+        error: errorColor,
+        surface: const Color(0xFF1E1E1E),
+        background: const Color(0xFF121212),
       ),
       primarySwatch: Colors.blue,
       primaryColor: primaryColor,
@@ -205,6 +247,7 @@ class AppTheme {
         centerTitle: true,
         backgroundColor: Colors.transparent,
         foregroundColor: Colors.white,
+        iconTheme: IconThemeData(color: Colors.white),
         titleTextStyle: TextStyle(
           color: Colors.white,
           fontSize: 18,
@@ -236,7 +279,22 @@ class AppTheme {
         ),
       ),
 
-      // Input Decoration Theme
+      // Outlined Button Theme
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+          side: BorderSide(color: Colors.grey[700]!),
+          textStyle: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+
+      // Input Decoration Theme - FIXED FOR DARK MODE
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: const Color(0xFF2A2A2A),
@@ -256,9 +314,15 @@ class AppTheme {
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: errorColor),
         ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: errorColor, width: 2),
+        ),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         labelStyle: const TextStyle(color: Colors.grey),
         hintStyle: const TextStyle(color: Color(0xFF666666)),
+        prefixIconColor: Colors.grey,
+        suffixIconColor: Colors.grey,
       ),
 
       // Bottom Navigation Bar Theme
@@ -268,6 +332,28 @@ class AppTheme {
         unselectedItemColor: Colors.grey,
         type: BottomNavigationBarType.fixed,
         elevation: 8,
+      ),
+
+      // Switch Theme
+      switchTheme: SwitchThemeData(
+        thumbColor: MaterialStateProperty.resolveWith((states) {
+          if (states.contains(MaterialState.selected)) {
+            return primaryColor;
+          }
+          return Colors.grey[600];
+        }),
+        trackColor: MaterialStateProperty.resolveWith((states) {
+          if (states.contains(MaterialState.selected)) {
+            return primaryColor.withOpacity(0.5);
+          }
+          return Colors.grey[800];
+        }),
+      ),
+
+      // Divider Theme
+      dividerTheme: DividerThemeData(
+        color: Colors.grey[800],
+        thickness: 1,
       ),
 
       // Text Theme for Dark Mode
