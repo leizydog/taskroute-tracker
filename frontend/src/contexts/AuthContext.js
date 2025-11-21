@@ -2,10 +2,8 @@ import React, { createContext, useState, useContext, useEffect } from "react";
 import api from "../services/api";
 import toast from "react-hot-toast";
 
-// Create the context
 const AuthContext = createContext();
 
-// Export the useAuth hook for easy consumption
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
@@ -14,26 +12,22 @@ export const useAuth = () => {
   return context;
 };
 
-// Export the provider component
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(localStorage.getItem("token"));
   const [loading, setLoading] = useState(true);
 
-  // Dark mode state
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const savedTheme = localStorage.getItem("theme");
     if (savedTheme) return savedTheme === "dark";
     return window.matchMedia("(prefers-color-scheme: dark)").matches;
   });
 
-  // Update localStorage when token changes
   useEffect(() => {
     if (token) localStorage.setItem("token", token);
     else localStorage.removeItem("token");
   }, [token]);
 
-  // Apply dark mode to document
   useEffect(() => {
     const root = document.documentElement;
     if (isDarkMode) {
@@ -47,7 +41,6 @@ export const AuthProvider = ({ children }) => {
     }
   }, [isDarkMode]);
 
-  // Load user data on app start
   useEffect(() => {
     const loadUser = async () => {
       if (token) {
@@ -95,6 +88,15 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const forgotPassword = async (email) => {
+    return new Promise((resolve) => {
+        setTimeout(() => {
+            toast.success("Password reset link sent to your email.");
+            resolve({ success: true });
+        }, 1500);
+    });
+  };
+
   const logout = () => {
     setToken(null);
     setUser(null);
@@ -109,6 +111,7 @@ export const AuthProvider = ({ children }) => {
     loading,
     login,
     register,
+    forgotPassword,
     logout,
     isAuthenticated: !!user,
     isDarkMode,
@@ -118,5 +121,4 @@ export const AuthProvider = ({ children }) => {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-// Export context itself
 export default AuthContext;
