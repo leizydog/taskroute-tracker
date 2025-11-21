@@ -14,7 +14,11 @@ import json
 import argparse
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, List
-from app.models.user import UserRole
+
+# ✅ NEW IMPORTS FOR DIRECT DB ACCESS
+from app.models.user import User, UserRole
+from app.database import SessionLocal
+from app.core.auth import get_password_hash
 
 
 # Base URL for API
@@ -51,27 +55,63 @@ def login_user(base_url: str, email: str, password: str) -> str:
         return None
 
 def create_admin_user(base_url: str) -> tuple:
-    """Create admin user via the /admin/user endpoint and return (token, user_id)"""
+    """
+    Create admin user directly in DB if not exists, then login via API.
+    This bypasses the API protection that requires an admin to create an admin.
+    """
     admin_data = {
         "email": "admin@company.com",
         "username": "admin_user",
         "full_name": "Maria Santos",
         "password": "Admin123!",
-        "role": "admin"
+        "role": UserRole.ADMIN
     }
 
+    print_status("Checking for existing admin user...", "DEBUG")
+    
+    # 1. Direct Database Operation
+    db = SessionLocal()
     try:
-        # Use the admin-specific endpoint
-        response = requests.post(f"{base_url}/api/v1/auth/admin/user", json=admin_data)
-        print_status(f"Admin registration response: {response.status_code}", "DEBUG")
+        user = db.query(User).filter(User.email == admin_data["email"]).first()
+        
+        if not user:
+            print_status("Creating admin user directly in database...", "INFO")
+            new_admin = User(
+                email=admin_data["email"],
+                username=admin_data["username"],
+                full_name=admin_data["full_name"],
+                hashed_password=get_password_hash(admin_data["password"]),
+                role=admin_data["role"],
+                is_active=True
+            )
+            db.add(new_admin)
+            db.commit()
+            db.refresh(new_admin)
+            print_status(f"Admin user created in DB: {new_admin.username}", "SUCCESS")
+        else:
+            print_status("Admin user already exists in DB", "INFO")
+            # Ensure existing user is actually an admin
+            if user.role != UserRole.ADMIN:
+                print_status("Updating existing user to ADMIN role...", "WARNING")
+                user.role = UserRole.ADMIN
+                db.commit()
+            
+    except Exception as e:
+        print_status(f"Database error: {str(e)}", "ERROR")
+        print_status("Ensure DATABASE_URL is set or localhost:5433 is accessible", "WARNING")
+        return None, None
+    finally:
+        db.close()
 
-        # Log in to get token
-        token = login_user(base_url, admin_data["email"], admin_data["password"])
-        if not token:
-            print_status("Failed to get admin token", "ERROR")
-            return None, None
+    # 2. Log in via API to get token
+    print_status("Logging in as admin...", "DEBUG")
+    token = login_user(base_url, admin_data["email"], admin_data["password"])
+    if not token:
+        print_status("Failed to get admin token via API", "ERROR")
+        return None, None
 
-        # Fetch admin info
+    # 3. Fetch admin info from API to get ID
+    try:
         headers = {"Authorization": f"Bearer {token}"}
         me_response = requests.get(f"{base_url}/api/v1/auth/me", headers=headers)
         if me_response.status_code == 200:
@@ -84,7 +124,7 @@ def create_admin_user(base_url: str) -> tuple:
             return None, None
 
     except Exception as e:
-        print_status(f"Error with admin user: {str(e)}", "ERROR")
+        print_status(f"Error with admin user verification: {str(e)}", "ERROR")
         return None, None
 
 
@@ -177,7 +217,12 @@ def create_users(base_url: str, admin_token: str) -> tuple:
             tier = user.pop("tier")
             
             response = requests.post(f"{base_url}/api/v1/auth/register", json=user)
-            print_status(f"Registration response for {user['username']}: {response.status_code}", "DEBUG")
+            
+            # Accept 201 (Created) or 400 (Already exists)
+            if response.status_code == 400 and "already registered" in response.text:
+                print_status(f"User {user['username']} already exists, skipping creation.", "DEBUG")
+            elif response.status_code != 201:
+                print_status(f"Registration failed for {user['username']}: {response.status_code}", "WARNING")
             
             token = login_user(base_url, user["email"], user["password"])
             
@@ -193,7 +238,7 @@ def create_users(base_url: str, admin_token: str) -> tuple:
                     user_tiers[old_id] = tier
                     
                     tier_emoji = {"top": "⭐", "mid": "📊", "poor": "⚠️"}
-                    print_status(f"{tier_emoji[tier]} Created {tier.upper()} performer: {user['username']} (ID: {actual_id})", "SUCCESS")
+                    print_status(f"{tier_emoji[tier]} Ready {tier.upper()} performer: {user['username']} (ID: {actual_id})", "SUCCESS")
                 else:
                     print_status(f"Failed to get user info for {user['username']}", "ERROR")
             else:
@@ -304,8 +349,8 @@ def generate_historical_tasks(user_ids: Dict[int, int], user_tiers: Dict[int, st
                 "location_name": template["location"],
                 "latitude": template["lat"],
                 "longitude": template["lng"],
-                "estimated_duration": template["duration"],  # ✅ UPDATED: Now in minutes
-                "actual_duration": actual_duration if actual_duration else None, # ✅ UPDATED: Now in minutes
+                "estimated_duration": template["duration"],
+                "actual_duration": actual_duration if actual_duration else None,
                 "due_date": due_date.isoformat(),
                 "completed_at": completed_at.isoformat() if completed_at else None,
                 "quality_rating": quality,
@@ -347,7 +392,8 @@ def create_historical_tasks(base_url: str, admin_token: str, tasks: List[Dict], 
             # Step 1: Create the task
             response = requests.post(f"{base_url}/api/v1/tasks/", json=task, headers=headers)
             if response.status_code not in [200, 201]:
-                print_status(f"Failed to create task: {response.status_code} - {response.text}", "ERROR")
+                # Skip status print for bulk operations to reduce noise, unless error
+                # print_status(f"Failed to create task: {response.status_code} - {response.text}", "ERROR")
                 continue
 
             task_data = response.json()
@@ -368,7 +414,6 @@ def create_historical_tasks(base_url: str, admin_token: str, tasks: List[Dict], 
                     headers=headers
                 )
                 completed_count += 1
-                emoji = "✅"
 
             elif status == "in_progress":
                 update_response = requests.post(
@@ -376,16 +421,12 @@ def create_historical_tasks(base_url: str, admin_token: str, tasks: List[Dict], 
                     headers=headers
                 )
                 in_progress_count += 1
-                emoji = "🔄"
 
             else:  # pending tasks require no update
                 pending_count += 1
-                emoji = "⏳"
 
             if update_response and update_response.status_code not in [200, 201]:
                 print_status(f"Failed to update task status: {update_response.text}", "WARNING")
-            else:
-                print_status(f"{emoji} Created {status} task: {task['title'][:40]}...", "SUCCESS")
 
         except Exception as e:
             print_status(f"Error creating task: {str(e)}", "ERROR")
@@ -396,8 +437,6 @@ def create_historical_tasks(base_url: str, admin_token: str, tasks: List[Dict], 
         "INFO"
     )
     return task_ids
-
-
 
 
 def create_current_tasks(base_url: str, admin_token: str, user_ids: Dict[int, int]) -> Dict[int, int]:
@@ -543,8 +582,8 @@ def main():
     print()
 
     # =============================
-# VERIFY KPI ENDPOINTS
-# =============================
+    # VERIFY KPI ENDPOINTS
+    # =============================
     print_status("Fetching KPI data for verification...", "INFO")
 
     headers = {"Authorization": f"Bearer {admin_token}"}

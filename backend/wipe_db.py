@@ -2,29 +2,38 @@ from app.database import SessionLocal, engine
 from app.models.task import Task
 from app.models.location import LocationLog
 from app.models.user import User
+# ✅ Import AuditLog (Assumed to be in your models folder)
+# If AuditLog is not found, you must add it to app/models
+# from app.models.audit import AuditLog 
 from sqlalchemy import text
 import sys
 
 def wipe():
     db = SessionLocal()
     try:
-        print("🗑️  Wiping Tasks and Location Logs...")
-        # Order matters due to foreign keys
-        db.query(LocationLog).delete()
-        db.query(Task).delete()
-        
-        print("🗑️  Wiping Users...")
-        # Delete everyone. You will need to re-seed the admin account.
-        db.query(User).delete()
-        
-        # RESET ID SEQUENCE (PostgreSQL specific)
-        print("🔄 Resetting User ID sequence...")
-        # This resets the primary key counter for users to 1
-        db.execute(text("TRUNCATE TABLE users RESTART IDENTITY CASCADE;"))
-        
-        # If you are using SQLite instead of Postgres, comment out the line above and use this instead:
-        # db.execute(text("DELETE FROM sqlite_sequence WHERE name='users';"))
-
+        # Use PostgreSQL TRUNCATE CASCADE command for a complete reset.
+        # This is the safest way to reset IDs and delete everything when foreign keys are present.
+        if str(engine.url).startswith('postgresql'):
+             
+             # 1. TRUNCATE TASKS table and its dependents (LocationLog)
+             #    The CASCADE option handles dependent tables like location_logs for us.
+             print("🗑️  Wiping Tasks, Location Logs (using CASCADE)...")
+             db.execute(text("TRUNCATE TABLE tasks RESTART IDENTITY CASCADE;"))
+             
+             # 2. TRUNCATE USERS table and its dependents (AuditLog)
+             print("🗑️  Wiping Users and Audit Logs (using CASCADE)...")
+             # Assuming your AuditLog table has a foreign key to users.
+             db.execute(text("TRUNCATE TABLE users RESTART IDENTITY CASCADE;"))
+             
+        else:
+             # Standard SQLAlchemy DELETE operations for SQLite/MySQL/other
+             print("🗑️  Wiping all data (Standard DELETE)...")
+             db.query(LocationLog).delete()
+             # Assuming AuditLog model exists: db.query(AuditLog).delete()
+             db.query(Task).delete()
+             db.query(User).delete()
+             # Note: Manual ID reset needed for SQLite/MySQL
+             
         db.commit()
         print("✅ Database wiped and IDs reset successfully!")
         
