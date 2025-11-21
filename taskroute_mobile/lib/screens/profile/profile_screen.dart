@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/location_provider.dart';
+import '../../providers/theme_provider.dart';
 import '../../services/storage_service.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -90,6 +91,57 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: const Text('Logout'),
             ),
           ],
+        );
+      },
+    );
+  }
+
+  void _showThemeDialog() {
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+    
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Choose Theme'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              RadioListTile<ThemeMode>(
+                title: const Text('Light'),
+                value: ThemeMode.light,
+                groupValue: themeProvider.themeMode,
+                onChanged: (ThemeMode? value) {
+                  if (value != null) {
+                    themeProvider.setThemeMode(value);
+                    Navigator.of(context).pop();
+                  }
+                },
+              ),
+              RadioListTile<ThemeMode>(
+                title: const Text('Dark'),
+                value: ThemeMode.dark,
+                groupValue: themeProvider.themeMode,
+                onChanged: (ThemeMode? value) {
+                  if (value != null) {
+                    themeProvider.setThemeMode(value);
+                    Navigator.of(context).pop();
+                  }
+                },
+              ),
+              RadioListTile<ThemeMode>(
+                title: const Text('System Default'),
+                value: ThemeMode.system,
+                groupValue: themeProvider.themeMode,
+                onChanged: (ThemeMode? value) {
+                  if (value != null) {
+                    themeProvider.setThemeMode(value);
+                    Navigator.of(context).pop();
+                  }
+                },
+              ),
+            ],
+          ),
         );
       },
     );
@@ -243,6 +295,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Card(
               child: Column(
                 children: [
+                  // Dark Mode / Theme Setting
+                  Consumer<ThemeProvider>(
+                    builder: (context, themeProvider, _) {
+                      String themeText = 'System Default';
+                      IconData themeIcon = Icons.brightness_auto;
+                      
+                      if (themeProvider.themeMode == ThemeMode.light) {
+                        themeText = 'Light';
+                        themeIcon = Icons.light_mode;
+                      } else if (themeProvider.themeMode == ThemeMode.dark) {
+                        themeText = 'Dark';
+                        themeIcon = Icons.dark_mode;
+                      }
+                      
+                      return ListTile(
+                        leading: Icon(themeIcon),
+                        title: const Text('Theme'),
+                        subtitle: Text(themeText),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: _showThemeDialog,
+                      );
+                    },
+                  ),
+                  const Divider(height: 1),
+                  
                   SwitchListTile(
                     title: const Text('Location Tracking'),
                     subtitle: const Text('Enable GPS tracking for tasks'),

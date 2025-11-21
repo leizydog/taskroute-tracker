@@ -3,7 +3,8 @@ import 'dart:convert';
 
 class ApiService {
   // ✅ FIX: Add /api/v1 to match your backend
-  static const String baseUrl = 'http://10.0.2.2:8000/api/v1';
+static const String baseUrl = 'http://192.168.1.31:8000/api/v1';
+
   
   // Singleton pattern
   static final ApiService _instance = ApiService._internal();
@@ -223,49 +224,4 @@ class ApiService {
     return response;
   }
 
-  /// Register new user
-  Future<http.Response> register({
-    required String email,
-    required String password,
-    required String fullName,
-    required String username,
-  }) async {
-    print('=== API SERVICE DEBUG ===');
-    print('Base URL: $baseUrl');
-    print('Full URL: $baseUrl/auth/register');
-    
-    final headers = {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    };
-    print('Headers: $headers');
-
-    final body = json.encode({
-      'email': email,
-      'password': password,
-      'full_name': fullName,
-      'username': username,
-    });
-    
-    print('Request Body: $body');
-
-    final url = Uri.parse('$baseUrl/auth/register');
-    
-    try {
-      final response = await http.post(
-        url,
-        headers: headers,
-        body: body,
-      ).timeout(const Duration(seconds: 30));
-      
-      print('API Response Status: ${response.statusCode}');
-      print('API Response Headers: ${response.headers}');
-      print('API Response Body: ${response.body}');
-      
-      return response;
-    } catch (e) {
-      print('API Request Exception: $e');
-      rethrow;
-    }
-  }
 }
