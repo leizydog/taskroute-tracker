@@ -81,6 +81,7 @@ class TaskComplete(BaseModel):
     completion_notes: Optional[str] = None
     quality_rating: Optional[int] = Field(None, ge=1, le=5)
     signature_url: Optional[str] = None  # ✅ Added signature_url
+    photo_urls: Optional[List[str]] = None
     latitude: Optional[float] = Field(None, ge=-90, le=90)
     longitude: Optional[float] = Field(None, ge=-180, le=180)
 
@@ -103,6 +104,7 @@ class TaskResponse(TaskBase):
     completion_notes: Optional[str] = None
     quality_rating: Optional[int] = None
     signature_url: Optional[str] = None  # ✅ Added signature_url
+    photo_urls: Optional[List[str]] = None
 
     class Config:
         from_attributes = True
@@ -112,6 +114,9 @@ class TaskResponse(TaskBase):
 class TaskWithUsers(TaskResponse):
     assigned_user_name: Optional[str] = None
     created_user_name: Optional[str] = None
+
+    class Config:
+        from_attributes = True  # ✅ This is critical for Pydantic v2
 
 
 # Schema for task statistics

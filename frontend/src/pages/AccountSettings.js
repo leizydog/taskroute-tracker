@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import API from '../services/api';
+import { useAuth } from '../contexts/AuthContext'; // ✅ Import useAuth
 
 // --- Updated Confirmation Modal with Feedback States ---
 const ConfirmationModal = ({ isOpen, title, message, type = 'info', status = 'idle', onConfirm, onClose }) => {
@@ -122,6 +123,7 @@ const ConfirmationModal = ({ isOpen, title, message, type = 'info', status = 'id
 };
 
 const AccountSettings = () => {
+  const { refreshUser } = useAuth(); // ✅ Get refreshUser from context
   const [activeTab, setActiveTab] = useState('profile');
   const [initialLoading, setInitialLoading] = useState(true);
   
@@ -224,6 +226,8 @@ const AccountSettings = () => {
       
       setProfileData(prev => ({ ...prev, avatar_url: res.data.avatar_url }));
       setImgVersion(Date.now());
+
+      await refreshUser();
       
     } catch (error) {
       console.error('Error uploading avatar:', error);
@@ -271,6 +275,8 @@ const AccountSettings = () => {
     try {
       await API.updateProfile(changedFields);
       setOriginalProfileData({ ...originalProfileData, ...changedFields });
+
+      await refreshUser();
       
       // ✅ Success Feedback inside Modal
       setConfirmModal(prev => ({ ...prev, status: 'success' }));

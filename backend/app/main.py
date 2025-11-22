@@ -14,6 +14,18 @@ import os
 # -------------------------
 load_dotenv() 
 
+
+# Setup Static Directory
+STATIC_DIR = Path("static")
+AVATAR_DIR = STATIC_DIR / "avatars"
+SIGNATURES_DIR = STATIC_DIR / "signatures"  # ✅ Add this
+PHOTOS_DIR = STATIC_DIR / "photos"          # ✅ Add this
+
+AVATAR_DIR.mkdir(parents=True, exist_ok=True)
+SIGNATURES_DIR.mkdir(parents=True, exist_ok=True)     # ✅ Add this
+PHOTOS_DIR.mkdir(parents=True, exist_ok=True)         # ✅ Add this
+
+
 # -------------------------
 # Initialize predictors
 # -------------------------
@@ -66,6 +78,7 @@ AVATAR_DIR.mkdir(parents=True, exist_ok=True)
 # Mount the static directory to serve files
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
+
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
@@ -84,11 +97,12 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(tasks.router, prefix="/api/v1")
 app.include_router(users.router, prefix="/api/v1")
-app.include_router(locations.router, prefix="/api/v1")
+app.include_router(locations.router, prefix="/api/v1/locations")
 app.include_router(analytics.router, prefix="/api/v1")
 app.include_router(predictions.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
 app.include_router(reports.router, prefix="/api/v1") # Register it
+
 
 # WebSocket endpoint
 @app.websocket("/ws/location")

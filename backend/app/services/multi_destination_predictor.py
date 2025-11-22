@@ -35,7 +35,7 @@ class MultiDestinationPredictor:
     ) -> Dict:
         """
         Predict TRAVEL duration for a multi-destination route
-        ✅ FIXED: Now properly accounts for rush hour timing
+        ✅ Now handles impossible routes
         """
         
         try:
@@ -53,6 +53,7 @@ class MultiDestinationPredictor:
             legs = []
             total_distance_km = 0
             total_travel_time_min = 0
+            impossible_legs = []  # ✅ NEW: Track impossible legs
             
             current_lat = employee_lat
             current_lng = employee_lng
@@ -86,7 +87,7 @@ class MultiDestinationPredictor:
                     print(f"   To: ({dest_lat:.4f}, {dest_lng:.4f})")
                     print(f"   Departure: {current_time.strftime('%H:%M')}")
                     
-                    # ✅ FIX: Pass date_str to get_route_with_conditions
+                    # Get route info
                     route_info = self.predictor.directions_service.get_route_with_conditions(
                         origin_lat=current_lat,
                         origin_lng=current_lng,
@@ -96,8 +97,23 @@ class MultiDestinationPredictor:
                         conditions=conditions,
                         hour=current_hour,
                         day_of_week=current_day_of_week,
-                        date_str=current_date_str  # ✅ Pass the date!
+                        date_str=current_date_str
                     )
+                    
+                    # ✅ NEW: Check if this leg is impossible
+                    if route_info.get('impossible_route'):
+                        impossible_reason = route_info.get('impossible_reason')
+                        print(f"   🚫 Impossible leg: {impossible_reason}")
+                        
+                        impossible_legs.append({
+                            'leg_number': i + 1,
+                            'from_location': 'Employee Start' if i == 0 else destinations[i-1].get('location_name', f'Stop {i}'),
+                            'to_location': dest_name,
+                            'impossible_reason': impossible_reason
+                        })
+                        
+                        # If any leg is impossible, entire route is impossible
+                        continue
                     
                     # Extract travel details and convert to Python float
                     leg_travel_time = float(route_info.get('duration_minutes', 15))
@@ -134,34 +150,28 @@ class MultiDestinationPredictor:
                     print(f"   ❌ Error calculating leg {i+1}: {leg_error}")
                     traceback.print_exc()
                     
-                    # Use fallback values for this leg
-                    fallback_distance = 5.0
-                    fallback_travel = 15.0
-                    
-                    total_distance_km += fallback_distance
-                    total_travel_time_min += fallback_travel
-                    
-                    arrival_time = current_time + timedelta(minutes=float(fallback_travel))
-                    
-                    legs.append({
+                    # Mark as impossible if error
+                    impossible_legs.append({
                         'leg_number': i + 1,
                         'from_location': 'Employee Start' if i == 0 else destinations[i-1].get('location_name', f'Stop {i}'),
                         'to_location': dest.get('location_name', f'Stop {i+1}'),
-                        'distance_km': fallback_distance,
-                        'travel_time_minutes': fallback_travel,
-                        'departure_time': current_time.strftime('%H:%M'),
-                        'arrival_time': arrival_time.strftime('%H:%M'),
-                        'has_traffic_data': False,
-                        'error': str(leg_error)
+                        'impossible_reason': f"Error: {str(leg_error)}"
                     })
-                    
-                    # Update for next iteration
-                    current_time = arrival_time
-                    try:
-                        current_lat = float(dest['latitude'])
-                        current_lng = float(dest['longitude'])
-                    except:
-                        pass
+            
+            # ✅ NEW: If any legs are impossible, return error
+            if impossible_legs:
+                print(f"\n🚫 Multi-destination route has {len(impossible_legs)} impossible leg(s)")
+                
+                return {
+                    'error': True,
+                    'impossible_route': True,
+                    'impossible_reason': f"{len(impossible_legs)} of {len(destinations)} legs cannot be completed by car",
+                    'impossible_legs': impossible_legs,
+                    'total_destinations': len(destinations),
+                    'impossible_count': len(impossible_legs),
+                    'message': 'Multi-destination route includes unreachable locations',
+                    'suggestion': 'Some destinations may require ferry, flight, or are in different countries'
+                }
             
             # Calculate totals (only travel time, no work time)
             total_duration_min = total_travel_time_min
@@ -188,7 +198,7 @@ class MultiDestinationPredictor:
                 emp_success_rate = 0.90
             
             # Calculate confidence interval (wider for multi-destination due to uncertainty)
-            confidence_margin = 1.96 * emp_std * len(destinations)  # Scale by number of stops
+            confidence_margin = 1.96 * emp_std * len(destinations)
             confidence_lower = max(0, total_duration_min - confidence_margin)
             confidence_upper = total_duration_min + confidence_margin
             
@@ -214,8 +224,8 @@ class MultiDestinationPredictor:
                 
                 # Travel breakdown (no work time)
                 'total_travel_time_minutes': round(total_travel_time_min, 2),
-                'total_work_time_minutes': 0,  # Not applicable for travel-only
-                'travel_percentage': 100.0,  # 100% travel
+                'total_work_time_minutes': 0,
+                'travel_percentage': 100.0,
                 
                 # Route information
                 'total_distance_km': round(total_distance_km, 2),
@@ -247,33 +257,14 @@ class MultiDestinationPredictor:
             print(f"❌ Fatal error in multi-destination prediction: {e}")
             traceback.print_exc()
             
-            # Return fallback prediction
-            fallback_duration = len(destinations) * 20  # 20 min travel per stop
+            # Return error response
             return {
-                'predicted_duration_minutes': fallback_duration,
-                'predicted_duration_hours': round(fallback_duration / 60, 2),
-                'confidence_interval_lower': fallback_duration * 0.8,
-                'confidence_interval_upper': fallback_duration * 1.2,
-                'total_travel_time_minutes': fallback_duration,
-                'total_work_time_minutes': 0,
-                'travel_percentage': 100.0,
-                'total_distance_km': len(destinations) * 5.0,
-                'number_of_stops': len(destinations),
-                'number_of_legs': len(destinations),
-                'employee_reliability': 0.85,
-                'employee_success_rate': 90.0,
-                'estimated_start_time': start_date,
-                'estimated_completion_time': 'N/A',
-                'legs': [],
-                'condition_impact': conditions,
-                'method': method,
-                'city': city,
-                'is_multi_destination': True,
-                'prediction_timestamp': datetime.now().isoformat(),
-                'error': str(e),
+                'error': True,
+                'impossible_route': False,
+                'message': f'Prediction failed: {str(e)}',
                 'fallback': True
             }
-    
+
     def optimize_route_order(
         self,
         participant_id: str,

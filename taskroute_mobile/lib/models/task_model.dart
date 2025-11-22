@@ -70,7 +70,7 @@ enum TaskPriority {
   }
 }
 
-// ✅ NEW: Task Destination class for multi-destination tasks
+// Task Destination class for multi-destination tasks
 class TaskDestination {
   final int sequence;
   final String locationName;
@@ -112,7 +112,7 @@ class TaskModel {
   final int assignedTo;
   final int createdBy;
   
-  // ✅ NEW: Multi-destination support
+  // Multi-destination support
   final bool isMultiDestination;
   final List<TaskDestination>? destinations;
   
@@ -132,6 +132,10 @@ class TaskModel {
   final int? qualityRating;
   final String assignedUserName;
   final String createdUserName;
+
+  // ✅ NEW: Proof of delivery fields
+  final String? signatureUrl;
+  final List<String>? photoUrls;
 
   TaskModel({
     required this.id,
@@ -157,6 +161,9 @@ class TaskModel {
     this.qualityRating,
     required this.assignedUserName,
     required this.createdUserName,
+    // ✅ Added to constructor
+    this.signatureUrl,
+    this.photoUrls,
   });
 
   factory TaskModel.fromJson(Map<String, dynamic> json) {
@@ -188,6 +195,11 @@ class TaskModel {
       qualityRating: json['quality_rating'],
       assignedUserName: json['assigned_user_name'],
       createdUserName: json['created_user_name'],
+      // ✅ Map new fields
+      signatureUrl: json['signature_url'],
+      photoUrls: json['photo_urls'] != null 
+          ? List<String>.from(json['photo_urls']) 
+          : null,
     );
   }
 
@@ -216,10 +228,13 @@ class TaskModel {
       'quality_rating': qualityRating,
       'assigned_user_name': assignedUserName,
       'created_user_name': createdUserName,
+      // ✅ Serialize new fields
+      'signature_url': signatureUrl,
+      'photo_urls': photoUrls,
     };
   }
 
-  // ✅ NEW: Get first destination for multi-destination tasks
+  // Get first destination for multi-destination tasks
   TaskDestination? get firstDestination {
     if (!isMultiDestination || destinations == null || destinations!.isEmpty) {
       return null;
@@ -227,7 +242,7 @@ class TaskModel {
     return destinations!.first;
   }
 
-  // ✅ NEW: Get effective latitude (single or first destination)
+  // Get effective latitude (single or first destination)
   double? get effectiveLatitude {
     if (isMultiDestination) {
       return firstDestination?.latitude;
@@ -235,7 +250,7 @@ class TaskModel {
     return latitude;
   }
 
-  // ✅ NEW: Get effective longitude (single or first destination)
+  // Get effective longitude (single or first destination)
   double? get effectiveLongitude {
     if (isMultiDestination) {
       return firstDestination?.longitude;
@@ -243,7 +258,7 @@ class TaskModel {
     return longitude;
   }
 
-  // ✅ NEW: Get effective location name
+  // Get effective location name
   String? get effectiveLocationName {
     if (isMultiDestination) {
       return firstDestination?.locationName;
@@ -251,7 +266,7 @@ class TaskModel {
     return locationName;
   }
 
-  // ✅ UPDATED: Use effective location
+  // Use effective location
   bool get hasLocation => effectiveLatitude != null && effectiveLongitude != null;
 
   String get formattedDueDate {
@@ -309,7 +324,7 @@ class TaskModel {
     }
   }
 
-  // ✅ NEW: Get destination count text
+  // Get destination count text
   String get destinationText {
     if (!isMultiDestination || destinations == null) {
       return effectiveLocationName ?? 'No location';
@@ -341,6 +356,9 @@ class TaskModel {
     int? qualityRating,
     String? assignedUserName,
     String? createdUserName,
+    // ✅ Added params to copyWith
+    String? signatureUrl,
+    List<String>? photoUrls,
   }) {
     return TaskModel(
       id: id ?? this.id,
@@ -366,6 +384,9 @@ class TaskModel {
       qualityRating: qualityRating ?? this.qualityRating,
       assignedUserName: assignedUserName ?? this.assignedUserName,
       createdUserName: createdUserName ?? this.createdUserName,
+      // ✅ Assign new fields
+      signatureUrl: signatureUrl ?? this.signatureUrl,
+      photoUrls: photoUrls ?? this.photoUrls,
     );
   }
 }

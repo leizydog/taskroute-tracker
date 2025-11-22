@@ -212,6 +212,14 @@ const API = {
   // ✅ NEW: Admin Helpers
   getAuditLogs: AdminAPI.getAuditLogs,
   triggerRetrain: AdminAPI.triggerRetrain,
+
+  forgotPassword: (email) => {
+    return apiClient.post('/auth/forgot-password', { email });
+  },
+
+  resetPassword: (token, new_password) => {
+    return apiClient.post('/auth/reset-password', { token, new_password });
+  },
 };
 
 export default API;

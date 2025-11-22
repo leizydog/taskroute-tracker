@@ -13,11 +13,11 @@ import os
 from pathlib import Path
 from datetime import datetime, timedelta
 from geopy.distance import geodesic
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Tuple
 
 
 # ============================================================================
-# GOOGLE DIRECTIONS API SERVICE (FIXED FOR RUSH HOUR)
+# GOOGLE DIRECTIONS API SERVICE (FIXED FOR RUSH HOUR & IMPOSSIBLE ROUTES)
 # ============================================================================
 
 class GoogleDirectionsService:
@@ -26,6 +26,77 @@ class GoogleDirectionsService:
     def __init__(self, api_key: str):
         self.api_key = api_key
         self.base_url = "https://maps.googleapis.com/maps/api/directions/json"
+
+    def _is_route_impossible(
+        self,
+        origin_lat: float,
+        origin_lng: float,
+        dest_lat: float,
+        dest_lng: float,
+        status: str,
+        error_message: str = None
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Detect if a route is impossible (different countries, islands, etc.)
+        
+        Returns:
+            (is_impossible, reason)
+        """
+        
+        # Check 1: Google API explicitly says no route
+        if status == 'ZERO_RESULTS':
+            return True, "No driving route available between these locations"
+        
+        # Check 2: Different countries (simple lat/lng bounds check)
+        # Philippines bounds: roughly 4.5°N to 21°N, 116°E to 127°E
+        philippines_bounds = {
+            'lat_min': 4.5,
+            'lat_max': 21.0,
+            'lng_min': 116.0,
+            'lng_max': 127.0
+        }
+        
+        origin_in_ph = (
+            philippines_bounds['lat_min'] <= origin_lat <= philippines_bounds['lat_max'] and
+            philippines_bounds['lng_min'] <= origin_lng <= philippines_bounds['lng_max']
+        )
+        
+        dest_in_ph = (
+            philippines_bounds['lat_min'] <= dest_lat <= philippines_bounds['lat_max'] and
+            philippines_bounds['lng_min'] <= dest_lng <= philippines_bounds['lng_max']
+        )
+        
+        if origin_in_ph and not dest_in_ph:
+            return True, "Destination is outside the Philippines - no driving route available"
+        
+        if not origin_in_ph and dest_in_ph:
+            return True, "Starting location is outside the Philippines - no driving route available"
+        
+        if not origin_in_ph and not dest_in_ph:
+            return True, "Both locations are outside the Philippines"
+        
+        # Check 3: Extreme distance (>500km in a straight line likely means different islands)
+        straight_distance = geodesic((origin_lat, origin_lng), (dest_lat, dest_lng)).km
+        if straight_distance > 500:
+            return True, f"Locations are {straight_distance:.0f}km apart (likely different islands) - no driving route available"
+        
+        # Check 4: Specific Google API error messages
+        if error_message:
+            impossible_keywords = [
+                'cannot be reached',
+                'not accessible by',
+                'no route',
+                'different countries',
+                'ferry',
+                'body of water'
+            ]
+            
+            error_lower = error_message.lower()
+            for keyword in impossible_keywords:
+                if keyword in error_lower:
+                    return True, f"Route impossible: {error_message}"
+        
+        return False, None
     
     def get_route_info(
         self, 
@@ -39,35 +110,75 @@ class GoogleDirectionsService:
     ) -> Dict:
         """
         Get route information from Google Directions API
-        
-        Parameters:
-        -----------
-        origin_lat : float - Starting latitude
-        origin_lng : float - Starting longitude
-        dest_lat : float - Destination latitude
-        dest_lng : float - Destination longitude
-        mode : str - Travel mode: 'driving', 'walking', 'bicycling', 'transit'
-        departure_time : str - 'now' or Unix timestamp
-        traffic_model : str - 'best_guess', 'pessimistic', or 'optimistic'
-        
-        Returns:
-        --------
-        dict : Route information including distance and duration
         """
+        
+        # Validate coordinates
+        if not (-90 <= origin_lat <= 90) or not (-180 <= origin_lng <= 180):
+            print(f"❌ Invalid origin coordinates: ({origin_lat}, {origin_lng})")
+            return self._fallback_calculation(origin_lat, origin_lng, dest_lat, dest_lng, mode)
+        
+        if not (-90 <= dest_lat <= 90) or not (-180 <= dest_lng <= 180):
+            print(f"❌ Invalid destination coordinates: ({dest_lat}, {dest_lng})")
+            return self._fallback_calculation(origin_lat, origin_lng, dest_lat, dest_lng, mode)
         
         params = {
             'origin': f"{origin_lat},{origin_lng}",
             'destination': f"{dest_lat},{dest_lng}",
             'mode': mode,
             'key': self.api_key,
-            'departure_time': departure_time,
-            'traffic_model': traffic_model
         }
         
+        # Only add departure_time and traffic_model for driving mode
+        if mode == 'driving':
+            if departure_time != 'now':
+                try:
+                    timestamp = int(departure_time)
+                    current_timestamp = int(datetime.now().timestamp())
+                    
+                    # Google API only accepts timestamps within reasonable range
+                    if timestamp < current_timestamp:
+                        print(f"⚠️ Past timestamp detected, using 'now' instead")
+                        params['departure_time'] = 'now'
+                    elif timestamp > current_timestamp + (30 * 24 * 60 * 60):
+                        print(f"⚠️ Timestamp too far in future, using 'now' instead")
+                        params['departure_time'] = 'now'
+                    else:
+                        params['departure_time'] = departure_time
+                except (ValueError, TypeError):
+                    print(f"⚠️ Invalid timestamp format, using 'now'")
+                    params['departure_time'] = 'now'
+            else:
+                params['departure_time'] = departure_time
+            
+            params['traffic_model'] = traffic_model
+        
         try:
-            response = requests.get(self.base_url, params=params, timeout=10)
+            print(f"   📡 Calling Google Directions API...")
+            print(f"      Origin: ({origin_lat:.6f}, {origin_lng:.6f})")
+            print(f"      Destination: ({dest_lat:.6f}, {dest_lng:.6f})")
+            print(f"      Mode: {mode}")
+            
+            response = requests.get(self.base_url, params=params, timeout=15)
             response.raise_for_status()
             data = response.json()
+            
+            # ✅ Check for impossible routes FIRST
+            is_impossible, impossible_reason = self._is_route_impossible(
+                origin_lat, origin_lng, dest_lat, dest_lng,
+                data['status'],
+                data.get('error_message')
+            )
+            
+            if is_impossible:
+                print(f"   🚫 Route Impossible: {impossible_reason}")
+                return {
+                    'success': False,
+                    'impossible_route': True,
+                    'impossible_reason': impossible_reason,
+                    'distance_km': None,
+                    'duration_minutes': None,
+                    'fallback': False
+                }
             
             if data['status'] == 'OK':
                 route = data['routes'][0]
@@ -80,14 +191,47 @@ class GoogleDirectionsService:
                 if 'duration_in_traffic' in leg:
                     duration_seconds = leg['duration_in_traffic']['value']
                     duration_text = leg['duration_in_traffic']['text']
+                    has_traffic = True
                 else:
                     duration_seconds = leg['duration']['value']
                     duration_text = leg['duration']['text']
+                    has_traffic = False
                 
                 duration_minutes = duration_seconds / 60
                 
+                # ✅ Check for ferry/water crossing (informational warning)
+                involves_ferry = False
+                ferry_steps = []
+                
+                for step in leg['steps']:
+                    travel_mode = step.get('travel_mode', '')
+                    instructions = step.get('html_instructions', '').lower()
+                    
+                    if travel_mode == 'FERRY' or 'ferry' in instructions:
+                        involves_ferry = True
+                        ferry_steps.append({
+                            'instructions': step.get('html_instructions', 'Ferry crossing'),
+                            'distance': step['distance']['text'],
+                            'duration': step['duration']['text']
+                        })
+            
+                print(f"   ✅ Google API Success:")
+                print(f"      Distance: {distance_km:.1f} km")
+                print(f"      Duration: {duration_minutes:.1f} min")
+                print(f"      Traffic data: {has_traffic}")
+                
+                if involves_ferry:
+                    print(f"      ⛴️  Route includes ferry crossing(s): {len(ferry_steps)}")
+                    for i, ferry in enumerate(ferry_steps, 1):
+                        print(f"          Ferry {i}: {ferry['distance']} ({ferry['duration']})")
+            
+                # Check if this is a very long route
+                if distance_km > 300:
+                    print(f"      ⚠️  Long-distance route: Consider overnight travel or multiple days")
+                
                 return {
                     'success': True,
+                    'impossible_route': False,
                     'distance_km': round(distance_km, 2),
                     'distance_meters': distance_meters,
                     'duration_minutes': round(duration_minutes, 2),
@@ -96,15 +240,28 @@ class GoogleDirectionsService:
                     'start_address': leg['start_address'],
                     'end_address': leg['end_address'],
                     'polyline': route['overview_polyline']['points'],
-                    'has_traffic_data': 'duration_in_traffic' in leg,
-                    'steps_count': len(leg['steps'])
+                    'has_traffic_data': has_traffic,
+                    'steps_count': len(leg['steps']),
+                    'involves_ferry': involves_ferry,  # ✅ NEW
+                    'ferry_crossings': ferry_steps,    # ✅ NEW
+                    'is_long_distance': distance_km > 300  # ✅ NEW
                 }
             else:
-                print(f"Google Directions API error: {data['status']}")
+                print(f"   ❌ Google Directions API error: {data['status']}")
+                if 'error_message' in data:
+                    print(f"      Details: {data['error_message']}")
                 return self._fallback_calculation(origin_lat, origin_lng, dest_lat, dest_lng, mode)
                 
+        except requests.exceptions.Timeout:
+            print(f"   ⏱️ Google API timeout - using fallback calculation")
+            return self._fallback_calculation(origin_lat, origin_lng, dest_lat, dest_lng, mode)
+        except requests.exceptions.RequestException as e:
+            print(f"   ❌ Google API request error: {e}")
+            return self._fallback_calculation(origin_lat, origin_lng, dest_lat, dest_lng, mode)
         except Exception as e:
-            print(f"Error calling Google Directions API: {e}")
+            print(f"   ❌ Unexpected error calling Google Directions API: {e}")
+            import traceback
+            traceback.print_exc()
             return self._fallback_calculation(origin_lat, origin_lng, dest_lat, dest_lng, mode)
     
     def _fallback_calculation(
@@ -146,7 +303,7 @@ class GoogleDirectionsService:
         conditions: str, 
         hour: int, 
         day_of_week: int,
-        date_str: str = None  # ✅ NEW: Accept date string
+        date_str: str = None
     ) -> Dict:
         """
         ✅ FIXED: Get route info with proper timing and traffic consideration
@@ -175,7 +332,7 @@ class GoogleDirectionsService:
         departure_timestamp = int(scheduled_datetime.timestamp())
         
         print(f"   ⏰ Scheduled time: {scheduled_datetime.strftime('%Y-%m-%d %H:%M')}")
-        print(f"   📍 Conditions: {conditions}")
+        print(f"   🌐 Conditions: {conditions}")
         
         # ✅ FIX 2: Use pessimistic traffic model for rush hour/heavy traffic
         if conditions in ['Heavy Traffic', 'Rush Hour']:
@@ -189,19 +346,19 @@ class GoogleDirectionsService:
         route_info = self.get_route_info(
             origin_lat, origin_lng, dest_lat, dest_lng,
             mode=mode,
-            departure_time=str(departure_timestamp),  # ✅ Use scheduled time!
+            departure_time=str(departure_timestamp),
             traffic_model=traffic_model
         )
         
         # ✅ FIX 4: Apply stronger multipliers for conditions WITHOUT traffic data
         if route_info['success'] and not route_info.get('has_traffic_data', False):
             condition_factors = {
-                'Heavy Traffic': 2.0,   # ✅ Increased from 1.8
-                'Rain': 1.4,           # ✅ Increased from 1.3
-                'Road Work': 1.5,      # ✅ Increased from 1.4
-                'Rush Hour': 1.8,      # ✅ Increased from 1.5
+                'Heavy Traffic': 2.0,
+                'Rain': 1.4,
+                'Road Work': 1.5,
+                'Rush Hour': 1.8,
                 'Normal': 1.0,
-                'Holiday': 0.75        # ✅ Decreased from 0.8 (less traffic)
+                'Holiday': 0.75
             }
             
             factor = condition_factors.get(conditions, 1.0)
@@ -219,7 +376,7 @@ class GoogleDirectionsService:
 
 
 # ============================================================================
-# TASK DURATION PREDICTOR (UPDATED TO PASS DATE)
+# TASK DURATION PREDICTOR (UPDATED TO PASS DATE AND RESPECT CITY)
 # ============================================================================
 
 class TaskDurationPredictor:
@@ -273,11 +430,38 @@ class TaskDurationPredictor:
         except Exception as e:
             print(f"Error loading models: {e}")
             return False
+            
+    def _should_trust_travel_time(self, distance_km: float, travel_time_min: float, predicted_duration: float) -> bool:
+        """
+        Determine if we should trust travel time over ML prediction
+        
+        Returns True if:
+        - Distance is extreme (>100km) 
+        - Travel time is much longer than prediction
+        - Prediction seems unrealistic given travel time
+        """
+        
+        # Case 1: Extreme distance (inter-city or inter-province travel)
+        if distance_km > 100:
+            print(f"   ⚠️ Extreme distance detected ({distance_km:.1f} km) - prioritizing travel time")
+            return True
+        
+        # Case 2: Travel time is more than 3x the predicted duration
+        if travel_time_min > predicted_duration * 3:
+            print(f"   ⚠️ Travel time ({travel_time_min:.1f} min) >> Predicted duration ({predicted_duration:.1f} min)")
+            return True
+        
+        # Case 3: Prediction is less than 80% of travel time (physically impossible)
+        if predicted_duration < travel_time_min * 0.8:
+            print(f"   ⚠️ Predicted duration ({predicted_duration:.1f} min) < 80% of travel time ({travel_time_min:.1f} min)")
+            return True
+        
+        return False
     
     def predict(
         self, 
         participant_id: str, 
-        city: str, 
+        city: str,  # This should be the TASK location city
         conditions: str, 
         method: str, 
         hour: int, 
@@ -290,8 +474,6 @@ class TaskDurationPredictor:
     ) -> Dict:
         """
         Predict task duration using Google Directions API and ML model
-        
-        Returns complete prediction breakdown including travel time
         """
         
         if isinstance(date, str):
@@ -301,6 +483,16 @@ class TaskDurationPredictor:
             date_obj = date
             date_str = date.strftime('%Y-%m-%d')
         
+        # Log the inputs for debugging
+        print(f"\n🎯 Task Duration Prediction Request:")
+        print(f"   Participant: {participant_id}")
+        print(f"   Employee Location: ({employee_lat:.4f}, {employee_lng:.4f})")
+        print(f"   Task Location: ({task_lat:.4f}, {task_lng:.4f})")
+        print(f"   Task City: {city}")  # Should reflect the TASK location
+        print(f"   Conditions: {conditions}")
+        print(f"   Method: {method}")
+        print(f"   Scheduled: {date_str} at {hour}:00")
+        
         # ============================================================
         # STEP 1: Get real-time route info from Google Directions API
         # ============================================================
@@ -308,8 +500,29 @@ class TaskDurationPredictor:
         route_info = self.directions_service.get_route_with_conditions(
             employee_lat, employee_lng, task_lat, task_lng,
             method, conditions, hour, day_of_week,
-            date_str=date_str  # ✅ Pass the date string!
+            date_str=date_str
         )
+        
+        # ✅ NEW: Check if route is impossible
+        if route_info.get('impossible_route'):
+            print(f"   🚫 Cannot calculate: {route_info.get('impossible_reason')}")
+            
+            # Return error response
+            return {
+                'error': True,
+                'impossible_route': True,
+                'impossible_reason': route_info.get('impossible_reason'),
+                'message': 'Cannot calculate duration - route is not possible by car',
+                'employee_location': {
+                    'lat': employee_lat,
+                    'lng': employee_lng
+                },
+                'task_location': {
+                    'lat': task_lat,
+                    'lng': task_lng
+                },
+                'suggestion': 'Please verify the task location or consider alternative transportation methods'
+            }
         
         distance_km = route_info['distance_km']
         travel_time_min = route_info['duration_minutes']
@@ -328,6 +541,7 @@ class TaskDurationPredictor:
         
         if len(emp_data) == 0:
             # New employee - use averages
+            print(f"   ⚠️ New employee, using average statistics")
             emp_avg_duration = self.employee_stats['Employee_AvgDuration'].mean()
             emp_std_duration = self.employee_stats['Employee_StdDuration'].mean()
             emp_median_duration = self.employee_stats['Employee_MedianDuration'].mean()
@@ -337,6 +551,7 @@ class TaskDurationPredictor:
             emp_avg_distance = self.employee_stats['Employee_AvgDistance'].mean()
             emp_avg_travel_time = self.employee_stats['Employee_AvgTravelTime'].mean()
         else:
+            print(f"   ✅ Using historical data for {participant_id}")
             emp_avg_duration = emp_data['Employee_AvgDuration'].values[0]
             emp_std_duration = emp_data['Employee_StdDuration'].values[0]
             emp_median_duration = emp_data['Employee_MedianDuration'].values[0]
@@ -350,9 +565,17 @@ class TaskDurationPredictor:
         # STEP 3: Get city, condition, and method statistics
         # ============================================================
         city_data = self.city_stats[self.city_stats['City'] == city]
-        city_avg = city_data['City_AvgDuration'].values[0] if len(city_data) > 0 else emp_avg_duration
-        city_std = city_data['City_StdDuration'].values[0] if len(city_data) > 0 else emp_std_duration
-        city_avg_distance = city_data['City_AvgDistance'].values[0] if len(city_data) > 0 else distance_km
+        if len(city_data) > 0:
+            city_avg = city_data['City_AvgDuration'].values[0]
+            city_std = city_data['City_StdDuration'].values[0]
+            city_avg_distance = city_data['City_AvgDistance'].values[0]
+            print(f"   ✅ Using city statistics for {city}")
+        else:
+            # City not in training data - use employee averages
+            city_avg = emp_avg_duration
+            city_std = emp_std_duration
+            city_avg_distance = distance_km
+            print(f"   ⚠️ City '{city}' not in training data, using fallback")
         
         cond_data = self.condition_stats[self.condition_stats['Conditions'] == conditions]
         cond_impact = cond_data['Condition_ImpactFactor'].values[0] if len(cond_data) > 0 else emp_avg_duration
@@ -430,7 +653,25 @@ class TaskDurationPredictor:
         # STEP 5: Make prediction with ML model
         # ============================================================
         X_pred = pd.DataFrame([features])[self.selected_features].fillna(0)
-        predicted_duration = self.xgb_model.predict(X_pred)[0]
+        predicted_duration_raw = self.xgb_model.predict(X_pred)[0]
+        
+        # ✅ NEW: Check if we should trust travel time over ML prediction
+        if self._should_trust_travel_time(distance_km, travel_time_min, predicted_duration_raw):
+            # For extreme distances: Travel time + reasonable work time estimate
+            estimated_work_time = min(30, predicted_duration_raw * 0.3)  # Max 30 min work time
+            predicted_duration = travel_time_min + estimated_work_time
+            work_time = estimated_work_time
+            
+            print(f"   🔄 Adjusted prediction for extreme distance:")
+            print(f"      ML suggested: {predicted_duration_raw:.1f} min")
+            print(f"      Using: {travel_time_min:.1f} min (travel) + {estimated_work_time:.1f} min (work)")
+            
+            used_travel_based_prediction = True
+        else:
+            # Normal case: Trust ML model
+            predicted_duration = predicted_duration_raw
+            work_time = max(0, predicted_duration - travel_time_min)
+            used_travel_based_prediction = False
         
         # Calculate confidence interval
         confidence_lower = predicted_duration - (1.96 * emp_std_duration)
@@ -441,9 +682,14 @@ class TaskDurationPredictor:
         confidence_lower = max(0, confidence_lower)
         confidence_upper = max(0, confidence_upper)
         
-        # Calculate work time (total - travel)
-        work_time = max(0, predicted_duration - travel_time_min)
+        # Recalculate travel percentage
         travel_percentage = (travel_time_min / predicted_duration * 100) if predicted_duration > 0 else 0
+        
+        print(f"\n✅ Prediction Complete:")
+        print(f"   Total Duration: {predicted_duration:.1f} minutes ({predicted_duration/60:.1f} hours)")
+        print(f"   Travel Time: {travel_time_min:.1f} minutes ({travel_time_min/60:.1f} hours)")
+        print(f"   Work Time: {work_time:.1f} minutes")
+        print(f"   Method: {'Travel-based' if used_travel_based_prediction else 'ML model'}")
         
         # ============================================================
         # STEP 6: Return comprehensive prediction
@@ -466,13 +712,15 @@ class TaskDurationPredictor:
             'route_has_traffic_data': route_info.get('has_traffic_data', False),
             'route_fallback': route_info.get('fallback', False),
             'condition_multiplier_applied': route_info.get('condition_multiplier', 1.0),
+            'used_travel_based_prediction': used_travel_based_prediction,  # ✅ NEW
             
             # Employee KPI
             'employee_avg_duration': round(emp_avg_duration, 2),
             'employee_reliability': round(emp_avg_reliability, 2),
             'employee_success_rate': round(emp_success_rate * 100, 1),
             
-            # Context
+            # Context - ✅ Include the city in response (task location city)
+            'city': city,
             'condition_impact': conditions,
             'method': method,
             'prophet_baseline': round(emp_avg_duration, 2),

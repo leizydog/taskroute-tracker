@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Button, Input, Select, Card, Spinner } from '../atoms';
 import { 
     FiPlus, FiSearch, FiFilter, FiGrid, FiList, 
-    FiEye, FiEdit, FiArchive, FiRotateCcw, FiTrash2 
+    FiEye, FiEdit, FiArchive, FiRotateCcw, FiTrash2, FiPlusCircle 
 } from 'react-icons/fi';
 import api from '../../services/api';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -204,40 +204,20 @@ export const TaskManagementPanel = ({
                         exit={{ opacity: 0, scale: 0.9 }}
                         transition={{ duration: 0.2 }}
                     >
+                        {/* ✅ FIX: Pass handler functions, NOT actions JSX */}
                         <TaskCard 
                             task={task}
                             currentUser={user}
                             onUpdate={() => fetchTasks()} 
                             onClick={() => handleViewDetails(task)} 
-                            actions={
-                                <div className="flex gap-2 w-full">
-                                    {showArchived ? (
-                                        <>
-                                            <Button size="sm" variant="secondary" className="flex-1" onClick={(e) => { e.stopPropagation(); handleViewDetails(task); }} icon={FiEye}>
-                                                View
-                                            </Button>
-                                            <Button size="sm" variant="primary" className="flex-1" onClick={(e) => { e.stopPropagation(); handleRestoreTask(task); }} icon={FiRotateCcw}>
-                                                Restore
-                                            </Button>
-                                            <Button size="sm" variant="danger" className="flex-1" onClick={(e) => { e.stopPropagation(); handlePermanentDelete(task.id); }} icon={FiTrash2}>
-                                                Delete
-                                            </Button>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Button size="sm" variant="secondary" className="flex-1" onClick={(e) => { e.stopPropagation(); handleViewDetails(task); }} icon={FiEye}>
-                                                View
-                                            </Button>
-                                            <Button size="sm" variant="secondary" className="flex-1" onClick={(e) => { e.stopPropagation(); handleEditTask(task); }} icon={FiEdit}>
-                                                Edit
-                                            </Button>
-                                            <Button size="sm" variant="danger" className="flex-1" onClick={(e) => { e.stopPropagation(); handleArchiveTask(task.id); }} icon={FiArchive}>
-                                                Archive
-                                            </Button>
-                                        </>
-                                    )}
-                                </div>
-                            }
+                            
+                            // Pass these specific props to enable admin buttons
+                            isArchived={showArchived}
+                            onView={handleViewDetails}
+                            onEdit={handleEditTask}
+                            onArchive={handleArchiveTask}
+                            onRestore={handleRestoreTask}
+                            onDelete={handlePermanentDelete}
                         />
                     </motion.div>
                 ))}
@@ -249,93 +229,97 @@ export const TaskManagementPanel = ({
         <div className="space-y-4">
             <AnimatePresence mode="popLayout">
                 {sortedAndFilteredTasks.map((task) => (
-                     <motion.div
-                     key={task.id}
-                     layout
-                     initial={{ opacity: 0, y: 20 }}
-                     animate={{ opacity: 1, y: 0 }}
-                     exit={{ opacity: 0, x: -100 }}
-                     transition={{ duration: 0.2 }}
-                 >
-                     <Card className="hover:shadow-lg transition-shadow duration-200">
-                         <div className="flex items-start gap-4">
-                             <div className={`w-1.5 h-full rounded-full ${
-                                 task.priority === 'high' ? 'bg-red-500' : task.priority === 'medium' ? 'bg-yellow-500' : 'bg-green-500'
-                             }`} />
-                             
-                             <div className="flex-1 min-w-0">
-                                 <div className="flex items-start justify-between gap-4 mb-2">
-                                     <div className="flex-1 min-w-0">
-                                         <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 mb-1 truncate">
-                                             {task.title}
-                                         </h3>
-                                         <p className="text-sm text-slate-600 dark:text-slate-400 line-clamp-2">
-                                             {task.description}
-                                         </p>
-                                     </div>
-                                     <div className="flex flex-col sm:flex-row gap-2 flex-shrink-0">
-                                         <span className="px-3 py-1 rounded-full text-xs font-medium border whitespace-nowrap bg-slate-100 dark:bg-slate-800">
-                                             {task.status?.replace('_', ' ').toUpperCase()}
-                                         </span>
-                                     </div>
-                                 </div>
+                      <motion.div
+                      key={task.id}
+                      layout
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, x: -100 }}
+                      transition={{ duration: 0.2 }}
+                  >
+                      <Card className="hover:shadow-lg transition-shadow duration-200">
+                          <div className="flex items-start gap-4">
+                              <div className={`w-1.5 h-full rounded-full ${
+                                  task.priority === 'high' ? 'bg-red-500' : task.priority === 'medium' ? 'bg-yellow-500' : 'bg-green-500'
+                              }`} />
+                              
+                              <div className="flex-1 min-w-0">
+                                  <div className="flex items-start justify-between gap-4 mb-2">
+                                      <div className="flex-1 min-w-0">
+                                          <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 mb-1 truncate">
+                                              {task.title}
+                                          </h3>
+                                          <p className="text-sm text-slate-600 dark:text-slate-400 line-clamp-2">
+                                              {task.description}
+                                          </p>
+                                      </div>
+                                      <div className="flex flex-col sm:flex-row gap-2 flex-shrink-0">
+                                          <span className="px-3 py-1 rounded-full text-xs font-medium border whitespace-nowrap bg-slate-100 dark:bg-slate-800">
+                                              {task.status?.replace('_', ' ').toUpperCase()}
+                                          </span>
+                                      </div>
+                                  </div>
 
-                                 <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-500 dark:text-slate-400 mb-4">
-                                     {/* ✅ ADDED: Assigned To */}
-                                     <div className="flex items-center gap-2">
-                                         <span className="font-medium text-indigo-600 dark:text-indigo-400">Assigned to:</span>
-                                         <span className="text-slate-700 dark:text-slate-300">{task.assigned_user_name || 'Unassigned'}</span>
-                                     </div>
-                                     
-                                     {/* ✅ ADDED: Created By */}
-                                     {task.created_user_name && (
-                                        <div className="flex items-center gap-2">
-                                            <span className="font-medium text-emerald-600 dark:text-emerald-400">Created by:</span>
-                                            <span className="text-slate-700 dark:text-slate-300">{task.created_user_name}</span>
-                                        </div>
-                                     )}
+                                  <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-500 dark:text-slate-400 mb-4">
+                                      <div className="flex items-center gap-2">
+                                          <span className="font-medium text-indigo-600 dark:text-indigo-400">Assigned to:</span>
+                                          <span className="text-slate-700 dark:text-slate-300">{task.assigned_user_name || 'Unassigned'}</span>
+                                      </div>
+                                      
+                                      {/* ✅ FIX: Created By now shows in List View too */}
+                                      {task.created_user_name && (
+                                          <div className="flex items-center gap-2 text-xs">
+                                              <FiPlusCircle className="h-3.5 w-3.5 text-emerald-500 flex-shrink-0" />
+                                              <span className="truncate">
+                                                  <span className="text-slate-400">Created by: </span>
+                                                  <span className="font-medium text-emerald-700 dark:text-emerald-400">
+                                                      {task.created_user_name}
+                                                  </span>
+                                              </span>
+                                          </div>
+                                      )}
 
-                                     {task.due_date && (
-                                         <div className="flex items-center gap-2">
-                                             <span className="font-medium">Due:</span>
-                                             <span className="text-slate-700 dark:text-slate-300">
-                                                 {new Date(task.due_date).toLocaleDateString()}
-                                             </span>
-                                         </div>
-                                     )}
-                                 </div>
+                                      {task.due_date && (
+                                          <div className="flex items-center gap-2">
+                                              <span className="font-medium">Due:</span>
+                                              <span className="text-slate-700 dark:text-slate-300">
+                                                  {new Date(task.due_date).toLocaleDateString()}
+                                              </span>
+                                          </div>
+                                      )}
+                                  </div>
 
-                                 <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-200 dark:border-slate-700">
-                                     {showArchived ? (
-                                         <>
-                                             <Button size="sm" variant="secondary" onClick={() => handleViewDetails(task)} icon={FiEye} className="justify-center">
-                                                 View Details
-                                             </Button>
-                                             <Button size="sm" variant="primary" onClick={() => handleRestoreTask(task)} icon={FiRotateCcw} className="justify-center">
-                                                 Restore Task
-                                             </Button>
-                                             <Button size="sm" variant="danger" onClick={() => handlePermanentDelete(task.id)} icon={FiTrash2} className="justify-center">
-                                                 Delete Permanently
-                                             </Button>
-                                         </>
-                                     ) : (
-                                         <>
-                                             <Button size="sm" variant="secondary" onClick={() => handleViewDetails(task)} icon={FiEye} className="justify-center">
-                                                 View Details
-                                             </Button>
-                                             <Button size="sm" variant="secondary" onClick={() => handleEditTask(task)} icon={FiEdit} className="justify-center">
-                                                 Edit
-                                             </Button>
-                                             <Button size="sm" variant="danger" onClick={() => handleArchiveTask(task.id)} icon={FiArchive} className="justify-center">
-                                                 Archive
-                                             </Button>
-                                         </>
-                                     )}
-                                 </div>
-                             </div>
-                         </div>
-                     </Card>
-                 </motion.div>
+                                  <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-200 dark:border-slate-700">
+                                      {showArchived ? (
+                                          <>
+                                              <Button size="sm" variant="secondary" onClick={() => handleViewDetails(task)} icon={FiEye} className="justify-center">
+                                                  View Details
+                                              </Button>
+                                              <Button size="sm" variant="primary" onClick={() => handleRestoreTask(task)} icon={FiRotateCcw} className="justify-center">
+                                                  Restore Task
+                                              </Button>
+                                              <Button size="sm" variant="danger" onClick={() => handlePermanentDelete(task.id)} icon={FiTrash2} className="justify-center">
+                                                  Delete Permanently
+                                              </Button>
+                                          </>
+                                      ) : (
+                                          <>
+                                              <Button size="sm" variant="secondary" onClick={() => handleViewDetails(task)} icon={FiEye} className="justify-center">
+                                                  View Details
+                                              </Button>
+                                              <Button size="sm" variant="secondary" onClick={() => handleEditTask(task)} icon={FiEdit} className="justify-center">
+                                                  Edit
+                                              </Button>
+                                              <Button size="sm" variant="danger" onClick={() => handleArchiveTask(task.id)} icon={FiArchive} className="justify-center">
+                                                  Archive
+                                              </Button>
+                                          </>
+                                      )}
+                                  </div>
+                              </div>
+                          </div>
+                      </Card>
+                  </motion.div>
                 ))}
             </AnimatePresence>
         </div>
@@ -354,14 +338,7 @@ export const TaskManagementPanel = ({
             <div className="space-y-6">
                 {/* Header */}
                 <div className="flex justify-between items-center flex-wrap gap-4">
-                    <div>
-                        <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">
-                            {showArchived ? 'Archived Tasks' : 'Task Management'}
-                        </h2>
-                        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                            {sortedAndFilteredTasks.length} {sortedAndFilteredTasks.length === 1 ? 'task' : 'tasks'} found
-                        </p>
-                    </div>
+                    
                     <div className="flex items-center gap-3">
                         <Button
                             variant={showArchived ? 'primary' : 'secondary'}
@@ -389,16 +366,7 @@ export const TaskManagementPanel = ({
                             </div>
                         )}
 
-                        {!showArchived && (
-                            <Button 
-                                icon={FiPlus} 
-                                onClick={() => setShowCreateModal(true)}
-                                variant="primary"
-                                size="sm"
-                            >
-                                Create Task
-                            </Button>
-                        )}
+                
                     </div>
                 </div>
 

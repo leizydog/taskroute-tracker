@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Float, Enum, Text
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Float, Enum, Text, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database import Base
@@ -55,10 +55,20 @@ class Task(Base):
     quality_rating = Column(Integer) # 1-5
     # ✅ NEW: Signature Image Path
     signature_url = Column(String(500), nullable=True)
+    photo_urls = Column(JSON, nullable=True)  # ✅ Add this - stores array of photo URLs
     
     # Relationships
     assigned_user = relationship("User", foreign_keys=[assigned_to], backref="assigned_tasks")
     created_user = relationship("User", foreign_keys=[created_by], backref="created_tasks")
+
+    # ✅ ADD THESE NEW FIELDS FOR ML TRAINING
+    city = Column(String(100), nullable=True)            # e.g., "Makati"
+    transport_method = Column(String(50), default="Drive") # e.g., "Bike", "Walk"
+    weather_conditions = Column(String(50), nullable=True) # e.g., "Rain", "Traffic"
+    
+    # We also need to know where they ACTUALLY started to calculate real distance
+    actual_start_lat = Column(Float, nullable=True) 
+    actual_start_lng = Column(Float, nullable=True)
 
     def __repr__(self):
         return f"<Task(id={self.id}, title='{self.title}', status='{self.status.value}')>"

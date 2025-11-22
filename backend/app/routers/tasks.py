@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, File, UploadFile
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import desc
 from app.database import get_db
@@ -16,9 +16,16 @@ from app.schemas.task import (
 )
 from app.core.auth import get_current_active_user
 from app.websocket_manager import manager
-
+import json
+from pathlib import Path
+import uuid
 
 router = APIRouter(prefix="/tasks", tags=["Tasks"])
+
+UPLOAD_DIR = Path("static/signatures")
+PHOTO_DIR = Path("static/photos")
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+PHOTO_DIR.mkdir(parents=True, exist_ok=True)
 
 
 @router.post("/", response_model=TaskWithUsers, status_code=status.HTTP_201_CREATED)
@@ -34,8 +41,16 @@ async def create_task(
             detail="Assigned user not found"
         )
 
+    # --- ✅ START OF FIX ---
+    # Convert Pydantic model to a dictionary
+    task_dict = task_data.dict()
+    
+    # Manually serialize 'destinations' to a JSON string if it exists
+    if task_dict.get("destinations"):
+        task_dict["destinations"] = json.dumps(task_dict["destinations"])
+    
     db_task = Task(
-        **task_data.dict(),
+        **task_dict,  # Use the modified dictionary instead of task_data.dict()
         created_by=current_user.id
     )
 
@@ -114,9 +129,10 @@ async def get_tasks(
 
     return [
         TaskWithUsers(
-            **t.__dict__,
-            assigned_user_name=t.assigned_user.full_name,
-            created_user_name=t.created_user.full_name
+           **t.__dict__,
+            # ✅ FIX: Safe navigation with 'if' check to prevent crashes
+            assigned_user_name=t.assigned_user.full_name if t.assigned_user else None,
+            created_user_name=t.created_user.full_name if t.created_user else None
         )
         for t in tasks
     ]
@@ -369,11 +385,34 @@ async def start_task(
         }
     })
 
-    # Prepare the response object
+    # ✅ FIX: Use model_validate instead of **task.__dict__
+    # ✅ Manually construct with relationship data
     response_task = TaskWithUsers(
-        **task.__dict__,
-        assigned_user_name=task.assigned_user.full_name,
-        created_user_name=task.created_user.full_name
+        id=task.id,
+        title=task.title,
+        description=task.description,
+        priority=task.priority,
+        is_multi_destination=task.is_multi_destination,
+        destinations=task.destinations,
+        location_name=task.location_name,
+        latitude=task.latitude,
+        longitude=task.longitude,
+        address=task.address,
+        estimated_duration=task.estimated_duration,
+        due_date=task.due_date,
+        status=task.status,
+        assigned_to=task.assigned_to,
+        created_by=task.created_by,
+        actual_duration=task.actual_duration,
+        started_at=task.started_at,
+        completed_at=task.completed_at,
+        created_at=task.created_at,
+        updated_at=task.updated_at,
+        completion_notes=task.completion_notes,
+        quality_rating=task.quality_rating,
+        signature_url=task.signature_url,
+        assigned_user_name=task.assigned_user.full_name if task.assigned_user else None,
+        created_user_name=task.created_user.full_name if task.created_user else None,
     )
 
     # Broadcast that the task has started
@@ -427,7 +466,7 @@ async def complete_task(
     task.status = TaskStatus.COMPLETED
     task.completed_at = completion_time
     
-    # ✅ Update Completion Details
+    # Update Completion Details
     task.completion_notes = complete_data.completion_notes
     task.quality_rating = complete_data.quality_rating
     task.signature_url = complete_data.signature_url # Save the signature path
@@ -464,10 +503,33 @@ async def complete_task(
         }
     })
 
+    # ✅ FIX: Use safe construction instead of **task.__dict__
     response_task = TaskWithUsers(
-        **task.__dict__,
-        assigned_user_name=task.assigned_user.full_name,
-        created_user_name=task.created_user.full_name
+        id=task.id,
+        title=task.title,
+        description=task.description,
+        priority=task.priority,
+        is_multi_destination=task.is_multi_destination,
+        destinations=task.destinations,
+        location_name=task.location_name,
+        latitude=task.latitude,
+        longitude=task.longitude,
+        address=task.address,
+        estimated_duration=task.estimated_duration,
+        due_date=task.due_date,
+        status=task.status,
+        assigned_to=task.assigned_to,
+        created_by=task.created_by,
+        actual_duration=task.actual_duration,
+        started_at=task.started_at,
+        completed_at=task.completed_at,
+        created_at=task.created_at,
+        updated_at=task.updated_at,
+        completion_notes=task.completion_notes,
+        quality_rating=task.quality_rating,
+        signature_url=task.signature_url,
+        assigned_user_name=task.assigned_user.full_name if task.assigned_user else None,
+        created_user_name=task.created_user.full_name if task.created_user else None,
     )
 
     await manager.broadcast_json({
@@ -476,6 +538,89 @@ async def complete_task(
     })
 
     return response_task
+
+@router.post("/{task_id}/signature")
+async def upload_signature(
+    task_id: int,
+    signature: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Upload task completion signature"""
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    if task.assigned_to != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    # Generate unique filename
+    file_extension = signature.filename.split('.')[-1] if '.' in signature.filename else 'png'
+    unique_filename = f"signature_{task_id}_{uuid.uuid4().hex[:8]}.{file_extension}"
+    file_path = UPLOAD_DIR / unique_filename
+    
+    # Save file
+    with open(file_path, "wb") as buffer:
+        content = await signature.read()
+        buffer.write(content)
+    
+    # Update task with signature URL
+    task.signature_url = f"/static/signatures/{unique_filename}"
+    db.commit()
+    db.refresh(task)
+    
+    print(f"✅ Signature saved: {task.signature_url}")
+    
+    return {
+        "message": "Signature uploaded successfully",
+        "signature_url": task.signature_url
+    }
+
+
+@router.post("/{task_id}/photo")
+async def upload_photo(
+    task_id: int,
+    photo: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Upload task completion photo"""
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    if task.assigned_to != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    # Generate unique filename
+    file_extension = photo.filename.split('.')[-1] if '.' in photo.filename else 'jpg'
+    unique_filename = f"photo_{task_id}_{uuid.uuid4().hex[:8]}.{file_extension}"
+    file_path = PHOTO_DIR / unique_filename
+    
+    # Save file
+    with open(file_path, "wb") as buffer:
+        content = await photo.read()
+        buffer.write(content)
+    
+    photo_url = f"/static/photos/{unique_filename}"
+    
+    # ✅ FIX: Store photo URL in task
+    if task.photo_urls is None:
+        task.photo_urls = []
+    
+    # Append to existing photos
+    task.photo_urls = task.photo_urls + [photo_url]
+    
+    db.commit()
+    db.refresh(task)
+    
+    print(f"✅ Photo saved and added to task: {photo_url}")
+    
+    return {
+        "message": "Photo uploaded successfully",
+        "photo_url": photo_url,
+        "total_photos": len(task.photo_urls)
+    }
 
 
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -139,104 +139,118 @@ const LiveLocationTracker = ({ isMapLoaded, mapLoadError }) => {
     };
 
     const connectWebSocket = () => {
+  if (!mounted) return;
+
+  // Close existing connection first
+  if (wsRef.current) {
+    try {
+      wsRef.current.close();
+      wsRef.current = null;
+    } catch (e) {
+      console.warn('Error closing existing WebSocket:', e);
+    }
+  }
+
+  const WS_URL = process.env.REACT_APP_WS_URL || 'ws://192.168.102.25:8000/ws/location';
+  console.log('🔌 Connecting to WebSocket:', WS_URL);
+
+  try {
+    const ws = new WebSocket(WS_URL);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      console.log('✅ WebSocket connected for live tracking');
+      if (mounted) setWsConnected(true);
+    };
+
+    ws.onmessage = (e) => {
       if (!mounted) return;
 
-      const WS_URL = process.env.REACT_APP_WS_URL || 'ws://localhost:8000/ws/location';
-      console.log('🔌 Connecting to WebSocket:', WS_URL);
-
       try {
-        const ws = new WebSocket(WS_URL);
-        wsRef.current = ws;
+        const message = JSON.parse(e.data);
+        console.log('📨 WebSocket message received:', message);
 
-        ws.onopen = () => {
-          console.log('✅ WebSocket connected for live tracking');
-          if (mounted) setWsConnected(true);
-        };
+        if (message.event === 'task_started') {
+          const newTask = typeof message.task === 'string' 
+            ? JSON.parse(message.task) 
+            : message.task;
+          
+          console.log('🚀 Task started:', newTask);
+          setActiveTasks((prev) => [newTask, ...prev.filter((t) => t.id !== newTask.id)]);
+        }
 
-        ws.onmessage = (e) => {
-          if (!mounted) return;
+        if (message.event === 'task_completed' || message.event === 'task_deleted') {
+          console.log(`✅ Task ${message.event}:`, message.task_id);
+          setActiveTasks((prev) => prev.filter((t) => t.id !== message.task_id));
+          setLiveLocations((prev) => {
+            const next = { ...prev };
+            delete next[message.task_id];
+            return next;
+          });
+          setSelectedTask((curr) => (curr?.id === message.task_id ? null : curr));
+        }
 
-          try {
-            const message = JSON.parse(e.data);
-            console.log('📨 WebSocket message received:', message);
-
-            if (message.event === 'task_started') {
-              const newTask = typeof message.task === 'string' 
-                ? JSON.parse(message.task) 
-                : message.task;
-              
-              console.log('🚀 Task started:', newTask);
-              setActiveTasks((prev) => [newTask, ...prev.filter((t) => t.id !== newTask.id)]);
-            }
-
-            if (message.event === 'task_completed' || message.event === 'task_deleted') {
-              console.log(`✅ Task ${message.event}:`, message.task_id);
-              setActiveTasks((prev) => prev.filter((t) => t.id !== message.task_id));
-              setLiveLocations((prev) => {
-                const next = { ...prev };
-                delete next[message.task_id];
-                return next;
-              });
-              setSelectedTask((curr) => (curr?.id === message.task_id ? null : curr));
-            }
-
-            if (message.event === 'location_update') {
-              console.log('📍 Location update:', message);
-              setLiveLocations((prev) => ({
-                ...prev,
-                [message.task_id]: { lat: message.latitude, lng: message.longitude },
-              }));
-            }
-          } catch (err) {
-            console.warn('⚠️ WS message parse error:', err);
-          }
-        };
-
-        ws.onerror = (error) => {
-          console.error('❌ WebSocket error:', error);
-        };
-
-        ws.onclose = (event) => {
-          console.log('🔌 WebSocket disconnected:', event.code, event.reason);
-          if (mounted) setWsConnected(false);
-
-          if (mounted && !reconnectTimeoutRef.current) {
-            console.log('🔄 Reconnecting in 3 seconds...');
-            reconnectTimeoutRef.current = setTimeout(() => {
-              reconnectTimeoutRef.current = null;
-              connectWebSocket();
-            }, 3000);
-          }
-        };
-      } catch (error) {
-        console.error('❌ Failed to create WebSocket:', error);
-        if (mounted) setWsConnected(false);
+        if (message.event === 'location_update') {
+          console.log('📍 Location update:', message);
+          setLiveLocations((prev) => ({
+            ...prev,
+            [message.task_id]: { lat: message.latitude, lng: message.longitude },
+          }));
+        }
+      } catch (err) {
+        console.warn('⚠️ WS message parse error:', err);
       }
     };
+
+    ws.onerror = (error) => {
+      console.error('❌ WebSocket error:', error);
+      if (mounted) setWsConnected(false);
+    };
+
+    ws.onclose = (event) => {
+      console.log('🔌 WebSocket disconnected:', event.code, event.reason);
+      if (mounted) setWsConnected(false);
+
+      // Only reconnect if still mounted and not a clean close
+      if (mounted && event.code !== 1000 && !reconnectTimeoutRef.current) {
+        console.log('🔄 Reconnecting in 3 seconds...');
+        reconnectTimeoutRef.current = setTimeout(() => {
+          reconnectTimeoutRef.current = null;
+          connectWebSocket();
+        }, 3000);
+      }
+    };
+  } catch (error) {
+    console.error('❌ Failed to create WebSocket:', error);
+    if (mounted) setWsConnected(false);
+  }
+};
 
     fetchInitial();
     connectWebSocket();
 
     return () => {
-      mounted = false;
-      
-      if (wsRef.current) {
-        try {
-          wsRef.current.close();
-        } catch (e) {
-          console.warn('Error closing WebSocket:', e);
-        }
-      }
+  mounted = false;
+  
+  // Clean disconnect
+  if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+    try {
+      wsRef.current.close(1000, 'Component unmounting'); // Clean close
+      wsRef.current = null;
+    } catch (e) {
+      console.warn('Error closing WebSocket:', e);
+    }
+  }
 
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-        reconnectTimeoutRef.current = null;
-      }
+  if (reconnectTimeoutRef.current) {
+    clearTimeout(reconnectTimeoutRef.current);
+    reconnectTimeoutRef.current = null;
+  }
 
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current);
-      }
-    };
+  if (debounceRef.current) {
+    clearTimeout(debounceRef.current);
+  }
+};
   }, []);
 
   useEffect(() => {

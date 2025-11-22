@@ -1,15 +1,18 @@
 // src/pages/AdminDashboard.js
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../services/api';
 import { toast } from 'react-hot-toast';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { format } from 'date-fns';
 import {
   FiGrid, FiUsers, FiCheckSquare, FiTrendingUp, FiLogOut, FiMenu, FiBell, FiMoon, FiSun, FiX,
   FiPlus, FiMapPin, FiShield, FiSettings, FiUserPlus, FiEdit2, FiTrash2, FiSearch, FiActivity, 
   FiArchive, FiRefreshCw, FiAlertTriangle, FiInfo, FiCheckCircle, FiDatabase, FiCpu, FiDownload,
   FiList, FiTerminal
 } from 'react-icons/fi';
-import { Button, Card, StatValue, Input, Select, Alert, Badge, Avatar } from '../components/atoms';
+import { Button, Card, StatValue, Input, Select, Alert, Badge } from '../components/atoms';
 import CreateTaskModal from '../components/organisms/CreateTaskModal';
 import { EmployeeKPIPanel, LiveLocationTracker, TaskManagementPanel } from '../components/organisms';
 import { useAuth } from '../contexts/AuthContext';
@@ -20,6 +23,7 @@ import { useNavigate } from 'react-router-dom';
 const MAP_LOADER_ID = 'google-map-script';
 const MAP_LIBRARIES = ['places'];
 
+// --- Local Sub-Component: User List Item ---
 // --- Local Sub-Component: User List Item ---
 const UserListItem = ({ employee, isSelected, onClick }) => (
   <motion.div
@@ -32,7 +36,24 @@ const UserListItem = ({ employee, isSelected, onClick }) => (
     }`}
   >
     <div className="relative">
-      <Avatar name={employee?.full_name || employee?.username} size="sm" />
+      {/* ✅ FIX: Use 'employee' here, NOT 'user' */}
+      <div className="w-8 h-8 flex-shrink-0 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center font-bold text-indigo-600 dark:text-indigo-300 overflow-hidden border border-slate-200 dark:border-slate-700">
+      {employee?.avatar_url ? (
+        <img 
+          src={employee.avatar_url.startsWith('http') ? employee.avatar_url : `${process.env.REACT_APP_API_URL?.replace('/api/v1', '') || 'http://localhost:8000'}${employee.avatar_url}`}
+          alt={employee?.full_name || 'User'} 
+          className="w-full h-full object-cover"
+          onError={(e) => {
+            e.target.style.display = 'none';
+            e.target.parentElement.innerHTML = `<span class="text-xs font-bold">${(employee?.full_name || 'U').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}</span>`;
+          }}
+        />
+      ) : (
+        <span className="text-xs font-bold">
+          {(employee?.full_name || 'U').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+        </span>
+      )}
+    </div>
       {employee?.role === 'admin' && (
         <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] p-0.5 rounded-full" title="Admin">
           <FiShield size={10} />
@@ -302,6 +323,9 @@ const AdminDashboard = () => {
   const { user, logout, isDarkMode, toggleDarkMode } = useAuth();
   const navigate = useNavigate();
 
+   const API_URL = process.env.REACT_APP_API_URL ? process.env.REACT_APP_API_URL.replace('/api/v1', '') : 'http://localhost:8000';
+
+
   const [activeTab, setActiveTab] = useState('overview');
   const [mobileOpen, setMobileOpen] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
@@ -321,7 +345,7 @@ const AdminDashboard = () => {
 
   const [tasks, setTasks] = useState([]);
   const [employees, setEmployees] = useState([]); 
-  const [kpiData, setKpiData] = useState(null);
+  // Removed kpiData state to fix unused variable warning
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   
@@ -346,7 +370,7 @@ const AdminDashboard = () => {
     { id: 'employee_kpi', label: 'Employee KPI', icon: <FiActivity /> },
     { id: 'user_management', label: 'User Management', icon: <FiUsers /> },
     { id: 'tasks', label: 'All Tasks', icon: <FiCheckSquare /> },
-    { id: 'audit', label: 'Audit Trail', icon: <FiList /> }, // <--- NEW TAB
+    { id: 'audit', label: 'Audit Trail', icon: <FiList /> },
     { id: 'tracking', label: 'Global Tracking', icon: <FiMapPin /> },
     { id: 'analytics', label: 'System Analytics', icon: <FiTrendingUp /> },
     { id: 'settings', label: 'Settings & Maintenance', icon: <FiSettings /> },
@@ -396,7 +420,8 @@ const AdminDashboard = () => {
     return () => ws?.close();
   }, [user]);
 
-  const fetchData = async () => {
+  // ✅ FIX: Wrapped fetchData in useCallback to fix dependency warning
+  const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -422,7 +447,8 @@ const AdminDashboard = () => {
       allTasks.forEach(task => uniqueTasksMap.set(task.id, task));
       const uniqueTasks = Array.from(uniqueTasksMap.values());
 
-      const [usersResponse, kpiResponse, teamResponse, healthResponse] = await Promise.all([
+      // Removed kpiData assignment to fix unused variable warning
+      const [usersResponse, , teamResponse, healthResponse] = await Promise.all([
         api.getUsers(),
         api.getAnalyticsOverview(),
         api.getTeamOverview().catch(() => ({ data: null })),
@@ -439,7 +465,6 @@ const AdminDashboard = () => {
       }));
       
       setEmployees(processedUsers); 
-      setKpiData(kpiResponse?.data ?? null);
       setTeamKpiData(teamResponse?.data ?? null);
       setSystemHealth(healthResponse?.data);
 
@@ -469,13 +494,13 @@ const AdminDashboard = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user, logout]);
 
   useEffect(() => {
     if (user && user.role === 'admin') {
         fetchData();
     }
-  }, [user]); 
+  }, [user, fetchData]); // ✅ Added fetchData to dependency array
 
   useEffect(() => {
     if (!selectedEmployee) {
@@ -580,6 +605,7 @@ const AdminDashboard = () => {
     }
   };
 
+  // --- EXPORT FUNCTIONS ---
   const handleExportUsers = () => {
     const csvContent = "data:text/csv;charset=utf-8," 
       + "ID,Name,Email,Role,Status\n"
@@ -593,6 +619,74 @@ const AdminDashboard = () => {
     link.click();
     document.body.removeChild(link);
     toast.success("User list exported.");
+  };
+
+  const handleExportTasksCSV = () => {
+    const headers = ["ID", "Title", "Assignee", "Status", "Priority", "Due Date", "Latitude", "Longitude"];
+    const csvRows = [
+        headers.join(','),
+        ...tasks.map(task => [
+            task.id,
+            `"${task.title.replace(/"/g, '""')}"`, 
+            `"${task.assigned_user_name || 'Unassigned'}"`,
+            task.status,
+            task.priority,
+            task.due_date || '',
+            task.latitude || '',
+            task.longitude || ''
+        ].join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvRows], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.setAttribute('hidden', '');
+    a.setAttribute('href', url);
+    a.setAttribute('download', `TaskRoute_Tasks_${format(new Date(), 'yyyyMMdd')}.csv`);
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    toast.success("CSV exported successfully");
+  };
+
+  const handleExportTasksPDF = () => {
+    const doc = new jsPDF();
+    const timestamp = format(new Date(), 'MMM dd, yyyy HH:mm');
+
+    // Header
+    doc.setFillColor(37, 99, 235); 
+    doc.rect(0, 0, 210, 20, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(16);
+    doc.text("TaskRoute - Task History Report", 14, 13);
+
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(10);
+    doc.text(`Generated: ${timestamp}`, 14, 30);
+    doc.text(`Total Tasks: ${tasks.length}`, 14, 35);
+
+    const tableColumn = ["ID", "Title", "Assignee", "Status", "Priority", "Due Date"];
+    const tableRows = tasks.map(task => [
+        task.id,
+        task.title,
+        task.assigned_user_name || 'Unassigned',
+        task.status,
+        task.priority,
+        task.due_date ? format(new Date(task.due_date), 'MMM dd, yyyy') : '-'
+    ]);
+
+    // Use autoTable directly from import
+    autoTable(doc, {
+        head: [tableColumn],
+        body: tableRows,
+        startY: 40,
+        theme: 'grid',
+        headStyles: { fillColor: [37, 99, 235] },
+        styles: { fontSize: 8 },
+    });
+
+    doc.save(`TaskRoute_Tasks_${format(new Date(), 'yyyyMMdd')}.pdf`);
+    toast.success("Task report downloaded successfully");
   };
 
   const closeConfirmModal = () => setConfirmModal(prev => ({ ...prev, isOpen: false }));
@@ -764,7 +858,23 @@ const AdminDashboard = () => {
         <div className="mb-6 px-2">
             <div className="bg-slate-800/50 rounded-lg p-3 border border-slate-700">
                 <div className="flex items-center gap-3 mb-2">
-                    <Avatar name={user?.full_name} size="sm" />
+                    <div className="w-8 h-8 flex-shrink-0 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center font-bold text-indigo-600 dark:text-indigo-300 overflow-hidden border border-slate-200 dark:border-slate-700">
+                      {user?.avatar_url ? (
+                        <img 
+                          src={user.avatar_url.startsWith('http') ? user.avatar_url : `${process.env.REACT_APP_API_URL?.replace('/api/v1', '') || 'http://localhost:8000'}${user.avatar_url}`}
+                          alt={user?.full_name || 'User'} 
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            e.target.style.display = 'none';
+                            e.target.parentElement.innerHTML = `<span class="text-xs font-bold">${(user?.full_name || 'U').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}</span>`;
+                          }}
+                        />
+                      ) : (
+                        <span className="text-xs font-bold">
+                          {(user?.full_name || 'U').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                        </span>
+                      )}
+                    </div>
                     <div className="overflow-hidden">
                         <p className="text-sm font-medium text-white truncate">{user?.full_name}</p>
                         <p className="text-xs text-indigo-400 font-mono uppercase tracking-wider">Administrator</p>
@@ -856,12 +966,27 @@ const AdminDashboard = () => {
             {/* User Menu */}
             <div className="relative">
                 <button 
-                    onClick={() => setShowUserMenu(!showUserMenu)}
-                    className="flex items-center gap-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors p-1 pr-3"
-                >
-                    <Avatar name={user?.full_name} size="sm" />
-                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300 hidden sm:inline">{user?.full_name}</span>
-                </button>
+                  onClick={() => setShowUserMenu(!showUserMenu)}
+                  className="flex items-center gap-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors p-1 pr-3">
+                  <div className="w-8 h-8 flex-shrink-0 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center font-bold text-indigo-600 dark:text-indigo-300 overflow-hidden border border-slate-200 dark:border-slate-700">
+                    {user?.avatar_url ? (
+                      <img 
+                        src={user.avatar_url.startsWith('http') ? user.avatar_url : `${process.env.REACT_APP_API_URL?.replace('/api/v1', '') || 'http://localhost:8000'}${user.avatar_url}`}
+                        alt={user?.full_name || 'User'} 
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          e.target.style.display = 'none';
+                          e.target.parentElement.innerHTML = `<span class="text-xs font-bold">${(user?.full_name || 'U').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}</span>`;
+                        }}
+                      />
+                    ) : (
+                      <span className="text-xs font-bold">
+                        {(user?.full_name || 'U').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-sm font-medium text-slate-700 dark:text-slate-300 hidden sm:inline">{user?.full_name}</span>
+              </button>
 
                 <AnimatePresence>
                     {showUserMenu && (
@@ -1020,7 +1145,21 @@ const AdminDashboard = () => {
                          <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 mb-6 shadow-sm">
                             <div className="flex items-start justify-between">
                                 <div className="flex gap-4">
-                                    <Avatar name={selectedEmployee.full_name} size="xl" />
+                                    <div className="w-24 h-24 flex-shrink-0 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center font-bold text-indigo-600 dark:text-indigo-300 overflow-hidden border border-slate-200 dark:border-slate-700">
+                                      {selectedEmployee?.avatar_url ? (
+                                        <img 
+                                          src={selectedEmployee.avatar_url.startsWith('http') ? selectedEmployee.avatar_url : `${API_URL}${selectedEmployee.avatar_url}`}
+                                          alt={selectedEmployee?.full_name || 'User'} 
+                                          className="w-full h-full object-cover"
+                                          onError={(e) => {
+                                            e.target.style.display = 'none';
+                                          }}
+                                        />
+                                      ) : null}
+                                      <span className="text-2xl font-bold">
+                                        {(selectedEmployee?.full_name || 'U').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                                      </span>
+                                    </div>
                                     <div>
                                         <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">{selectedEmployee.full_name}</h2>
                                         <div className="flex items-center gap-2 mt-1 text-slate-500 dark:text-slate-400">
@@ -1031,7 +1170,7 @@ const AdminDashboard = () => {
                                     </div>
                                 </div>
                             </div>
-                         </div>
+                        </div>
                          <EmployeeKPIPanel selectedEmployee={selectedEmployee} kpiData={employeeKpiData} loading={loadingKpi} />
                      </div>
                   ) : (
@@ -1109,12 +1248,26 @@ const AdminDashboard = () => {
                                      <tr key={emp.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                                          <td className="px-6 py-4">
                                              <div className="flex items-center gap-3">
-                                                 <Avatar name={emp.full_name} size="sm" />
-                                                 <div>
-                                                     <p className="font-medium text-slate-900 dark:text-slate-100">{emp.full_name}</p>
-                                                     <p className="text-xs text-slate-500">{emp.email}</p>
-                                                 </div>
-                                             </div>
+                                            <div className="w-8 h-8 flex-shrink-0 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center font-bold text-indigo-600 dark:text-indigo-300 overflow-hidden border border-slate-200 dark:border-slate-700">
+                                              {emp?.avatar_url ? (
+                                                <img 
+                                                  src={emp.avatar_url.startsWith('http') ? emp.avatar_url : `${API_URL}${emp.avatar_url}`}
+                                                  alt={emp?.full_name || 'User'} 
+                                                  className="w-full h-full object-cover"
+                                                  onError={(e) => {
+                                                    e.target.style.display = 'none';
+                                                  }}
+                                                />
+                                              ) : null}
+                                              <span className="text-xs font-bold">
+                                                {(emp?.full_name || 'U').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                                              </span>
+                                            </div>
+                                            <div>
+                                                <p className="font-medium text-slate-900 dark:text-slate-100">{emp.full_name}</p>
+                                                <p className="text-xs text-slate-500">{emp.email}</p>
+                                            </div>
+                                        </div>
                                          </td>
                                          <td className="px-6 py-4">
                                             <Badge 
@@ -1187,19 +1340,57 @@ const AdminDashboard = () => {
 
             {/* 4. TASKS TAB */}
             {activeTab === 'tasks' && (
-              <TaskManagementPanel 
-                isMapLoaded={isMapLoaded}
-                mapLoadError={mapLoadError}
-                onTaskCreated={handleTaskCreated}
-                onTaskDeleted={(taskId) => {
-                    setTasks(prev => prev.filter(t => t.id !== taskId));
-                    addAlert('success', 'Task deleted from system');
-                }}
-                onTaskUpdated={(updated) => {
-                    setTasks(prev => prev.map(t => t.id === updated.id ? updated : t));
-                    addAlert('success', 'Task updated');
-                }}
-              />
+              <div className="space-y-6">
+                 {/* Header with Export Buttons */}
+                 <div className="flex justify-between items-center">
+                     <div>
+                         <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">
+                            Task Management
+                         </h2>
+                         <p className="text-slate-500">
+                            View, manage, and track all system tasks.
+                         </p>
+                     </div>
+                     <div className="flex gap-3">
+                        <Button 
+                            variant="outline" 
+                            onClick={handleExportTasksCSV} 
+                            icon={FiDatabase}
+                        >
+                           Export CSV
+                        </Button>
+                        <Button 
+                            variant="outline" 
+                            onClick={handleExportTasksPDF} 
+                            icon={FiDownload}
+                        >
+                           Export PDF
+                        </Button>
+                        <Button 
+                            variant="primary" 
+                            onClick={() => setIsCreateTaskModalOpen(true)} 
+                            icon={FiPlus}
+                        >
+                            Create Task
+                        </Button>
+                     </div>
+                 </div>
+
+                 <TaskManagementPanel 
+                    isMapLoaded={isMapLoaded}
+                    mapLoadError={mapLoadError}
+                    onTaskCreated={handleTaskCreated}
+                    onTaskDeleted={(taskId) => {
+                        setTasks(prev => prev.filter(t => t.id !== taskId));
+                        addAlert('success', 'Task deleted from system');
+                    }}
+                    onTaskUpdated={(updated) => {
+                        setTasks(prev => prev.map(t => t.id === updated.id ? updated : t));
+                        addAlert('success', 'Task updated');
+                    }}
+                    tasks={tasks} 
+                  />
+              </div>
             )}
 
             {/* 5. AUDIT TRAIL TAB (NEW) */}
@@ -1330,7 +1521,6 @@ const AdminDashboard = () => {
                                     <span className="text-sm font-medium">ML Prediction Service</span>
                                 </div>
                                 <Badge 
-                                  /* ✅ FIX: Check for 'healthy' instead of 'ready' */
                                   text={systemHealth?.status === 'healthy' ? 'Operational' : 'Offline'} 
                                   color={systemHealth?.status === 'healthy' ? 'green' : 'red'} 
                                   size="xs" 

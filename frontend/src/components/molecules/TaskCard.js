@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import api from '../../services/api';
+import axios from 'axios';
 import toast from 'react-hot-toast';
-import { FiMapPin, FiCalendar, FiClock, FiFlag, FiPlay, FiCheckCircle } from 'react-icons/fi';
+// ✅ REMOVED 'FiUser' to fix the warning
+import { FiMapPin, FiCalendar, FiClock, FiPlay, FiCheckCircle, FiFlag, FiPlusCircle, FiEye, FiEdit, FiArchive, FiRotateCcw, FiTrash2 } from 'react-icons/fi';
+import { Button } from '../atoms'; 
 
 const Badge = ({ children, className }) => (
   <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold shadow-sm ${className}`}>
@@ -17,9 +19,8 @@ const StatusBadge = ({ status }) => {
     cancelled: 'bg-red-100/70 text-red-800 border border-red-200 dark:bg-red-700/30 dark:text-red-300 dark:border-red-500',
     default: 'bg-slate-100 text-slate-800 border border-slate-200 dark:bg-slate-700/30 dark:text-slate-300 dark:border-slate-600',
   };
-  const safeStatus = status || 'default';
-  const formattedStatus = safeStatus.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
-  return <Badge className={styles[safeStatus] || styles.default}>{formattedStatus}</Badge>;
+  const formattedStatus = status?.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()) || 'Unknown';
+  return <Badge className={styles[status] || styles.default}>{formattedStatus}</Badge>;
 };
 
 const PriorityBadge = ({ priority }) => {
@@ -45,33 +46,44 @@ const formatDuration = (minutes) => {
   return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
 };
 
-const TaskCard = ({ task, currentUser, onUpdate, actions, onClick }) => {
+const TaskCard = ({ 
+  task, 
+  currentUser, 
+  onUpdate, 
+  onClick, 
+  isArchived,
+  onView,
+  onEdit,
+  onArchive,
+  onRestore,
+  onDelete
+}) => {
   const [loading, setLoading] = useState(false);
   
-  // Default permissions for Employee View
-  const canStartTask = task.status === 'pending' && task.assigned_to === currentUser?.id;
-  const canCompleteTask = task.status === 'in_progress' && task.assigned_to === currentUser?.id;
+  const showAdminControls = onView || onEdit || onArchive || onRestore || onDelete;
+  
+  const canStartTask = !showAdminControls && task.status === 'pending' && task.assigned_to === currentUser?.id;
+  const canCompleteTask = !showAdminControls && task.status === 'in_progress' && task.assigned_to === currentUser?.id;
 
   const handleAction = async (e, actionType) => {
-    e.stopPropagation(); // Prevent triggering card click
-    const endpoints = {
+    e.stopPropagation();
+    const actionMap = {
       start: { url: `/tasks/${task.id}/start`, success: 'Task started!', error: 'Failed to start task' },
       complete: { url: `/tasks/${task.id}/complete`, success: 'Task completed!', error: 'Failed to complete task' }
     };
-    const action = endpoints[actionType];
+    const action = actionMap[actionType];
     if (!action) return;
 
     setLoading(true);
     try {
-      await api.apiClient.post(action.url, {
+      await axios.post(action.url, {
         completion_notes: "Task completed via web interface",
         quality_rating: 4
       });
       toast.success(action.success);
-      if (onUpdate) onUpdate();
+      onUpdate();
     } catch (error) {
       toast.error(action.error);
-      console.error(`Error during ${actionType}:`, error);
     } finally {
       setLoading(false);
     }
@@ -80,107 +92,122 @@ const TaskCard = ({ task, currentUser, onUpdate, actions, onClick }) => {
   return (
     <div 
       onClick={onClick}
-      className={`flex flex-col bg-white/90 dark:bg-slate-800/80 rounded-2xl shadow-md border border-slate-200 dark:border-slate-700 p-6
-                  transform transition duration-300 hover:-translate-y-2 hover:shadow-2xl ${onClick ? 'cursor-pointer' : ''}`}
+      className="flex flex-col bg-white/90 dark:bg-slate-800/80 rounded-2xl shadow-md border border-slate-200 dark:border-slate-700 p-5
+                 transform transition duration-200 hover:shadow-xl hover:border-indigo-300 dark:hover:border-indigo-700 cursor-pointer h-full"
     >
       {/* Header */}
-      <div className="flex justify-between items-start mb-4">
-        <h3 className="font-semibold text-lg text-slate-800 dark:text-slate-200 pr-4 line-clamp-2">{task.title}</h3>
+      <div className="flex justify-between items-start mb-3">
+        <h3 className="font-semibold text-base text-slate-800 dark:text-slate-200 pr-2 line-clamp-1" title={task.title}>
+            {task.title}
+        </h3>
         <PriorityBadge priority={task.priority} />
       </div>
 
       {/* Body */}
-      <div className="flex-grow space-y-3 text-sm text-slate-600 dark:text-slate-300 mb-4">
-        {task.description && <p className="line-clamp-2">{task.description}</p>}
-        {task.location_name && (
-          <div className="flex items-center gap-2">
-            <FiMapPin className="h-4 w-4 text-slate-400 dark:text-slate-300" />
-            <span className="truncate">{task.location_name}</span>
-          </div>
-        )}
-        {task.due_date && (
-          <div className="flex items-center gap-2">
-            <FiCalendar className="h-4 w-4 text-slate-400 dark:text-slate-300" />
-            <span>Due: {new Date(task.due_date).toLocaleDateString()}</span>
-          </div>
-        )}
-        {task.estimated_duration && (
-          <div className="flex items-center gap-2">
-            <FiClock className="h-4 w-4 text-slate-400 dark:text-slate-300" />
-            <span>Est. Duration: {formatDuration(task.estimated_duration)}</span>
-          </div>
-        )}
+      <div className="flex-grow space-y-2.5 text-sm text-slate-600 dark:text-slate-300 mb-4">
+        {task.description && <p className="line-clamp-2 text-xs text-slate-500 dark:text-slate-400 min-h-[2.5em]">{task.description}</p>}
+        
+        <div className="space-y-1.5 pt-1">
+            {/* Location */}
+            {task.location_name && (
+            <div className="flex items-center gap-2 text-xs">
+                <FiMapPin className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
+                <span className="truncate">{task.location_name}</span>
+            </div>
+            )}
+
+            {/* Created By */}
+            <div className="flex items-center gap-2 text-xs">
+                <FiPlusCircle className="h-3.5 w-3.5 text-emerald-500 flex-shrink-0" />
+                <span className="truncate">
+                    <span className="text-slate-400">Created by: </span>
+                    <span className="font-medium text-emerald-700 dark:text-emerald-400">
+                        {task.created_user_name || "System"}
+                    </span>
+                </span>
+            </div>
+
+            {/* Due Date */}
+            {task.due_date && (
+            <div className="flex items-center gap-2 text-xs">
+                <FiCalendar className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
+                <span>Due: {new Date(task.due_date).toLocaleDateString()}</span>
+            </div>
+            )}
+
+            {/* Duration */}
+            {task.estimated_duration && (
+            <div className="flex items-center gap-2 text-xs">
+                <FiClock className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
+                <span>Est: {formatDuration(task.estimated_duration)}</span>
+            </div>
+            )}
+        </div>
       </div>
 
       {/* Footer */}
-      <div className="mt-auto pt-4 border-t border-slate-200 dark:border-slate-700">
-        <div className="flex justify-between items-end mb-3">
-          {/* Users Section: Assigned & Created */}
-          <div className="flex flex-col gap-3">
-            {/* Assigned To */}
-            <div className="flex items-center gap-2" title="Assigned Employee">
-              <div className="h-7 w-7 rounded-full bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-300 flex items-center justify-center font-bold text-xs border border-indigo-200 dark:border-indigo-800">
-                {task.assigned_user_name?.[0] || "?"}
-              </div>
-              <div className="flex flex-col">
-                <span className="text-[10px] uppercase text-slate-400 font-bold leading-none mb-0.5">Assigned</span>
-                <span className="text-sm font-medium text-slate-700 dark:text-slate-200 leading-none">
-                  {task.assigned_user_name || "Unassigned"}
-                </span>
-              </div>
+      <div className="mt-auto pt-3 border-t border-slate-200 dark:border-slate-700">
+        <div className="flex justify-between items-center mb-3">
+          <div className="flex items-center gap-2 overflow-hidden max-w-[60%]">
+            <div className="h-8 w-8 flex-shrink-0 rounded-full bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-300 flex items-center justify-center font-bold text-xs border border-indigo-200 dark:border-indigo-800">
+              {task.assigned_user_name?.[0]?.toUpperCase() || "?"}
             </div>
-
-            {/* Created By */}
-            {task.created_user_name && (
-              <div className="flex items-center gap-2" title="Task Creator">
-                 <div className="h-7 w-7 rounded-full bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-300 flex items-center justify-center font-bold text-xs border border-emerald-200 dark:border-emerald-800">
-                  {task.created_user_name?.[0] || "?"}
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-[10px] uppercase text-slate-400 font-bold leading-none mb-0.5">Created By</span>
-                  <span className="text-sm font-medium text-slate-700 dark:text-slate-200 leading-none">
-                    {task.created_user_name}
-                  </span>
-                </div>
-              </div>
-            )}
+            <div className="flex flex-col min-w-0">
+                <span className="text-[10px] text-slate-400 uppercase tracking-wider leading-none mb-0.5">Assigned</span>
+                <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">
+                    {task.assigned_user_name || "Unassigned"}
+                </span>
+            </div>
           </div>
-
-          {/* Status Badge */}
-          <div className="mb-1">
-            <StatusBadge status={task.status} />
+          <div className="flex-shrink-0">
+             <StatusBadge status={task.status} />
           </div>
         </div>
 
-        {/* ✅ ACTION BUTTONS LOGIC */}
-        <div className="mt-4 flex flex-col gap-2">
-          {/* If custom actions (Admin Buttons) are passed, render them */}
-          {actions ? (
-             actions
-          ) : (
-            /* Otherwise, render default Employee Start/Complete buttons */
-            <>
+        {/* Admin Buttons Rendered Here */}
+        {showAdminControls ? (
+            <div onClick={(e) => e.stopPropagation()} className="flex gap-2 w-full">
+                {isArchived ? (
+                    <>
+                        <Button size="sm" variant="secondary" className="flex-1 justify-center" onClick={(e) => { e.stopPropagation(); onView && onView(task); }} icon={FiEye}>View</Button>
+                        <Button size="sm" variant="primary" className="flex-1 justify-center" onClick={(e) => { e.stopPropagation(); onRestore && onRestore(task); }} icon={FiRotateCcw}>Restore</Button>
+                        <Button size="sm" variant="danger" className="flex-1 justify-center" onClick={(e) => { e.stopPropagation(); onDelete && onDelete(task.id); }} icon={FiTrash2}>Delete</Button>
+                    </>
+                ) : (
+                    <>
+                        <Button size="sm" variant="secondary" className="flex-1 justify-center" onClick={(e) => { e.stopPropagation(); onView && onView(task); }} icon={FiEye}>View</Button>
+                        <Button size="sm" variant="secondary" className="flex-1 justify-center" onClick={(e) => { e.stopPropagation(); onEdit && onEdit(task); }} icon={FiEdit}>Edit</Button>
+                        <Button size="sm" variant="danger" className="flex-1 justify-center" onClick={(e) => { e.stopPropagation(); onArchive && onArchive(task.id); }} icon={FiArchive}>Archive</Button>
+                    </>
+                )}
+            </div>
+        ) : (
+          // Default User Actions
+          (canStartTask || canCompleteTask) && (
+            <div className="flex flex-col gap-2">
               {canStartTask && (
                 <button
                   onClick={(e) => handleAction(e, 'start')}
                   disabled={loading}
-                  className="w-full flex items-center justify-center gap-2 bg-green-500 text-white py-2 px-4 rounded-lg font-semibold hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300"
+                  className="w-full flex items-center justify-center gap-2 bg-green-500 text-white py-1.5 px-4 rounded-lg text-xs font-bold hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow"
                 >
-                  <FiPlay /> {loading ? 'Starting...' : 'Start Task'}
+                  <FiPlay size={14} />
+                  {loading ? 'Starting...' : 'Start Task'}
                 </button>
               )}
               {canCompleteTask && (
                 <button
                   onClick={(e) => handleAction(e, 'complete')}
                   disabled={loading}
-                  className="w-full flex items-center justify-center gap-2 bg-indigo-600 text-white py-2 px-4 rounded-lg font-semibold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300"
+                  className="w-full flex items-center justify-center gap-2 bg-indigo-600 text-white py-1.5 px-4 rounded-lg text-xs font-bold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow"
                 >
-                  <FiCheckCircle /> {loading ? 'Completing...' : 'Complete Task'}
+                  <FiCheckCircle size={14} />
+                  {loading ? 'Completing...' : 'Complete Task'}
                 </button>
               )}
-            </>
-          )}
-        </div>
+            </div>
+          )
+        )}
       </div>
     </div>
   );

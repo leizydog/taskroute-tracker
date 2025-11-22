@@ -1,9 +1,24 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
+
+// 1. READ API KEY FROM local.properties
+val localProperties = Properties()
+val localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    // Load the local.properties file
+    localProperties.load(FileInputStream(localPropertiesFile))
+}
+
+// Get the key, falling back to an empty string if not found
+val mapsApiKey = localProperties.getProperty("GOOGLE_MAPS_API_KEY") ?: ""
+// END API KEY INJECTION LOGIC
 
 android {
     namespace = "com.example.taskroute_mobile"
@@ -28,6 +43,9 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // 2. INJECT KEY INTO MANIFEST PLACEHOLDER
+        manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
     }
 
     buildTypes {

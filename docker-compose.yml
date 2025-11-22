@@ -41,7 +41,7 @@ services:
     restart: unless-stopped
     environment:
       - REACT_APP_API_URL=http://localhost:8000/api/v1  # ✅ Changed to localhost
-      - REACT_APP_WS_URL=ws://localhost:8000/ws/location # ✅ Changed to localhost
+      - REACT_APP_WS_URL=ws://192.168.102.25:8000/ws/location # ✅ Changed to localhost
 
 volumes:
   postgres_data:

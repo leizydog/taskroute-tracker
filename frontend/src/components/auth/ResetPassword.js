@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
-import { CheckCircle, Eye, EyeOff, AlertCircle, Lock, ArrowLeft } from 'lucide-react';
+import { CheckCircle, Eye, EyeOff, AlertCircle, Lock, ArrowLeft, Key } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -11,38 +11,28 @@ const ResetPassword = () => {
   });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  
   const [loading, setLoading] = useState(false);
-  const [validToken, setValidToken] = useState(null); // null = checking, true = valid, false = invalid
-  const [success, setSuccess] = useState(false); // Para sa success screen
+  const [validToken, setValidToken] = useState(null); // null=checking, true=valid, false=invalid
+  const [success, setSuccess] = useState(false);
 
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { resetPassword } = useAuth();
+  // ✅ Get the reset function from your Context
+  const { resetPassword } = useAuth(); 
 
   const token = searchParams.get('token');
 
-  // ✅ Verify token on component mount
+  // 1. Check if token exists in URL on mount
   useEffect(() => {
-    const verifyToken = async () => {
-      if (!token) {
+    // If your backend has a specific endpoint to "Check Token Validity" (GET), call it here.
+    // For now, we strictly check if the token is present in the URL.
+    if (!token) {
         setValidToken(false);
-        return;
-      }
-
-      try {
-        // Optional: Add API call to verify token before allowing reset
-        // await API.verifyResetToken(token);
-        // Mock delay lang para makita mo loading
-        setTimeout(() => {
-            setValidToken(true);
-        }, 1000);
-      } catch (error) {
-        setValidToken(false);
-        toast.error("Invalid or expired reset link");
-      }
-    };
-
-    verifyToken();
+    } else {
+        // Simulating a quick check (or assume valid until submission)
+        setValidToken(true); 
+    }
   }, [token]);
 
   const handleChange = (e) => {
@@ -71,33 +61,48 @@ const ResetPassword = () => {
 
     setLoading(true);
     
-    // Mock muna or call actual API
-    // const result = await resetPassword(token, formData.password);
-    
-    // Simulate success for now since backend might be missing
-    setTimeout(() => {
-        setSuccess(true); // Show success card
+    try {
+        // ✅ REAL API CALL
+        // We pass the token and the new password to the provider
+        const result = await resetPassword(token, formData.password);
+        
+        if (result.success) {
+            setSuccess(true);
+            toast.success("Password reset successfully!");
+            // Optional: Redirect after a few seconds
+            setTimeout(() => navigate('/login'), 3000);
+        } else {
+            // If the backend says the token is invalid/expired during submit
+            if (result.message && result.message.toLowerCase().includes('token')) {
+                setValidToken(false);
+            } else {
+                toast.error(result.message || "Failed to reset password");
+            }
+        }
+    } catch (error) {
+        console.error(error);
+        toast.error("An unexpected error occurred.");
+    } finally {
         setLoading(false);
-        toast.success("Password reset successfully!");
-    }, 1500);
+    }
   };
 
   // ---------------------------------------------------------
-  // RENDER: 1. LOADING STATE (Habang chine-check ang token)
+  // RENDER: 1. LOADING STATE (Checking Token)
   // ---------------------------------------------------------
   if (validToken === null) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center">
         <div className="text-white text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-white mx-auto mb-4"></div>
-          <p className="text-gray-300">Verifying reset link...</p>
+          <p className="text-gray-300">Verifying secure link...</p>
         </div>
       </div>
     );
   }
 
   // ---------------------------------------------------------
-  // RENDER: 2. INVALID TOKEN STATE (Pag expired na ang link)
+  // RENDER: 2. INVALID TOKEN STATE (Expired/Missing)
   // ---------------------------------------------------------
   if (validToken === false) {
     return (
@@ -107,10 +112,10 @@ const ResetPassword = () => {
             <AlertCircle size={32} />
           </div>
           <h2 className="text-3xl font-extrabold text-gray-900 dark:text-white mb-4">
-            Invalid Link
+            Link Expired
           </h2>
           <p className="text-gray-600 dark:text-gray-300 mb-8">
-            This password reset link is invalid or has expired. Please request a new one.
+            This password reset link is invalid or has expired. For security reasons, please request a new one.
           </p>
           <Link
             to="/forgot-password"
@@ -124,7 +129,7 @@ const ResetPassword = () => {
   }
 
   // ---------------------------------------------------------
-  // RENDER: 3. SUCCESS STATE (Pag napalitan na)
+  // RENDER: 3. SUCCESS STATE (Password Changed)
   // ---------------------------------------------------------
   if (success) {
     return (
@@ -134,10 +139,10 @@ const ResetPassword = () => {
             <CheckCircle size={32} />
           </div>
           <h2 className="text-3xl font-extrabold text-gray-900 dark:text-white mb-4">
-            Password Reset!
+            All Set!
           </h2>
           <p className="text-gray-600 dark:text-gray-300 mb-8">
-            Your password has been successfully updated. You can now log in with your new password.
+            Your password has been updated. You can now sign in with your new credentials.
           </p>
           <Link
             to="/login"
@@ -151,7 +156,7 @@ const ResetPassword = () => {
   }
 
   // ---------------------------------------------------------
-  // RENDER: 4. MAIN FORM (Input ng password)
+  // RENDER: 4. MAIN FORM
   // ---------------------------------------------------------
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center px-4 sm:px-6 lg:px-8">
@@ -159,13 +164,13 @@ const ResetPassword = () => {
         
         <div className="text-center">
           <div className="mx-auto flex items-center justify-center w-16 h-16 rounded-full bg-indigo-100 dark:bg-blue-500/20 text-indigo-600 dark:text-blue-400 dark:border dark:border-blue-400/30">
-            <Lock size={32} />
+            <Key size={32} />
           </div>
           <h2 className="mt-6 text-3xl font-extrabold text-gray-900 dark:text-white">
-            Reset Password
+            New Password
           </h2>
           <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
-            Enter a new password to regain access
+            Create a strong password to secure your account.
           </p>
         </div>
 
@@ -175,7 +180,7 @@ const ResetPassword = () => {
             {/* New Password */}
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-200">
-                New Password
+                Password
               </label>
               <div className="relative mt-1">
                 <input
@@ -185,7 +190,7 @@ const ResetPassword = () => {
                   required
                   minLength={8}
                   className="block w-full px-4 py-2 pr-10 bg-white dark:bg-white/10 border border-gray-300 dark:border-white/20 rounded-lg shadow-sm placeholder-gray-400 text-gray-900 dark:text-white focus:outline-none focus:ring-indigo-500 dark:focus:ring-blue-500 focus:border-indigo-500 dark:focus:border-transparent sm:text-sm transition-all"
-                  placeholder="Enter new password (min. 8 chars)"
+                  placeholder="Min. 8 characters"
                   value={formData.password}
                   onChange={handleChange}
                 />
@@ -212,7 +217,7 @@ const ResetPassword = () => {
                   type={showConfirm ? 'text' : 'password'}
                   required
                   className="block w-full px-4 py-2 pr-10 bg-white dark:bg-white/10 border border-gray-300 dark:border-white/20 rounded-lg shadow-sm placeholder-gray-400 text-gray-900 dark:text-white focus:outline-none focus:ring-indigo-500 dark:focus:ring-blue-500 focus:border-indigo-500 dark:focus:border-transparent sm:text-sm transition-all"
-                  placeholder="Confirm new password"
+                  placeholder="Re-enter password"
                   value={formData.confirmPassword}
                   onChange={handleChange}
                 />
@@ -240,10 +245,10 @@ const ResetPassword = () => {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
-                  Resetting...
+                  Updating...
                 </>
               ) : (
-                'Reset Password'
+                'Update Password'
               )}
             </button>
           </div>

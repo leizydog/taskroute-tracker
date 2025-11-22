@@ -8,6 +8,14 @@ import AdvancedMarker from './AdvancedMarker';
 import { Spinner, Button } from '../atoms';
 import { motion, AnimatePresence } from 'framer-motion';
 
+// 1. Defined Office Location Constant
+const OFFICE_LOCATION = {
+  lat: 14.5599,
+  lng: 121.0206,
+  address: "30/F 88 Corporate Center, Sedeño cor. Valero Streets, Salcedo, Makati City",
+  city: "Makati"
+};
+
 const FormInput = React.forwardRef(({ label, id, isRequired, ...props }, ref) => (
   <div>
     <label htmlFor={id} className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">
@@ -51,6 +59,7 @@ const FormSelect = ({ label, id, isRequired, children, ...props }) => (
   </div>
 );
 
+// Updated ForecastPanel to handle Impossible Routes
 const ForecastPanel = ({ forecast, loading, error }) => {
   if (loading) {
     return (
@@ -62,6 +71,166 @@ const ForecastPanel = ({ forecast, loading, error }) => {
         <div className="flex items-center gap-3">
           <Spinner size="sm" />
           <span className="text-sm text-slate-600 dark:text-slate-400">Calculating forecast...</span>
+        </div>
+      </motion.div>
+    );
+  }
+
+  // ✅ Handle multi-destination impossible routes
+  if (forecast?.error && forecast?.impossible_route && forecast?.impossible_legs) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-red-50 dark:bg-red-900/20 border border-red-300 dark:border-red-700 rounded-lg p-4"
+      >
+        <div className="flex items-start gap-3">
+          <div className="p-2 bg-red-100 dark:bg-red-900/40 rounded-lg flex-shrink-0">
+            <FiAlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
+          </div>
+          <div className="flex-1">
+            <h4 className="text-sm font-bold text-red-800 dark:text-red-200 mb-1">
+              🚫 Multi-Stop Route Not Possible
+            </h4>
+            <p className="text-sm text-red-700 dark:text-red-300 mb-3">
+              {forecast.impossible_count} of {forecast.total_destinations} destinations cannot be reached by car
+            </p>
+            
+            {/* Show which legs are impossible */}
+            <div className="bg-white dark:bg-red-950/30 rounded-lg p-3 mb-3 border border-red-200 dark:border-red-800">
+              <p className="text-xs font-semibold text-red-800 dark:text-red-200 mb-2">
+                ⚠️ Unreachable Legs:
+              </p>
+              <div className="space-y-2 max-h-40 overflow-y-auto">
+                {forecast.impossible_legs.map((leg, index) => (
+                  <div key={index} className="flex items-start gap-2 text-xs bg-red-50 dark:bg-red-900/20 p-2 rounded border border-red-200 dark:border-red-700">
+                    <div className="flex-shrink-0 w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center font-bold text-[10px]">
+                      {leg.leg_number}
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-medium text-red-800 dark:text-red-200">
+                        {leg.from_location} → {leg.to_location}
+                      </p>
+                      <p className="text-red-600 dark:text-red-400 mt-0.5">
+                        {leg.impossible_reason}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-blue-50 dark:bg-blue-950/30 rounded-lg p-3 border border-blue-200 dark:border-blue-800">
+              <p className="text-xs font-semibold text-blue-800 dark:text-blue-200 mb-1">
+                💡 Suggestions:
+              </p>
+              <ul className="text-xs text-blue-700 dark:text-blue-300 space-y-1">
+                <li className="flex items-start gap-2">
+                  <span>1.</span>
+                  <span>Remove destinations on different islands or countries</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span>2.</span>
+                  <span>Split this into separate tasks for each region</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span>3.</span>
+                  <span>Consider alternative transportation (ferry, flight) for island destinations</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span>4.</span>
+                  <span>Verify all destination coordinates are correct</span>
+                </li>
+              </ul>
+            </div>
+
+            {forecast.suggestion && (
+              <p className="text-xs text-slate-600 dark:text-slate-400 mt-3 italic">
+                {forecast.suggestion}
+              </p>
+            )}
+          </div>
+        </div>
+      </motion.div>
+    );
+  }
+
+  // ✅ Handle single-destination impossible routes
+  if (forecast?.error && forecast?.impossible_route) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-red-50 dark:bg-red-900/20 border border-red-300 dark:border-red-700 rounded-lg p-4"
+      >
+        <div className="flex items-start gap-3">
+          <div className="p-2 bg-red-100 dark:bg-red-900/40 rounded-lg flex-shrink-0">
+            <FiAlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
+          </div>
+          <div className="flex-1">
+            <h4 className="text-sm font-bold text-red-800 dark:text-red-200 mb-1">
+              🚫 Route Not Possible
+            </h4>
+            <p className="text-sm text-red-700 dark:text-red-300 mb-2">
+              {forecast.impossible_reason || 'Cannot calculate driving route to this destination'}
+            </p>
+            
+            <div className="bg-white dark:bg-red-950/30 rounded-lg p-3 mb-3 border border-red-200 dark:border-red-800">
+              <p className="text-xs font-semibold text-red-800 dark:text-red-200 mb-2">
+                Possible reasons:
+              </p>
+              <ul className="text-xs text-red-700 dark:text-red-300 space-y-1">
+                <li className="flex items-start gap-2">
+                  <span className="text-red-500 dark:text-red-400">•</span>
+                  <span>Destination is on a different island (no land route available)</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-red-500 dark:text-red-400">•</span>
+                  <span>Destination is in another country</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-red-500 dark:text-red-400">•</span>
+                  <span>Location requires ferry or air travel</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-red-500 dark:text-red-400">•</span>
+                  <span>Destination coordinates may be incorrect</span>
+                </li>
+              </ul>
+            </div>
+
+            <div className="bg-blue-50 dark:bg-blue-950/30 rounded-lg p-3 border border-blue-200 dark:border-blue-800">
+              <p className="text-xs font-semibold text-blue-800 dark:text-blue-200 mb-1">
+                💡 Suggestions:
+              </p>
+              <ul className="text-xs text-blue-700 dark:text-blue-300 space-y-1">
+                <li className="flex items-start gap-2">
+                  <span>1.</span>
+                  <span>Verify the task location is correct</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span>2.</span>
+                  <span>Consider using alternative transportation (ferry, flight)</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span>3.</span>
+                  <span>Manually set estimated duration based on known travel time</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span>4.</span>
+                  <span>Assign to an employee already near the destination</span>
+                </li>
+              </ul>
+            </div>
+
+            {forecast.employee_location && forecast.task_location && (
+              <div className="mt-3 text-xs text-slate-600 dark:text-slate-400">
+                <p className="font-medium mb-1">Location Details:</p>
+                <p>Employee: {forecast.employee_location.lat.toFixed(4)}, {forecast.employee_location.lng.toFixed(4)}</p>
+                <p>Task: {forecast.task_location.lat.toFixed(4)}, {forecast.task_location.lng.toFixed(4)}</p>
+              </div>
+            )}
+          </div>
         </div>
       </motion.div>
     );
@@ -117,10 +286,25 @@ const ForecastPanel = ({ forecast, loading, error }) => {
               : 'Based on employee KPI and current conditions'
             }
           </p>
+          
+          {/* 2. Updated Location Source UI */}
           {forecast.used_default_location && (
-             <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1">
-               <FiInfo size={12} /> Using default start location (Manila) - Employee has no GPS history.
-             </p>
+            <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1">
+              <FiInfo size={12} /> 
+              Using office location ({OFFICE_LOCATION.city}) - Employee has no recent GPS data
+            </p>
+          )}
+          {!forecast.used_default_location && forecast.employee_location_source === 'nearest_employee' && (
+            <p className="text-xs text-green-600 dark:text-green-400 mt-1 flex items-center gap-1">
+              <FiMapPin size={12} /> 
+              Using employee's current location from GPS
+            </p>
+          )}
+          {!forecast.used_default_location && forecast.employee_location_source === 'last_known_gps' && (
+            <p className="text-xs text-blue-600 dark:text-blue-400 mt-1 flex items-center gap-1">
+              <FiMapPin size={12} /> 
+              Using employee's last known location
+            </p>
           )}
         </div>
       </div>
@@ -217,7 +401,7 @@ const ForecastPanel = ({ forecast, loading, error }) => {
           <div>
             <span className="text-slate-500 dark:text-slate-400">City:</span>
             <span className="ml-1 font-semibold text-slate-700 dark:text-slate-300">
-              {forecast.auto_detected?.city || forecast.city || 'Manila'}
+              {forecast.auto_detected?.city || forecast.city || 'Unknown'}
             </span>
           </div>
           <div>
@@ -296,6 +480,53 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
     }
   }, [currentUser]);
 
+  // 3. Improved City Detection
+  const detectCity = async (lat, lng) => {
+    if (!window.google || !window.google.maps || !window.google.maps.Geocoder) {
+      return "Manila"; // Fallback
+    }
+    try {
+      const geocoder = new window.google.maps.Geocoder();
+      const response = await geocoder.geocode({ location: { lat, lng } });
+      if (response.results && response.results.length > 0) {
+        // Try multiple approaches to find the city
+        for (const result of response.results) {
+          // First try: Look for locality (city)
+          const cityComponent = result.address_components.find(
+            comp => comp.types.includes('locality')
+          );
+          if (cityComponent) {
+            console.log(`✅ Found city: ${cityComponent.long_name}`);
+            return cityComponent.long_name;
+          }
+          
+          // Second try: Look for administrative_area_level_2 (often the city/municipality)
+          const adminArea2 = result.address_components.find(
+            comp => comp.types.includes('administrative_area_level_2')
+          );
+          if (adminArea2) {
+            console.log(`✅ Found city (admin level 2): ${adminArea2.long_name}`);
+            return adminArea2.long_name;
+          }
+          
+          // Third try: Look for administrative_area_level_3 (for smaller municipalities)
+          const adminArea3 = result.address_components.find(
+            comp => comp.types.includes('administrative_area_level_3')
+          );
+          if (adminArea3) {
+            console.log(`✅ Found city (admin level 3): ${adminArea3.long_name}`);
+            return adminArea3.long_name;
+          }
+        }
+      }
+      console.warn('⚠️ Could not find city in geocoding results, using Manila as fallback');
+    } catch (error) {
+      console.error("Reverse geocoding failed:", error);
+    }
+    return "Manila";
+  };
+
+  // 4. Updated Forecast Logic using new City Detection, Office Location, and Impossible Route Checks
   useEffect(() => {
     const shouldFetchForecast = 
       formData.assigned_to && 
@@ -336,13 +567,26 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
         if (formData.is_multi_destination && destinations.length >= 2) {
           console.log('🗺️ Fetching MULTI-DESTINATION forecast...');
           
-          let employeeLat = parseFloat(destinations[0].latitude) || 14.8781;
-          let employeeLng = parseFloat(destinations[0].longitude) || 120.9750;
+          // For multi-destination, use office location as default
+          let employeeLat = OFFICE_LOCATION.lat;
+          let employeeLng = OFFICE_LOCATION.lng;
+          let usedDefaultLocation = true;
 
+          // Check if we have selected employee location from nearest employees
           if (selectedEmployeeLocation && selectedEmployeeLocation.userId === parseInt(formData.assigned_to)) {
-             employeeLat = selectedEmployeeLocation.latitude;
-             employeeLng = selectedEmployeeLocation.longitude;
-             console.log(`✅ Using selected employee location: (${employeeLat}, ${employeeLng})`);
+            employeeLat = selectedEmployeeLocation.latitude;
+            employeeLng = selectedEmployeeLocation.longitude;
+            usedDefaultLocation = false;
+            console.log(`✅ Using selected employee location: (${employeeLat}, ${employeeLng})`);
+          }
+          // Otherwise check user's last known location
+          else if (selectedUser?.last_location?.latitude && selectedUser?.last_location?.longitude) {
+            employeeLat = selectedUser.last_location.latitude;
+            employeeLng = selectedUser.last_location.longitude;
+            usedDefaultLocation = false;
+            console.log(`✅ Using employee's last known location: (${employeeLat}, ${employeeLng})`);
+          } else {
+            console.log(`⚠️ Using default office location (Makati): (${employeeLat}, ${employeeLng})`);
           }
           
           const multiDestRequest = {
@@ -354,7 +598,7 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
               latitude: parseFloat(dest.latitude),
               longitude: parseFloat(dest.longitude)
             })),
-            city: "Manila",
+            city: usedDefaultLocation ? OFFICE_LOCATION.city : await detectCity(employeeLat, employeeLng),
             conditions: autoConditions,
             method: "Drive",
             scheduled_hour: hour,
@@ -367,6 +611,21 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
           console.log('📊 Sending multi-destination request:', multiDestRequest);
           const response = await API.predictMultiDestination(multiDestRequest);
           
+          // ✅ Check for impossible route in multi-destination
+          if (response.data?.error && response.data?.impossible_route) {
+            console.log('🚫 Multi-destination route has impossible legs:', response.data.impossible_legs);
+            setForecast(response.data); // Set the error as forecast
+            
+            const impossibleCount = response.data.impossible_count || 0;
+            const totalCount = response.data.total_destinations || destinations.length;
+            
+            toast.error(
+              `${impossibleCount} of ${totalCount} destinations are unreachable by car`,
+              { duration: 6000, icon: '🚫' }
+            );
+            return; // Don't set estimated duration
+          }
+
           if (response.data) {
             const transformedForecast = {
               predicted_duration_minutes: response.data.predicted_duration_minutes,
@@ -385,6 +644,8 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
                 is_rush_hour: isRushHour,
                 conditions: response.data.condition_impact
               },
+              used_default_location: usedDefaultLocation,
+              employee_location_source: usedDefaultLocation ? 'office_default' : 'employee_gps',
               is_multi_destination: true,
               total_distance_km: response.data.total_distance_km,
               total_travel_time_minutes: response.data.total_travel_time_minutes,
@@ -404,34 +665,49 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
           }
         } 
         else {
-          console.log('📍 Fetching SINGLE-DESTINATION forecast...');
+          console.log('🎯 Fetching SINGLE-DESTINATION forecast...');
           
-          let employeeLat = 14.5995; 
-          let employeeLng = 120.9842;
+          // Determine employee location
+          let employeeLat = OFFICE_LOCATION.lat;
+          let employeeLng = OFFICE_LOCATION.lng;
           let usedDefaultLocation = true;
+          let locationSource = 'office_default';
           
+          // Priority 1: Selected employee from nearest employees list
           if (selectedEmployeeLocation && selectedEmployeeLocation.userId === parseInt(formData.assigned_to)) {
-             employeeLat = selectedEmployeeLocation.latitude;
-             employeeLng = selectedEmployeeLocation.longitude;
-             usedDefaultLocation = false;
-             console.log(`✅ Using selected employee location from "Nearest" list: (${employeeLat}, ${employeeLng})`);
+            employeeLat = selectedEmployeeLocation.latitude;
+            employeeLng = selectedEmployeeLocation.longitude;
+            usedDefaultLocation = false;
+            locationSource = 'nearest_employee';
+            console.log(`✅ Using selected employee location from nearest list: (${employeeLat}, ${employeeLng})`);
           } 
+          // Priority 2: User's last known location from profile
           else if (selectedUser?.last_location?.latitude && selectedUser?.last_location?.longitude) {
             employeeLat = selectedUser.last_location.latitude;
             employeeLng = selectedUser.last_location.longitude;
             usedDefaultLocation = false;
-            console.log(`✅ Using employee's last known location from profile: (${employeeLat}, ${employeeLng})`);
+            locationSource = 'last_known_gps';
+            console.log(`✅ Using employee's last known location: (${employeeLat}, ${employeeLng})`);
           } else {
-             console.log('⚠️ No employee location available, using default Manila location for calculation');
+            console.log(`⚠️ No employee location available, using office location (${OFFICE_LOCATION.address})`);
           }
           
+          // Get task location
+          const taskLat = parseFloat(formData.latitude);
+          const taskLng = parseFloat(formData.longitude);
+          
+          // Detect city from TASK location (not employee location)
+          console.log(`🔍 Detecting city for task location: (${taskLat}, ${taskLng})`);
+          const detectedTaskCity = await detectCity(taskLat, taskLng);
+          console.log(`🏙️ Task city detected: ${detectedTaskCity}`);
+
           const forecastData = {
             employee_lat: employeeLat,
             employee_lng: employeeLng,
-            task_lat: parseFloat(formData.latitude) || 14.8781,
-            task_lng: parseFloat(formData.longitude) || 120.9750,
+            task_lat: taskLat,
+            task_lng: taskLng,
             ParticipantID: participantId,
-            city: "Manila",
+            city: detectedTaskCity, // City where the TASK is located
             conditions: autoConditions,
             method: "Drive",
             scheduled_hour: hour,
@@ -442,10 +718,31 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
           console.log('📊 Sending single-destination request:', forecastData);
           const response = await API.getTaskForecast(forecastData);
           
+          // ✅ Check for impossible route error in single destination
+          if (response.data?.prediction?.error && response.data?.prediction?.impossible_route) {
+            console.log('🚫 Impossible route detected:', response.data.prediction.impossible_reason);
+            setForecast(response.data.prediction); // Set the error as forecast
+            
+            toast.error('Cannot calculate route - destination may be unreachable by car', {
+              duration: 5000,
+              icon: '🚫'
+            });
+            
+            return; // Don't set estimated duration
+          }
+          
           if (response.data && !response.data.error) {
             const predictionWithFlags = {
-                ...response.data.prediction,
-                used_default_location: usedDefaultLocation
+              ...response.data.prediction,
+              used_default_location: usedDefaultLocation,
+              employee_location_source: locationSource,
+              city: detectedTaskCity, // Ensure we use the detected city
+              auto_detected: {
+                city: detectedTaskCity,
+                method: "Drive",
+                is_rush_hour: isRushHour,
+                conditions: autoConditions
+              }
             };
             
             setForecast(predictionWithFlags);
@@ -486,20 +783,36 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
     selectedEmployeeLocation
   ]);
 
+  // ✅ IMPROVED: handleFindNearestEmployees with multi-destination support
   const handleFindNearestEmployees = async () => {
-    if (!formData.latitude || !formData.longitude) {
-      toast.error('Please set a location on the map first');
-      return;
+    let targetLat, targetLng;
+
+    if (formData.is_multi_destination) {
+      if (destinations.length === 0) {
+        toast.error('Please add at least one destination to find nearby employees');
+        return;
+      }
+      // Grab the first destination (assumed first stop)
+      // We create a copy and sort just in case they are out of order, assuming 'sequence' exists
+      const sortedDestinations = [...destinations].sort((a, b) => (a.sequence || 0) - (b.sequence || 0));
+      targetLat = parseFloat(sortedDestinations[0].latitude);
+      targetLng = parseFloat(sortedDestinations[0].longitude);
+    } else {
+      if (!formData.latitude || !formData.longitude) {
+        toast.error('Please set a location on the map first');
+        return;
+      }
+      targetLat = parseFloat(formData.latitude);
+      targetLng = parseFloat(formData.longitude);
     }
 
     setLoadingNearest(true);
     try {
       const response = await API.LocationAPI.getNearestEmployee({
-        latitude: parseFloat(formData.latitude),
-        longitude: parseFloat(formData.longitude),
+        latitude: targetLat,
+        longitude: targetLng,
         get_forecast: true,
       });
-
 
       setNearestEmployees(response.data);
       
@@ -658,6 +971,20 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // ✅ Check for any impossible route (single or multi-destination) before submission
+    if (forecast?.error && forecast?.impossible_route) {
+      const message = forecast.impossible_legs 
+        ? `Cannot create task - ${forecast.impossible_count} destinations are unreachable by car`
+        : 'Cannot create task - destination is unreachable by car';
+      
+      toast.error(
+        `${message}. Please remove unreachable locations or set manual duration.`,
+        { duration: 6000 }
+      );
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -993,8 +1320,9 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
                 <FormInput label="Due Date" id="due_date" name="due_date" type="datetime-local" value={formData.due_date} onChange={handleChange} />
               </div>
 
-              {/* Nearest Employees */}
-              {!formData.is_multi_destination && formData.latitude && formData.longitude && (
+              {/* ✅ Nearest Employees Feature - Now Supports Multi-Destination */}
+              {((!formData.is_multi_destination && formData.latitude && formData.longitude) ||
+                (formData.is_multi_destination && destinations.length > 0)) && (
                 <div className="pt-4">
                   <button
                     type="button"
@@ -1016,7 +1344,8 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
                 >
                   <div className="flex items-center justify-between">
                     <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                      📍 Nearest Employees ({nearestEmployees.total_employees_found})
+                      {/* Dynamic Header for Multi-Destination */}
+                      📍 Nearest Employees to {formData.is_multi_destination ? "First Stop" : "Location"} ({nearestEmployees.total_employees_found})
                     </h4>
                     <button
                       type="button"

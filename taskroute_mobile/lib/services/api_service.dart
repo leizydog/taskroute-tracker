@@ -1,11 +1,11 @@
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'storage_service.dart';
 
 class ApiService {
-  // ✅ FIX: Add /api/v1 to match your backend
-static const String baseUrl = 'http://192.168.1.31:8000/api/v1';
+  // ✅ Base URL with /api/v1
+  static const String baseUrl = 'http://192.168.102.41:8000/api/v1';
 
-  
   // Singleton pattern
   static final ApiService _instance = ApiService._internal();
   static ApiService get instance => _instance;
@@ -15,6 +15,15 @@ static const String baseUrl = 'http://192.168.1.31:8000/api/v1';
   factory ApiService() => _instance;
   
   String? _authToken;
+
+  Future<void> initializeAuthToken() async {
+    final token = await StorageService.instance.getToken();
+    if (token != null) {
+      setAuthToken(token);
+    } else {
+      print('ApiService initialized but no token found in secure storage.');
+    }
+  }
 
   void setAuthToken(String token) {
     _authToken = token;
@@ -154,14 +163,28 @@ static const String baseUrl = 'http://192.168.1.31:8000/api/v1';
   }
 
   // Location endpoints
+  // ✅ FIXED: Changed from /locations/log to /locations/
   Future<http.Response> logLocation(Map<String, dynamic> locationData) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/locations/log'),
-      headers: _headers,
-      body: json.encode(locationData),
-    );
+    print('=== LOG LOCATION API DEBUG ===');
+    print('Location Data: $locationData');
+    print('URL: $baseUrl/locations/');  // ✅ Changed endpoint
+    print('Headers: $_headers');
     
-    return response;
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/locations/'),  // ✅ Changed from /log to /
+        headers: _headers,
+        body: json.encode(locationData),
+      );
+      
+      print('Log Location API Response Status: ${response.statusCode}');
+      print('Log Location API Response Body: ${response.body}');
+      
+      return response;
+    } catch (e) {
+      print('Log Location API Exception: $e');
+      rethrow;
+    }
   }
 
   Future<http.Response> getLocationHistory({int? taskId, int limit = 100}) async {
@@ -223,5 +246,4 @@ static const String baseUrl = 'http://192.168.1.31:8000/api/v1';
     
     return response;
   }
-
 }

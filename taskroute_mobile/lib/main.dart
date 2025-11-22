@@ -71,15 +71,22 @@ class _AuthWrapperState extends State<AuthWrapper> {
   @override
   void initState() {
     super.initState();
-    _checkAuthStatus();
+    // ✅ FIX: Schedule this to run AFTER the first frame build is complete
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkAuthStatus();
+    });
   }
 
   Future<void> _checkAuthStatus() async {
     final authProvider = Provider.of<auth.AuthProvider>(context, listen: false);
     await authProvider.checkAuthStatus();
-    setState(() {
-      _isLoading = false;
-    });
+    
+    // ✅ SAFETY: Check if widget is still mounted before calling setState
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 
   @override
