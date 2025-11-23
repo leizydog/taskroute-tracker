@@ -80,15 +80,16 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 # Configure CORS
+# ✅ UPDATE YOUR CORS CONFIGURATION
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
         "http://127.0.0.1:3000",
-        "http://frontend:3000", 
-        "https://taskroute-frontend.vercel.app",
-        "*"
+        "https://taskroute-tracker.vercel.app",  # <--- ADD THIS (Your Production URL)
     ],
+    # This Regex allows all Vercel Preview URLs (e.g., taskroute-tracker-git-main...)
+    allow_origin_regex=r"https://taskroute-tracker.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
