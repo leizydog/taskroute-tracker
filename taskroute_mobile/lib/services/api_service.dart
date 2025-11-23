@@ -1,10 +1,11 @@
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'storage_service.dart';
 
 class ApiService {
-  // ✅ FIX: Add /api/v1 to match your backend
-  static const String baseUrl = 'http://10.0.2.2:8000/api/v1';
-  
+  // ✅ Base URL with /api/v1
+  static const String baseUrl = 'http://192.168.102.8:8000/api/v1';
+
   // Singleton pattern
   static final ApiService _instance = ApiService._internal();
   static ApiService get instance => _instance;
@@ -14,6 +15,15 @@ class ApiService {
   factory ApiService() => _instance;
   
   String? _authToken;
+
+  Future<void> initializeAuthToken() async {
+    final token = await StorageService.instance.getToken();
+    if (token != null) {
+      setAuthToken(token);
+    } else {
+      print('ApiService initialized but no token found in secure storage.');
+    }
+  }
 
   void setAuthToken(String token) {
     _authToken = token;
@@ -76,6 +86,27 @@ class ApiService {
     );
     
     return response;
+  }
+
+  // ✅ Profile Management (Added)
+  Future<http.Response> updateProfile(int userId, Map<String, dynamic> profileData) async {
+    print('=== UPDATE PROFILE API DEBUG ===');
+    print('User ID: $userId');
+    print('Data: $profileData');
+    
+    try {
+      final response = await http.put(
+        Uri.parse('$baseUrl/users/$userId/profile'),
+        headers: _headers,
+        body: json.encode(profileData),
+      );
+      
+      print('Update Profile Response Status: ${response.statusCode}');
+      return response;
+    } catch (e) {
+      print('Update Profile Exception: $e');
+      rethrow;
+    }
   }
 
   // Task endpoints
@@ -152,15 +183,42 @@ class ApiService {
     return response;
   }
 
-  // Location endpoints
-  Future<http.Response> logLocation(Map<String, dynamic> locationData) async {
+  Future<http.Response> cancelTask(int taskId, String reason) async {
+    print('=== CANCEL TASK API DEBUG ===');
+    print('Task ID: $taskId');
+    print('Reason: $reason');
+    
     final response = await http.post(
-      Uri.parse('$baseUrl/locations/log'),
+      Uri.parse('$baseUrl/tasks/$taskId/cancel'), 
       headers: _headers,
-      body: json.encode(locationData),
+      body: json.encode({'cancellation_reason': reason}), 
     );
     
     return response;
+  }
+
+  // Location endpoints
+  Future<http.Response> logLocation(Map<String, dynamic> locationData) async {
+    print('=== LOG LOCATION API DEBUG ===');
+    print('Location Data: $locationData');
+    print('URL: $baseUrl/locations/');
+    print('Headers: $_headers');
+    
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/locations/'),
+        headers: _headers,
+        body: json.encode(locationData),
+      );
+      
+      print('Log Location API Response Status: ${response.statusCode}');
+      print('Log Location API Response Body: ${response.body}');
+      
+      return response;
+    } catch (e) {
+      print('Log Location API Exception: $e');
+      rethrow;
+    }
   }
 
   Future<http.Response> getLocationHistory({int? taskId, int limit = 100}) async {
@@ -178,7 +236,7 @@ class ApiService {
     return response;
   }
 
-  // File upload endpoints (for signatures and photos)
+  // File upload endpoints
   Future<http.Response> uploadSignature(int taskId, List<int> signatureBytes) async {
     final request = http.MultipartRequest(
       'POST',
@@ -213,6 +271,22 @@ class ApiService {
     return await http.Response.fromStream(streamedResponse);
   }
 
+  Future<http.Response> acceptTask(int taskId) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/tasks/$taskId/accept'),
+      headers: _headers,
+    );
+    return response;
+  }
+
+  Future<http.Response> declineTask(int taskId) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/tasks/$taskId/decline'),
+      headers: _headers,
+    );
+    return response;
+  }
+
   // Health check
   Future<http.Response> healthCheck() async {
     final response = await http.get(
@@ -221,51 +295,5 @@ class ApiService {
     );
     
     return response;
-  }
-
-  /// Register new user
-  Future<http.Response> register({
-    required String email,
-    required String password,
-    required String fullName,
-    required String username,
-  }) async {
-    print('=== API SERVICE DEBUG ===');
-    print('Base URL: $baseUrl');
-    print('Full URL: $baseUrl/auth/register');
-    
-    final headers = {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    };
-    print('Headers: $headers');
-
-    final body = json.encode({
-      'email': email,
-      'password': password,
-      'full_name': fullName,
-      'username': username,
-    });
-    
-    print('Request Body: $body');
-
-    final url = Uri.parse('$baseUrl/auth/register');
-    
-    try {
-      final response = await http.post(
-        url,
-        headers: headers,
-        body: body,
-      ).timeout(const Duration(seconds: 30));
-      
-      print('API Response Status: ${response.statusCode}');
-      print('API Response Headers: ${response.headers}');
-      print('API Response Body: ${response.body}');
-      
-      return response;
-    } catch (e) {
-      print('API Request Exception: $e');
-      rethrow;
-    }
   }
 }

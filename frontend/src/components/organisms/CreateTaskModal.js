@@ -1,13 +1,20 @@
-// src/components/organisms/CreateTaskModal.js
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import api from '../../services/api';
+import API from "../../services/api";
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
-import { FiX, FiPlusCircle, FiMapPin, FiTrash2, FiClock, FiTrendingUp, FiAlertCircle } from 'react-icons/fi';
+import { FiX, FiPlusCircle, FiMapPin, FiTrash2, FiClock, FiTrendingUp, FiAlertCircle, FiInfo } from 'react-icons/fi';
 import { GoogleMap, Polyline } from '@react-google-maps/api';
 import AdvancedMarker from './AdvancedMarker';
 import { Spinner, Button } from '../atoms';
 import { motion, AnimatePresence } from 'framer-motion';
+
+// 1. Defined Office Location Constant
+const OFFICE_LOCATION = {
+  lat: 14.5599,
+  lng: 121.0206,
+  address: "30/F 88 Corporate Center, Sedeño cor. Valero Streets, Salcedo, Makati City",
+  city: "Makati"
+};
 
 const FormInput = React.forwardRef(({ label, id, isRequired, ...props }, ref) => (
   <div>
@@ -52,7 +59,7 @@ const FormSelect = ({ label, id, isRequired, children, ...props }) => (
   </div>
 );
 
-// 🎯 NEW: Forecast Display Component
+// Updated ForecastPanel to handle Impossible Routes
 const ForecastPanel = ({ forecast, loading, error }) => {
   if (loading) {
     return (
@@ -64,6 +71,166 @@ const ForecastPanel = ({ forecast, loading, error }) => {
         <div className="flex items-center gap-3">
           <Spinner size="sm" />
           <span className="text-sm text-slate-600 dark:text-slate-400">Calculating forecast...</span>
+        </div>
+      </motion.div>
+    );
+  }
+
+  // ✅ Handle multi-destination impossible routes
+  if (forecast?.error && forecast?.impossible_route && forecast?.impossible_legs) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-red-50 dark:bg-red-900/20 border border-red-300 dark:border-red-700 rounded-lg p-4"
+      >
+        <div className="flex items-start gap-3">
+          <div className="p-2 bg-red-100 dark:bg-red-900/40 rounded-lg flex-shrink-0">
+            <FiAlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
+          </div>
+          <div className="flex-1">
+            <h4 className="text-sm font-bold text-red-800 dark:text-red-200 mb-1">
+              🚫 Multi-Stop Route Not Possible
+            </h4>
+            <p className="text-sm text-red-700 dark:text-red-300 mb-3">
+              {forecast.impossible_count} of {forecast.total_destinations} destinations cannot be reached by car
+            </p>
+            
+            {/* Show which legs are impossible */}
+            <div className="bg-white dark:bg-red-950/30 rounded-lg p-3 mb-3 border border-red-200 dark:border-red-800">
+              <p className="text-xs font-semibold text-red-800 dark:text-red-200 mb-2">
+                ⚠️ Unreachable Legs:
+              </p>
+              <div className="space-y-2 max-h-40 overflow-y-auto">
+                {forecast.impossible_legs.map((leg, index) => (
+                  <div key={index} className="flex items-start gap-2 text-xs bg-red-50 dark:bg-red-900/20 p-2 rounded border border-red-200 dark:border-red-700">
+                    <div className="flex-shrink-0 w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center font-bold text-[10px]">
+                      {leg.leg_number}
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-medium text-red-800 dark:text-red-200">
+                        {leg.from_location} → {leg.to_location}
+                      </p>
+                      <p className="text-red-600 dark:text-red-400 mt-0.5">
+                        {leg.impossible_reason}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-blue-50 dark:bg-blue-950/30 rounded-lg p-3 border border-blue-200 dark:border-blue-800">
+              <p className="text-xs font-semibold text-blue-800 dark:text-blue-200 mb-1">
+                💡 Suggestions:
+              </p>
+              <ul className="text-xs text-blue-700 dark:text-blue-300 space-y-1">
+                <li className="flex items-start gap-2">
+                  <span>1.</span>
+                  <span>Remove destinations on different islands or countries</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span>2.</span>
+                  <span>Split this into separate tasks for each region</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span>3.</span>
+                  <span>Consider alternative transportation (ferry, flight) for island destinations</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span>4.</span>
+                  <span>Verify all destination coordinates are correct</span>
+                </li>
+              </ul>
+            </div>
+
+            {forecast.suggestion && (
+              <p className="text-xs text-slate-600 dark:text-slate-400 mt-3 italic">
+                {forecast.suggestion}
+              </p>
+            )}
+          </div>
+        </div>
+      </motion.div>
+    );
+  }
+
+  // ✅ Handle single-destination impossible routes
+  if (forecast?.error && forecast?.impossible_route) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-red-50 dark:bg-red-900/20 border border-red-300 dark:border-red-700 rounded-lg p-4"
+      >
+        <div className="flex items-start gap-3">
+          <div className="p-2 bg-red-100 dark:bg-red-900/40 rounded-lg flex-shrink-0">
+            <FiAlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
+          </div>
+          <div className="flex-1">
+            <h4 className="text-sm font-bold text-red-800 dark:text-red-200 mb-1">
+              🚫 Route Not Possible
+            </h4>
+            <p className="text-sm text-red-700 dark:text-red-300 mb-2">
+              {forecast.impossible_reason || 'Cannot calculate driving route to this destination'}
+            </p>
+            
+            <div className="bg-white dark:bg-red-950/30 rounded-lg p-3 mb-3 border border-red-200 dark:border-red-800">
+              <p className="text-xs font-semibold text-red-800 dark:text-red-200 mb-2">
+                Possible reasons:
+              </p>
+              <ul className="text-xs text-red-700 dark:text-red-300 space-y-1">
+                <li className="flex items-start gap-2">
+                  <span className="text-red-500 dark:text-red-400">•</span>
+                  <span>Destination is on a different island (no land route available)</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-red-500 dark:text-red-400">•</span>
+                  <span>Destination is in another country</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-red-500 dark:text-red-400">•</span>
+                  <span>Location requires ferry or air travel</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-red-500 dark:text-red-400">•</span>
+                  <span>Destination coordinates may be incorrect</span>
+                </li>
+              </ul>
+            </div>
+
+            <div className="bg-blue-50 dark:bg-blue-950/30 rounded-lg p-3 border border-blue-200 dark:border-blue-800">
+              <p className="text-xs font-semibold text-blue-800 dark:text-blue-200 mb-1">
+                💡 Suggestions:
+              </p>
+              <ul className="text-xs text-blue-700 dark:text-blue-300 space-y-1">
+                <li className="flex items-start gap-2">
+                  <span>1.</span>
+                  <span>Verify the task location is correct</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span>2.</span>
+                  <span>Consider using alternative transportation (ferry, flight)</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span>3.</span>
+                  <span>Manually set estimated duration based on known travel time</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span>4.</span>
+                  <span>Assign to an employee already near the destination</span>
+                </li>
+              </ul>
+            </div>
+
+            {forecast.employee_location && forecast.task_location && (
+              <div className="mt-3 text-xs text-slate-600 dark:text-slate-400">
+                <p className="font-medium mb-1">Location Details:</p>
+                <p>Employee: {forecast.employee_location.lat.toFixed(4)}, {forecast.employee_location.lng.toFixed(4)}</p>
+                <p>Task: {forecast.task_location.lat.toFixed(4)}, {forecast.task_location.lng.toFixed(4)}</p>
+              </div>
+            )}
+          </div>
         </div>
       </motion.div>
     );
@@ -89,6 +256,16 @@ const ForecastPanel = ({ forecast, loading, error }) => {
 
   if (!forecast) return null;
 
+  const isMultiDest = forecast.is_multi_destination && forecast.legs;
+
+  const getConfidence = () => {
+      const lower = forecast.confidence_interval_lower ?? forecast.confidence_interval?.lower_minutes;
+      const upper = forecast.confidence_interval_upper ?? forecast.confidence_interval?.upper_minutes;
+      return { lower, upper };
+  };
+
+  const { lower, upper } = getConfidence();
+
   return (
     <motion.div
       initial={{ opacity: 0, y: -10 }}
@@ -101,80 +278,146 @@ const ForecastPanel = ({ forecast, loading, error }) => {
         </div>
         <div className="flex-1">
           <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-1">
-            🎯 AI-Powered Duration Forecast
+            {isMultiDest ? '🗺️ Multi-Stop Route Forecast' : '🎯 AI-Powered Duration Forecast'}
           </h4>
           <p className="text-xs text-slate-600 dark:text-slate-400">
-            Based on employee KPI and current conditions
+            {isMultiDest 
+              ? `${forecast.number_of_stops} stops • ${forecast.total_distance_km.toFixed(1)} km total`
+              : 'Based on employee KPI and current conditions'
+            }
           </p>
+          
+          {/* 2. Updated Location Source UI */}
+          {forecast.used_default_location && (
+            <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1">
+              <FiInfo size={12} /> 
+              Using office location ({OFFICE_LOCATION.city}) - Employee has no recent GPS data
+            </p>
+          )}
+          {!forecast.used_default_location && forecast.employee_location_source === 'nearest_employee' && (
+            <p className="text-xs text-green-600 dark:text-green-400 mt-1 flex items-center gap-1">
+              <FiMapPin size={12} /> 
+              Using employee's current location from GPS
+            </p>
+          )}
+          {!forecast.used_default_location && forecast.employee_location_source === 'last_known_gps' && (
+            <p className="text-xs text-blue-600 dark:text-blue-400 mt-1 flex items-center gap-1">
+              <FiMapPin size={12} /> 
+              Using employee's last known location
+            </p>
+          )}
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 mb-3">
         <div className="bg-white dark:bg-slate-800 rounded-lg p-3 border border-indigo-100 dark:border-indigo-800">
-          <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Predicted Duration</p>
-          <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">
-            {forecast.predicted_duration_minutes} <span className="text-sm font-normal">min</span>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">
+            {isMultiDest ? 'Total Duration' : 'Predicted Duration'}
           </p>
+          <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">
+            {Math.round(forecast.predicted_duration_minutes)} 
+            <span className="text-sm font-normal"> min</span>
+          </p>
+          {isMultiDest && (
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              ({forecast.predicted_duration_hours.toFixed(1)} hours)
+            </p>
+          )}
         </div>
         <div className="bg-white dark:bg-slate-800 rounded-lg p-3 border border-indigo-100 dark:border-indigo-800">
           <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Confidence Range</p>
           <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-            {forecast.confidence_interval.lower_minutes} - {forecast.confidence_interval.upper_minutes} min
+            {lower !== undefined && upper !== undefined ? `${Math.round(lower)} - ${Math.round(upper)} min` : 'N/A'}
           </p>
         </div>
       </div>
 
+      {isMultiDest && (
+        <div className="bg-white dark:bg-slate-800 rounded-lg p-3 border border-indigo-100 dark:border-indigo-800 mb-3">
+          <p className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-2">🚗 Route Summary</p>
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <div>
+              <span className="text-slate-500 dark:text-slate-400">Total Distance:</span>
+              <span className="ml-1 font-semibold text-blue-600 dark:text-blue-400">
+                {forecast.total_distance_km.toFixed(1)} km
+              </span>
+            </div>
+            <div>
+              <span className="text-slate-500 dark:text-slate-400">Travel Time:</span>
+              <span className="ml-1 font-semibold text-green-600 dark:text-green-400">
+                {Math.round(forecast.total_travel_time_minutes)} min
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isMultiDest && forecast.legs && (
+        <div className="bg-white dark:bg-slate-800 rounded-lg p-3 border border-indigo-100 dark:border-indigo-800 mb-3">
+          <p className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-2">📍 Route Details</p>
+          <div className="space-y-2 max-h-40 overflow-y-auto">
+            {forecast.legs.map((leg, index) => (
+              <div key={index} className="flex items-start gap-2 text-xs">
+                <div className="flex-shrink-0 w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-[10px]">
+                  {leg.leg_number}
+                </div>
+                <div className="flex-1">
+                  <p className="font-medium text-slate-700 dark:text-slate-300">
+                    {leg.from_location} → {leg.to_location}
+                  </p>
+                  <p className="text-slate-500 dark:text-slate-400">
+                    {leg.distance_km.toFixed(1)} km • {Math.round(leg.travel_time_minutes)} min • Depart: {leg.departure_time} → Arrive: {leg.arrival_time}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {forecast.employee_kpi && (
         <div className="bg-white dark:bg-slate-800 rounded-lg p-3 border border-indigo-100 dark:border-indigo-800 mb-3">
-          <p className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-2">Employee Performance</p>
+          <p className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-2">👤 Employee Performance</p>
           <div className="grid grid-cols-2 gap-2 text-xs">
             <div>
               <span className="text-slate-500 dark:text-slate-400">Avg Duration:</span>
               <span className="ml-1 font-semibold text-slate-700 dark:text-slate-300">
-                {forecast.employee_kpi.historical_avg_duration} min
+                {forecast.employee_kpi.historical_avg_duration || forecast.employee_avg_duration} min
               </span>
             </div>
             <div>
               <span className="text-slate-500 dark:text-slate-400">Reliability:</span>
               <span className="ml-1 font-semibold text-green-600 dark:text-green-400">
-                {forecast.employee_kpi.reliability_pct}%
+                {forecast.employee_kpi.reliability_pct || forecast.employee_reliability}%
               </span>
             </div>
           </div>
         </div>
       )}
 
-      {forecast.auto_detected && (
-        <div className="bg-white dark:bg-slate-800 rounded-lg p-3 border border-indigo-100 dark:border-indigo-800">
-          <p className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-2">🤖 Auto-Detected Context</p>
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <div>
-              <span className="text-slate-500 dark:text-slate-400">City:</span>
-              <span className="ml-1 font-semibold text-slate-700 dark:text-slate-300">
-                {forecast.auto_detected.city}
-              </span>
-            </div>
-            <div>
-              <span className="text-slate-500 dark:text-slate-400">Method:</span>
-              <span className="ml-1 font-semibold text-slate-700 dark:text-slate-300">
-                {forecast.auto_detected.method}
-              </span>
-            </div>
-            <div>
-              <span className="text-slate-500 dark:text-slate-400">Rush Hour:</span>
-              <span className={`ml-1 font-semibold ${forecast.auto_detected.is_rush_hour ? 'text-orange-600' : 'text-green-600'}`}>
-                {forecast.auto_detected.is_rush_hour ? 'Yes' : 'No'}
-              </span>
-            </div>
-            <div>
-              <span className="text-slate-500 dark:text-slate-400">Conditions:</span>
-              <span className="ml-1 font-semibold text-slate-700 dark:text-slate-300">
-                {forecast.auto_detected.conditions}
-              </span>
-            </div>
+      <div className="bg-white dark:bg-slate-800 rounded-lg p-3 border border-indigo-100 dark:border-indigo-800">
+        <p className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-2">🤖 Auto-Detected Context</p>
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <div>
+            <span className="text-slate-500 dark:text-slate-400">City:</span>
+            <span className="ml-1 font-semibold text-slate-700 dark:text-slate-300">
+              {forecast.auto_detected?.city || forecast.city || 'Unknown'}
+            </span>
+          </div>
+          <div>
+            <span className="text-slate-500 dark:text-slate-400">Method:</span>
+            <span className="ml-1 font-semibold text-slate-700 dark:text-slate-300">
+              {forecast.auto_detected?.method || forecast.method || 'Drive'}
+            </span>
+          </div>
+          <div>
+            <span className="text-slate-500 dark:text-slate-400">Conditions:</span>
+            <span className="ml-1 font-semibold text-slate-700 dark:text-slate-300">
+              {forecast.auto_detected?.conditions || forecast.condition_impact || 'Normal'}
+            </span>
           </div>
         </div>
-      )}
+      </div>
     </motion.div>
   );
 };
@@ -182,9 +425,9 @@ const ForecastPanel = ({ forecast, loading, error }) => {
 const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError = null }) => {
   const { user: currentUser } = useAuth();
 
-  // 🎯 NEW: Nearest employee state
   const [nearestEmployees, setNearestEmployees] = useState(null);
   const [loadingNearest, setLoadingNearest] = useState(false);
+  const [selectedEmployeeLocation, setSelectedEmployeeLocation] = useState(null);
 
   const [formData, setFormData] = useState({
     title: '',
@@ -199,7 +442,6 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
     is_multi_destination: false,
   });
 
-  // 🎯 NEW: Forecast state (now fully automatic)
   const [forecast, setForecast] = useState(null);
   const [forecastLoading, setForecastLoading] = useState(false);
   const [forecastError, setForecastError] = useState(null);
@@ -217,7 +459,7 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
     const fetchUsers = async () => {
       try {
         setLoadingUsers(true);
-        const res = await api.getUsers();
+        const res = await API.getUsers();
         const assignableUsers = (res.data || []).filter(u => u.id !== currentUser?.id && u.role === 'user');
         setUsers(assignableUsers);
         if (assignableUsers.length > 0) {
@@ -238,12 +480,61 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
     }
   }, [currentUser]);
 
-  // 🎯 NEW: Auto-fetch forecast when key parameters change (simplified)
+  // 3. Improved City Detection
+  const detectCity = async (lat, lng) => {
+    if (!window.google || !window.google.maps || !window.google.maps.Geocoder) {
+      return "Manila"; // Fallback
+    }
+    try {
+      const geocoder = new window.google.maps.Geocoder();
+      const response = await geocoder.geocode({ location: { lat, lng } });
+      if (response.results && response.results.length > 0) {
+        // Try multiple approaches to find the city
+        for (const result of response.results) {
+          // First try: Look for locality (city)
+          const cityComponent = result.address_components.find(
+            comp => comp.types.includes('locality')
+          );
+          if (cityComponent) {
+            console.log(`✅ Found city: ${cityComponent.long_name}`);
+            return cityComponent.long_name;
+          }
+          
+          // Second try: Look for administrative_area_level_2 (often the city/municipality)
+          const adminArea2 = result.address_components.find(
+            comp => comp.types.includes('administrative_area_level_2')
+          );
+          if (adminArea2) {
+            console.log(`✅ Found city (admin level 2): ${adminArea2.long_name}`);
+            return adminArea2.long_name;
+          }
+          
+          // Third try: Look for administrative_area_level_3 (for smaller municipalities)
+          const adminArea3 = result.address_components.find(
+            comp => comp.types.includes('administrative_area_level_3')
+          );
+          if (adminArea3) {
+            console.log(`✅ Found city (admin level 3): ${adminArea3.long_name}`);
+            return adminArea3.long_name;
+          }
+        }
+      }
+      console.warn('⚠️ Could not find city in geocoding results, using Manila as fallback');
+    } catch (error) {
+      console.error("Reverse geocoding failed:", error);
+    }
+    return "Manila";
+  };
+
+  // 4. Updated Forecast Logic using new City Detection, Office Location, and Impossible Route Checks
   useEffect(() => {
     const shouldFetchForecast = 
       formData.assigned_to && 
       formData.due_date && 
-      (formData.latitude || destinations.length > 0);
+      (
+        (!formData.is_multi_destination && formData.latitude && formData.longitude) ||
+        (formData.is_multi_destination && destinations.length >= 2)
+      );
 
     if (!shouldFetchForecast) {
       setForecast(null);
@@ -256,39 +547,215 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
 
       try {
         const selectedUser = users.find(u => u.id === parseInt(formData.assigned_to));
-        // ✅ Use database ID as ParticipantID to match your CSV format
-        const participantId = `P${String(selectedUser?.id).padStart(3, '0')}`; // P001, P002, etc.
+        const participantId = `P${String(selectedUser?.id).padStart(3, '0')}`;
 
         const dueDate = new Date(formData.due_date);
-        
-        // 🎯 Simplified: Backend handles all auto-detection
-        const forecastData = {
-          Date: dueDate.toISOString().split('T')[0], // "2024-11-03"
-          StartTime: dueDate.toISOString(), // Full ISO string with time
-          latitude: parseFloat(formData.latitude || destinations[0]?.latitude) || 14.8781,
-          longitude: parseFloat(formData.longitude || destinations[0]?.longitude) || 120.9750,
-          ParticipantID: participantId,
-          // Optional overrides (not needed, backend auto-detects):
-          // City, Conditions, Method will be detected automatically
-        };
+        const hour = dueDate.getHours();
+        const isWeekend = dueDate.getDay() === 0 || dueDate.getDay() === 6;
 
-        console.log('📊 Sending forecast request:', forecastData);
-        const response = await api.getTaskForecast(forecastData);
+        let autoConditions = "Normal";
+        const isRushHour = (hour >= 7 && hour <= 9) || (hour >= 17 && hour <= 19);
+
+        if (isRushHour && !isWeekend) {
+          autoConditions = "Rush Hour";
+        } else if (isWeekend) {
+          autoConditions = "Holiday";
+        }
         
-        console.log('✅ Forecast response:', response.data);
-        
-        if (response.data && !response.data.error) {
-          setForecast(response.data);
+        console.log(`🕐 Time-based conditions detected: ${autoConditions} (Hour: ${hour}, Weekend: ${isWeekend})`);
+
+        if (formData.is_multi_destination && destinations.length >= 2) {
+          console.log('🗺️ Fetching MULTI-DESTINATION forecast...');
           
-          // Auto-fill estimated duration
-          if (!formData.estimated_duration) {
-            setFormData(prev => ({
-              ...prev,
-              estimated_duration: Math.round(response.data.predicted_duration_minutes)
-            }));
+          // For multi-destination, use office location as default
+          let employeeLat = OFFICE_LOCATION.lat;
+          let employeeLng = OFFICE_LOCATION.lng;
+          let usedDefaultLocation = true;
+
+          // Check if we have selected employee location from nearest employees
+          if (selectedEmployeeLocation && selectedEmployeeLocation.userId === parseInt(formData.assigned_to)) {
+            employeeLat = selectedEmployeeLocation.latitude;
+            employeeLng = selectedEmployeeLocation.longitude;
+            usedDefaultLocation = false;
+            console.log(`✅ Using selected employee location: (${employeeLat}, ${employeeLng})`);
           }
-        } else {
-          setForecastError(response.data?.error || 'Forecast unavailable');
+          // Otherwise check user's last known location
+          else if (selectedUser?.last_location?.latitude && selectedUser?.last_location?.longitude) {
+            employeeLat = selectedUser.last_location.latitude;
+            employeeLng = selectedUser.last_location.longitude;
+            usedDefaultLocation = false;
+            console.log(`✅ Using employee's last known location: (${employeeLat}, ${employeeLng})`);
+          } else {
+            console.log(`⚠️ Using default office location (Makati): (${employeeLat}, ${employeeLng})`);
+          }
+          
+          const multiDestRequest = {
+            employee_lat: employeeLat,
+            employee_lng: employeeLng,
+            destinations: destinations.map(dest => ({
+              sequence: dest.sequence,
+              location_name: dest.location_name,
+              latitude: parseFloat(dest.latitude),
+              longitude: parseFloat(dest.longitude)
+            })),
+            city: usedDefaultLocation ? OFFICE_LOCATION.city : await detectCity(employeeLat, employeeLng),
+            conditions: autoConditions,
+            method: "Drive",
+            scheduled_hour: hour,
+            scheduled_day_of_week: dueDate.getDay() === 0 ? 6 : dueDate.getDay() - 1,
+            scheduled_date: dueDate.toISOString().split('T')[0],
+            optimize_order: false,
+            ParticipantID: participantId 
+          };
+
+          console.log('📊 Sending multi-destination request:', multiDestRequest);
+          const response = await API.predictMultiDestination(multiDestRequest);
+          
+          // ✅ Check for impossible route in multi-destination
+          if (response.data?.error && response.data?.impossible_route) {
+            console.log('🚫 Multi-destination route has impossible legs:', response.data.impossible_legs);
+            setForecast(response.data); // Set the error as forecast
+            
+            const impossibleCount = response.data.impossible_count || 0;
+            const totalCount = response.data.total_destinations || destinations.length;
+            
+            toast.error(
+              `${impossibleCount} of ${totalCount} destinations are unreachable by car`,
+              { duration: 6000, icon: '🚫' }
+            );
+            return; // Don't set estimated duration
+          }
+
+          if (response.data) {
+            const transformedForecast = {
+              predicted_duration_minutes: response.data.predicted_duration_minutes,
+              predicted_duration_hours: response.data.predicted_duration_hours,
+              confidence_interval: {
+                lower_minutes: Math.round(response.data.confidence_interval_lower),
+                upper_minutes: Math.round(response.data.confidence_interval_upper)
+              },
+              employee_kpi: {
+                historical_avg_duration: Math.round(response.data.legs?.[0]?.work_time_minutes || 30),
+                reliability_pct: Math.round(response.data.employee_reliability)
+              },
+              auto_detected: {
+                city: response.data.city,
+                method: response.data.method,
+                is_rush_hour: isRushHour,
+                conditions: response.data.condition_impact
+              },
+              used_default_location: usedDefaultLocation,
+              employee_location_source: usedDefaultLocation ? 'office_default' : 'employee_gps',
+              is_multi_destination: true,
+              total_distance_km: response.data.total_distance_km,
+              total_travel_time_minutes: response.data.total_travel_time_minutes,
+              total_work_time_minutes: response.data.total_work_time_minutes,
+              number_of_stops: response.data.number_of_stops,
+              legs: response.data.legs
+            };
+            
+            setForecast(transformedForecast);
+            
+            if (!formData.estimated_duration) {
+              setFormData(prev => ({
+                ...prev,
+                estimated_duration: Math.round(response.data.predicted_duration_minutes)
+              }));
+            }
+          }
+        } 
+        else {
+          console.log('🎯 Fetching SINGLE-DESTINATION forecast...');
+          
+          // Determine employee location
+          let employeeLat = OFFICE_LOCATION.lat;
+          let employeeLng = OFFICE_LOCATION.lng;
+          let usedDefaultLocation = true;
+          let locationSource = 'office_default';
+          
+          // Priority 1: Selected employee from nearest employees list
+          if (selectedEmployeeLocation && selectedEmployeeLocation.userId === parseInt(formData.assigned_to)) {
+            employeeLat = selectedEmployeeLocation.latitude;
+            employeeLng = selectedEmployeeLocation.longitude;
+            usedDefaultLocation = false;
+            locationSource = 'nearest_employee';
+            console.log(`✅ Using selected employee location from nearest list: (${employeeLat}, ${employeeLng})`);
+          } 
+          // Priority 2: User's last known location from profile
+          else if (selectedUser?.last_location?.latitude && selectedUser?.last_location?.longitude) {
+            employeeLat = selectedUser.last_location.latitude;
+            employeeLng = selectedUser.last_location.longitude;
+            usedDefaultLocation = false;
+            locationSource = 'last_known_gps';
+            console.log(`✅ Using employee's last known location: (${employeeLat}, ${employeeLng})`);
+          } else {
+            console.log(`⚠️ No employee location available, using office location (${OFFICE_LOCATION.address})`);
+          }
+          
+          // Get task location
+          const taskLat = parseFloat(formData.latitude);
+          const taskLng = parseFloat(formData.longitude);
+          
+          // Detect city from TASK location (not employee location)
+          console.log(`🔍 Detecting city for task location: (${taskLat}, ${taskLng})`);
+          const detectedTaskCity = await detectCity(taskLat, taskLng);
+          console.log(`🏙️ Task city detected: ${detectedTaskCity}`);
+
+          const forecastData = {
+            employee_lat: employeeLat,
+            employee_lng: employeeLng,
+            task_lat: taskLat,
+            task_lng: taskLng,
+            ParticipantID: participantId,
+            city: detectedTaskCity, // City where the TASK is located
+            conditions: autoConditions,
+            method: "Drive",
+            scheduled_hour: hour,
+            scheduled_day_of_week: dueDate.getDay() === 0 ? 6 : dueDate.getDay() - 1,
+            scheduled_date: dueDate.toISOString().split('T')[0]
+          };
+
+          console.log('📊 Sending single-destination request:', forecastData);
+          const response = await API.getTaskForecast(forecastData);
+          
+          // ✅ Check for impossible route error in single destination
+          if (response.data?.prediction?.error && response.data?.prediction?.impossible_route) {
+            console.log('🚫 Impossible route detected:', response.data.prediction.impossible_reason);
+            setForecast(response.data.prediction); // Set the error as forecast
+            
+            toast.error('Cannot calculate route - destination may be unreachable by car', {
+              duration: 5000,
+              icon: '🚫'
+            });
+            
+            return; // Don't set estimated duration
+          }
+          
+          if (response.data && !response.data.error) {
+            const predictionWithFlags = {
+              ...response.data.prediction,
+              used_default_location: usedDefaultLocation,
+              employee_location_source: locationSource,
+              city: detectedTaskCity, // Ensure we use the detected city
+              auto_detected: {
+                city: detectedTaskCity,
+                method: "Drive",
+                is_rush_hour: isRushHour,
+                conditions: autoConditions
+              }
+            };
+            
+            setForecast(predictionWithFlags);
+            
+            if (!formData.estimated_duration) {
+              setFormData(prev => ({
+                ...prev,
+                estimated_duration: Math.round(response.data.prediction.predicted_duration_minutes)
+              }));
+            }
+          } else {
+            setForecastError(response.data?.error || 'Forecast unavailable');
+          }
         }
       } catch (err) {
         console.error('❌ Forecast error details:', {
@@ -304,21 +771,47 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
 
     const timeoutId = setTimeout(fetchForecast, 800);
     return () => clearTimeout(timeoutId);
-  }, [formData.assigned_to, formData.due_date, formData.latitude, destinations, users, formData.estimated_duration]);
+  }, [
+    formData.assigned_to, 
+    formData.due_date, 
+    formData.latitude, 
+    formData.longitude, 
+    formData.is_multi_destination,
+    destinations, 
+    users, 
+    formData.estimated_duration,
+    selectedEmployeeLocation
+  ]);
 
-  // 🎯 NEW: Find nearest employees when location is set
+  // ✅ IMPROVED: handleFindNearestEmployees with multi-destination support
   const handleFindNearestEmployees = async () => {
-    if (!formData.latitude || !formData.longitude) {
-      toast.error('Please set a location on the map first');
-      return;
+    let targetLat, targetLng;
+
+    if (formData.is_multi_destination) {
+      if (destinations.length === 0) {
+        toast.error('Please add at least one destination to find nearby employees');
+        return;
+      }
+      // Grab the first destination (assumed first stop)
+      // We create a copy and sort just in case they are out of order, assuming 'sequence' exists
+      const sortedDestinations = [...destinations].sort((a, b) => (a.sequence || 0) - (b.sequence || 0));
+      targetLat = parseFloat(sortedDestinations[0].latitude);
+      targetLng = parseFloat(sortedDestinations[0].longitude);
+    } else {
+      if (!formData.latitude || !formData.longitude) {
+        toast.error('Please set a location on the map first');
+        return;
+      }
+      targetLat = parseFloat(formData.latitude);
+      targetLng = parseFloat(formData.longitude);
     }
 
     setLoadingNearest(true);
     try {
-      const response = await api.post('/api/v1/locations/employees/nearest', {
-        latitude: parseFloat(formData.latitude),
-        longitude: parseFloat(formData.longitude),
-        get_forecast: true, // Include forecasts for each employee
+      const response = await API.LocationAPI.getNearestEmployee({
+        latitude: targetLat,
+        longitude: targetLng,
+        get_forecast: true,
       });
 
       setNearestEmployees(response.data);
@@ -334,6 +827,18 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
     } finally {
       setLoadingNearest(false);
     }
+  };
+
+  const handleSelectNearestEmployee = (emp) => {
+      setFormData(prev => ({ ...prev, assigned_to: emp.user_id }));
+      
+      if (emp.current_latitude && emp.current_longitude) {
+          setSelectedEmployeeLocation({
+              userId: emp.user_id,
+              latitude: emp.current_latitude,
+              longitude: emp.current_longitude
+          });
+      }
   };
 
   const handleClose = useCallback(() => {
@@ -462,10 +967,24 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
         toast.error('Could not get your location.');
       }
     );
-  }, [formData.is_multi_destination, destinations.length, mapCenter]);
+  }, [formData.is_multi_destination, destinations.length]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // ✅ Check for any impossible route (single or multi-destination) before submission
+    if (forecast?.error && forecast?.impossible_route) {
+      const message = forecast.impossible_legs 
+        ? `Cannot create task - ${forecast.impossible_count} destinations are unreachable by car`
+        : 'Cannot create task - destination is unreachable by car';
+      
+      toast.error(
+        `${message}. Please remove unreachable locations or set manual duration.`,
+        { duration: 6000 }
+      );
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -497,7 +1016,8 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
         payload.longitude = formData.longitude ? parseFloat(formData.longitude) : null;
       }
 
-      const res = await api.createTask(payload);
+      const res = await API.TaskAPI.createTask(payload);
+
       toast.success('Task created successfully!');
       if (typeof onSuccess === 'function') onSuccess(res.data);
       if (typeof onClose === 'function') onClose();
@@ -529,15 +1049,17 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
   return (
     <div
       onClick={handleClose}
-      className={`fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 dark:bg-black/80 transition-opacity duration-200 ${isClosing ? 'opacity-0' : 'opacity-100'}`}
+      className={`fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 dark:bg-black/80 transition-opacity duration-200 p-4 sm:p-6 ${isClosing ? 'opacity-0' : 'opacity-100'}`}
       aria-modal="true"
       role="dialog"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className={`relative w-full max-w-5xl max-h-[90vh] bg-white dark:bg-slate-900 rounded-xl shadow-xl p-6 overflow-y-auto transform transition-all duration-200 ${isClosing ? 'scale-95 opacity-0' : 'scale-100 opacity-100'}`}
+        // FIX: Added flex flex-col and overflow-hidden to manage layout safely
+        className={`relative w-full max-w-3xl max-h-[90vh] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden transform transition-all duration-200 ${isClosing ? 'scale-95 opacity-0' : 'scale-100 opacity-100'}`}
       >
-        <div className="flex items-start justify-between mb-4 sticky top-0 bg-white dark:bg-slate-900 z-10 pb-2">
+        {/* HEADER: Fixed, Not Sticky. Outside of Scroll Area */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex-shrink-0 z-10">
           <div className="flex items-center gap-3">
             <FiPlusCircle className="h-7 w-7 text-indigo-600 dark:text-indigo-400" />
             <h3 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Create New Task</h3>
@@ -547,368 +1069,372 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <fieldset className="space-y-4">
-            <FormInput
-              label="Title"
-              id="title"
-              name="title"
-              required
-              isRequired
-              value={formData.title}
-              onChange={handleChange}
-              placeholder="e.g., Delivery route or single delivery"
-              autoFocus
-            />
-            <FormTextarea
-              label="Description"
-              id="description"
-              name="description"
-              value={formData.description}
-              onChange={handleChange}
-              placeholder="Add more details about the task..."
-            />
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FormSelect
-                label="Priority"
-                id="priority"
-                name="priority"
-                value={formData.priority}
-                onChange={handleChange}
-              >
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="urgent">Urgent</option>
-              </FormSelect>
-
-              <FormSelect
-                label="Assign To"
-                id="assigned_to"
-                name="assigned_to"
+        {/* BODY: Scrollable Area */}
+        <div className="flex-1 overflow-y-auto p-6">
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <fieldset className="space-y-4">
+              <FormInput
+                label="Title"
+                id="title"
+                name="title"
                 required
                 isRequired
-                value={formData.assigned_to}
+                value={formData.title}
                 onChange={handleChange}
-                disabled={loadingUsers}
-              >
-                {loadingUsers ? (
-                  <option>Loading users...</option>
-                ) : users.length > 0 ? (
-                  users.map(u => <option key={u.id} value={u.id}>{u.full_name || u.email}</option>)
-                ) : (
-                  <option>No users available</option>
-                )}
-              </FormSelect>
-            </div>
-          </fieldset>
-
-          <div className="pt-4 border-t border-slate-200 dark:border-slate-700">
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                name="is_multi_destination"
-                checked={formData.is_multi_destination}
-                onChange={handleChange}
-                className="w-5 h-5 text-indigo-600 border-slate-300 dark:border-slate-600 rounded focus:ring-indigo-500 dark:bg-slate-800"
+                placeholder="e.g., Delivery route or single delivery"
+                autoFocus
               />
-              <div>
-                <span className="font-semibold text-slate-700 dark:text-slate-300">Multiple Destinations</span>
-                <p className="text-sm text-slate-500 dark:text-slate-400">Create a task with multiple stops in sequence</p>
-              </div>
-            </label>
-          </div>
-
-          <fieldset className="space-y-4 pt-4 border-t border-slate-200 dark:border-slate-700">
-            {!formData.is_multi_destination ? (
-              <>
-                <FormInput
-                  label="Location Name"
-                  id="location_name"
-                  name="location_name"
-                  value={formData.location_name}
+              <FormTextarea
+                label="Description"
+                id="description"
+                name="description"
+                value={formData.description}
+                onChange={handleChange}
+                placeholder="Add more details about the task..."
+              />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormSelect
+                  label="Priority"
+                  id="priority"
+                  name="priority"
+                  value={formData.priority}
                   onChange={handleChange}
-                  placeholder="e.g., Client Office, Warehouse A"
-                />
-              </>
-            ) : (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300">
-                    Destinations ({destinations.length})
-                  </label>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    onClick={handleAddDestinationManually}
-                  >
-                    + Add Stop
-                  </Button>
-                </div>
+                >
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="urgent">Urgent</option>
+                </FormSelect>
 
-                {destinations.length === 0 ? (
-                  <div className="text-center py-6 bg-slate-100 dark:bg-slate-800 rounded-lg border-2 border-dashed border-slate-300 dark:border-slate-600">
-                    <FiMapPin className="mx-auto h-8 w-8 text-slate-400 dark:text-slate-500 mb-2" />
-                    <p className="text-sm text-slate-500 dark:text-slate-400">Click on the map to add destinations</p>
+                <FormSelect
+                  label="Assign To"
+                  id="assigned_to"
+                  name="assigned_to"
+                  required
+                  isRequired
+                  value={formData.assigned_to}
+                  onChange={handleChange}
+                  disabled={loadingUsers}
+                >
+                  {loadingUsers ? (
+                    <option>Loading users...</option>
+                  ) : users.length > 0 ? (
+                    users.map(u => <option key={u.id} value={u.id}>{u.full_name || u.email}</option>)
+                  ) : (
+                    <option>No users available</option>
+                  )}
+                </FormSelect>
+              </div>
+            </fieldset>
+
+            <div className="pt-4 border-t border-slate-200 dark:border-slate-700">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  name="is_multi_destination"
+                  checked={formData.is_multi_destination}
+                  onChange={handleChange}
+                  className="w-5 h-5 text-indigo-600 border-slate-300 dark:border-slate-600 rounded focus:ring-indigo-500 dark:bg-slate-800"
+                />
+                <div>
+                  <span className="font-semibold text-slate-700 dark:text-slate-300">Multiple Destinations</span>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">Create a task with multiple stops in sequence</p>
+                </div>
+              </label>
+            </div>
+
+            <fieldset className="space-y-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+              {!formData.is_multi_destination ? (
+                <>
+                  <FormInput
+                    label="Location Name"
+                    id="location_name"
+                    name="location_name"
+                    value={formData.location_name}
+                    onChange={handleChange}
+                    placeholder="e.g., Client Office, Warehouse A"
+                  />
+                </>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300">
+                      Destinations ({destinations.length})
+                    </label>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={handleAddDestinationManually}
+                    >
+                      + Add Stop
+                    </Button>
                   </div>
-                ) : (
-                  <div className="space-y-2 max-h-48 overflow-y-auto bg-slate-50 dark:bg-slate-800 rounded-lg p-3">
-                    {destinations.map((dest, index) => (
-                      <div key={dest.id} className="flex items-center gap-2 bg-white dark:bg-slate-900 p-2 rounded border border-slate-200 dark:border-slate-700">
-                        <span className="flex-shrink-0 w-6 h-6 rounded-full bg-indigo-600 text-white text-xs flex items-center justify-center font-semibold">
-                          {index + 1}
-                        </span>
-                        <input
-                          type="text"
-                          value={dest.location_name}
-                          onChange={(e) => handleDestinationNameChange(index, e.target.value)}
-                          className="flex-1 px-2 py-1 text-sm border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                          placeholder="Location name"
+
+                  {destinations.length === 0 ? (
+                    <div className="text-center py-6 bg-slate-100 dark:bg-slate-800 rounded-lg border-2 border-dashed border-slate-300 dark:border-slate-600">
+                      <FiMapPin className="mx-auto h-8 w-8 text-slate-400 dark:text-slate-500 mb-2" />
+                      <p className="text-sm text-slate-500 dark:text-slate-400">Click on the map to add destinations</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-48 overflow-y-auto bg-slate-50 dark:bg-slate-800 rounded-lg p-3">
+                      {destinations.map((dest, index) => (
+                        <div key={dest.id} className="flex items-center gap-2 bg-white dark:bg-slate-900 p-2 rounded border border-slate-200 dark:border-slate-700">
+                          <span className="flex-shrink-0 w-6 h-6 rounded-full bg-indigo-600 text-white text-xs flex items-center justify-center font-semibold">
+                            {index + 1}
+                          </span>
+                          <input
+                            type="text"
+                            value={dest.location_name}
+                            onChange={(e) => handleDestinationNameChange(index, e.target.value)}
+                            className="flex-1 px-2 py-1 text-sm border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            placeholder="Location name"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveDestination(index)}
+                            className="p-1 text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition"
+                          >
+                            <FiTrash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300">
+                  {formData.is_multi_destination ? 'Click map to add destinations' : 'Set Location on Map'}
+                </label>
+
+                {showMapError && (
+                  <div className="text-red-500 dark:text-red-400">Error loading map. Please check your API key.</div>
+                )}
+
+                {!isMapLoaded && !mapLoadError && (
+                  <div className="h-80 w-full bg-slate-200 dark:bg-slate-800 animate-pulse rounded-md flex items-center justify-center">
+                    <Spinner />
+                  </div>
+                )}
+
+                {isMapLoaded && (
+                  <div className="h-80 w-full rounded-md overflow-hidden border border-slate-300 dark:border-slate-700">
+                    <GoogleMap
+                      mapContainerStyle={{ width: '100%', height: '100%' }}
+                      center={mapCenter}
+                      zoom={13}
+                      onClick={handleMapClick}
+                      options={{ streetViewControl: false, mapTypeControl: false }}
+                      onLoad={(map) => { window.__google_map__ = map; }}
+                      onUnmount={() => { window.__google_map__ = null; }}
+                    >
+                      {!formData.is_multi_destination && markerPosition && (
+                        <AdvancedMarker
+                          position={markerPosition}
+                          type="destination"
+                          draggable={true}
+                          onDragEnd={(coords) => handleMarkerDragEnd(coords, 0)}
+                          title="Task destination"
+                          zIndex={10}
                         />
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveDestination(index)}
-                          className="p-1 text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition"
-                        >
-                          <FiTrash2 className="w-4 h-4" />
-                        </button>
+                      )}
+
+                      {formData.is_multi_destination && destinations.map((dest, index) => {
+                        const pos = {
+                          lat: parseFloat(dest.latitude),
+                          lng: parseFloat(dest.longitude)
+                        };
+                        return (
+                          <AdvancedMarker
+                            key={dest.id}
+                            position={pos}
+                            type="waypoint"
+                            label={`${index + 1}`}
+                            draggable={true}
+                            onDragEnd={(coords) => handleMarkerDragEnd(coords, index)}
+                            title={dest.location_name}
+                            zIndex={10 + index}
+                          />
+                        );
+                      })}
+
+                      {formData.is_multi_destination && routePath.length >= 2 && (
+                        <Polyline
+                          path={routePath}
+                          options={{
+                            strokeColor: '#4F46E5',
+                            strokeOpacity: 0.8,
+                            strokeWeight: 3,
+                          }}
+                        />
+                      )}
+                    </GoogleMap>
+                  </div>
+                )}
+              </div>
+
+              {!formData.is_multi_destination && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <FormInput
+                    label="Latitude"
+                    id="latitude"
+                    name="latitude"
+                    type="number"
+                    step="any"
+                    value={formData.latitude}
+                    onChange={handleChange}
+                    placeholder="Set on map"
+                    readOnly
+                  />
+                  <FormInput
+                    label="Longitude"
+                    id="longitude"
+                    name="longitude"
+                    type="number"
+                    step="any"
+                    value={formData.longitude}
+                    onChange={handleChange}
+                    placeholder="Set on map"
+                    readOnly
+                  />
+                </div>
+              )}
+
+              <button type="button" onClick={getCurrentLocation} className="flex items-center gap-2 text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 transition-colors">
+                <FiMapPin /> Use Current Location
+              </button>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormInput 
+                  label="Est. Duration (minutes)" 
+                  id="estimated_duration" 
+                  name="estimated_duration" 
+                  type="number" 
+                  min="1" 
+                  value={formData.estimated_duration} 
+                  onChange={handleChange} 
+                  placeholder={forecast ? `AI suggests: ${Math.round(forecast.predicted_duration_minutes)}` : "60"}
+                />
+                <FormInput label="Due Date" id="due_date" name="due_date" type="datetime-local" value={formData.due_date} onChange={handleChange} />
+              </div>
+
+              {/* ✅ Nearest Employees Feature - Now Supports Multi-Destination */}
+              {((!formData.is_multi_destination && formData.latitude && formData.longitude) ||
+                (formData.is_multi_destination && destinations.length > 0)) && (
+                <div className="pt-4">
+                  <button
+                    type="button"
+                    onClick={handleFindNearestEmployees}
+                    disabled={loadingNearest}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition disabled:opacity-50"
+                  >
+                    <FiMapPin className="w-4 h-4" />
+                    {loadingNearest ? 'Finding nearest employees...' : 'Find Nearest Employees'}
+                  </button>
+                </div>
+              )}
+
+              {nearestEmployees && nearestEmployees.employees.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="space-y-3"
+                >
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                      {/* Dynamic Header for Multi-Destination */}
+                      📍 Nearest Employees to {formData.is_multi_destination ? "First Stop" : "Location"} ({nearestEmployees.total_employees_found})
+                    </h4>
+                    <button
+                      type="button"
+                      onClick={() => setNearestEmployees(null)}
+                      className="text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                  
+                  <div className="max-h-64 overflow-y-auto space-y-2">
+                    {nearestEmployees.employees.slice(0, 5).map((emp, index) => (
+                      <div
+                        key={emp.user_id}
+                        onClick={() => handleSelectNearestEmployee(emp)}
+                        className={`p-3 rounded-lg border cursor-pointer transition ${
+                          formData.assigned_to === emp.user_id
+                            ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-300 dark:border-indigo-700'
+                            : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-indigo-200 dark:hover:border-indigo-800'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                                {emp.full_name}
+                              </span>
+                              {index === 0 && (
+                                <span className="text-xs px-2 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-full font-medium">
+                                  Nearest
+                                </span>
+                              )}
+                              {!emp.is_available && (
+                                <span className="text-xs px-2 py-0.5 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 rounded-full font-medium">
+                                  Busy
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-3 mt-1 text-xs text-slate-600 dark:text-slate-400">
+                              <span className="flex items-center gap-1">
+                                <FiMapPin className="w-3 h-3" />
+                                {emp.distance_text} away
+                              </span>
+                              {emp.forecast && (
+                                <span className="flex items-center gap-1">
+                                  <FiClock className="w-3 h-3" />
+                                  ~{Math.round(emp.forecast.predicted_duration)} min
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          {formData.assigned_to === emp.user_id && (
+                            <div className="flex-shrink-0">
+                              <div className="w-5 h-5 rounded-full bg-indigo-600 flex items-center justify-center">
+                                <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
+                                </svg>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
+                </motion.div>
+              )}
+
+              {/* Forecast Panel */}
+              <AnimatePresence>
+                {(forecast || forecastLoading || forecastError) && (
+                  <ForecastPanel 
+                    forecast={forecast} 
+                    loading={forecastLoading} 
+                    error={forecastError} 
+                  />
                 )}
-              </div>
-            )}
+              </AnimatePresence>
+            </fieldset>
 
-            <div className="space-y-2">
-              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300">
-                {formData.is_multi_destination ? 'Click map to add destinations' : 'Set Location on Map'}
-              </label>
-
-              {showMapError && (
-                <div className="text-red-500 dark:text-red-400">Error loading map. Please check your API key.</div>
-              )}
-
-              {!isMapLoaded && !mapLoadError && (
-                <div className="h-80 w-full bg-slate-200 dark:bg-slate-800 animate-pulse rounded-md flex items-center justify-center">
-                  <Spinner />
-                </div>
-              )}
-
-              {isMapLoaded && (
-                <div className="h-80 w-full rounded-md overflow-hidden border border-slate-300 dark:border-slate-700">
-                  <GoogleMap
-                    mapContainerStyle={{ width: '100%', height: '100%' }}
-                    center={mapCenter}
-                    zoom={13}
-                    onClick={handleMapClick}
-                    options={{ streetViewControl: false, mapTypeControl: false }}
-                    onLoad={(map) => { window.__google_map__ = map; }}
-                    onUnmount={() => { window.__google_map__ = null; }}
-                  >
-                    {!formData.is_multi_destination && markerPosition && (
-                      <AdvancedMarker
-                        position={markerPosition}
-                        type="destination"
-                        draggable={true}
-                        onDragEnd={(coords) => handleMarkerDragEnd(coords, 0)}
-                        title="Task destination"
-                        zIndex={10}
-                      />
-                    )}
-
-                    {formData.is_multi_destination && destinations.map((dest, index) => {
-                      const pos = {
-                        lat: parseFloat(dest.latitude),
-                        lng: parseFloat(dest.longitude)
-                      };
-                      return (
-                        <AdvancedMarker
-                          key={dest.id}
-                          position={pos}
-                          type="waypoint"
-                          label={`${index + 1}`}
-                          draggable={true}
-                          onDragEnd={(coords) => handleMarkerDragEnd(coords, index)}
-                          title={dest.location_name}
-                          zIndex={10 + index}
-                        />
-                      );
-                    })}
-
-                    {formData.is_multi_destination && routePath.length >= 2 && (
-                      <Polyline
-                        path={routePath}
-                        options={{
-                          strokeColor: '#4F46E5',
-                          strokeOpacity: 0.8,
-                          strokeWeight: 3,
-                        }}
-                      />
-                    )}
-                  </GoogleMap>
-                </div>
-              )}
+            <div className="flex justify-end space-x-3 pt-4 border-t border-slate-200 dark:border-slate-700">
+              <button type="button" onClick={handleClose} className="px-4 py-2 text-sm font-semibold text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition">
+                Cancel
+              </button>
+              <button type="submit" disabled={loading} className="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 dark:bg-indigo-500 rounded-lg hover:bg-indigo-700 dark:hover:bg-indigo-600 disabled:opacity-50 transition">
+                {loading ? 'Creating...' : 'Create Task'}
+              </button>
             </div>
-
-            {!formData.is_multi_destination && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FormInput
-                  label="Latitude"
-                  id="latitude"
-                  name="latitude"
-                  type="number"
-                  step="any"
-                  value={formData.latitude}
-                  onChange={handleChange}
-                  placeholder="Set on map"
-                  readOnly
-                />
-                <FormInput
-                  label="Longitude"
-                  id="longitude"
-                  name="longitude"
-                  type="number"
-                  step="any"
-                  value={formData.longitude}
-                  onChange={handleChange}
-                  placeholder="Set on map"
-                  readOnly
-                />
-              </div>
-            )}
-
-            <button type="button" onClick={getCurrentLocation} className="flex items-center gap-2 text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 transition-colors">
-              <FiMapPin /> Use Current Location
-            </button>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FormInput 
-                label="Est. Duration (minutes)" 
-                id="estimated_duration" 
-                name="estimated_duration" 
-                type="number" 
-                min="1" 
-                value={formData.estimated_duration} 
-                onChange={handleChange} 
-                placeholder={forecast ? `AI suggests: ${Math.round(forecast.predicted_duration_minutes)}` : "60"}
-              />
-              <FormInput label="Due Date" id="due_date" name="due_date" type="datetime-local" value={formData.due_date} onChange={handleChange} />
-            </div>
-
-            {/* 🎯 NEW: Find Nearest Employees Button */}
-            {!formData.is_multi_destination && formData.latitude && formData.longitude && (
-              <div className="pt-4">
-                <button
-                  type="button"
-                  onClick={handleFindNearestEmployees}
-                  disabled={loadingNearest}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition disabled:opacity-50"
-                >
-                  <FiMapPin className="w-4 h-4" />
-                  {loadingNearest ? 'Finding nearest employees...' : 'Find Nearest Employees'}
-                </button>
-              </div>
-            )}
-
-            {/* 🎯 NEW: Display Nearest Employees */}
-            {nearestEmployees && nearestEmployees.employees.length > 0 && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="space-y-3"
-              >
-                <div className="flex items-center justify-between">
-                  <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                    📍 Nearest Employees ({nearestEmployees.total_employees_found})
-                  </h4>
-                  <button
-                    type="button"
-                    onClick={() => setNearestEmployees(null)}
-                    className="text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
-                  >
-                    Clear
-                  </button>
-                </div>
-                
-                <div className="max-h-64 overflow-y-auto space-y-2">
-                  {nearestEmployees.employees.slice(0, 5).map((emp, index) => (
-                    <div
-                      key={emp.user_id}
-                      onClick={() => setFormData(prev => ({ ...prev, assigned_to: emp.user_id }))}
-                      className={`p-3 rounded-lg border cursor-pointer transition ${
-                        formData.assigned_to === emp.user_id
-                          ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-300 dark:border-indigo-700'
-                          : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-indigo-200 dark:hover:border-indigo-800'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-                              {emp.full_name}
-                            </span>
-                            {index === 0 && (
-                              <span className="text-xs px-2 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-full font-medium">
-                                Nearest
-                              </span>
-                            )}
-                            {!emp.is_available && (
-                              <span className="text-xs px-2 py-0.5 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 rounded-full font-medium">
-                                Busy
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-3 mt-1 text-xs text-slate-600 dark:text-slate-400">
-                            <span className="flex items-center gap-1">
-                              <FiMapPin className="w-3 h-3" />
-                              {emp.distance_text} away
-                            </span>
-                            {emp.forecast && (
-                              <span className="flex items-center gap-1">
-                                <FiClock className="w-3 h-3" />
-                                ~{Math.round(emp.forecast.predicted_duration)} min
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        {formData.assigned_to === emp.user_id && (
-                          <div className="flex-shrink-0">
-                            <div className="w-5 h-5 rounded-full bg-indigo-600 flex items-center justify-center">
-                              <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
-                              </svg>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </motion.div>
-            )}
-
-            {/* 🎯 NEW: Display Forecast */}
-            <AnimatePresence>
-              {(forecast || forecastLoading || forecastError) && (
-                <ForecastPanel 
-                  forecast={forecast} 
-                  loading={forecastLoading} 
-                  error={forecastError} 
-                />
-              )}
-            </AnimatePresence>
-          </fieldset>
-
-          <div className="flex justify-end space-x-3 pt-4 border-t border-slate-200 dark:border-slate-700">
-            <button type="button" onClick={handleClose} className="px-4 py-2 text-sm font-semibold text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition">
-              Cancel
-            </button>
-            <button type="submit" disabled={loading} className="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 dark:bg-indigo-500 rounded-lg hover:bg-indigo-700 dark:hover:bg-indigo-600 disabled:opacity-50 transition">
-              {loading ? 'Creating...' : 'Create Task'}
-            </button>
-          </div>
-        </form>
+          </form>
+        </div>
       </div>
     </div>
   );

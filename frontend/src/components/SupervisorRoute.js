@@ -12,20 +12,19 @@ const SupervisorRoute = ({ children }) => {
     );
   }
 
-  // 1. Normalize the role to uppercase (e.g., 'supervisor' becomes 'SUPERVISOR')
-  const userRole = user?.role?.toUpperCase();
+  const userRole = user?.role?.toUpperCase(); // Normalize role
 
-  // 2. CHECK THE NORMALIZED ROLE AGAINST UPPERCASE LITERALS
-  // This is where you must use userRole instead of user?.role
-  const isSupervisor = userRole === 'SUPERVISOR' || userRole === 'MANAGER' || userRole === 'ADMIN';
+  // Allow supervisors and admins
+  const allowedRoles = ['SUPERVISOR'];
+  const hasAccess = allowedRoles.includes(userRole);
 
-  if (!isSupervisor) {
+  if (!hasAccess) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-100 dark:bg-slate-900 p-4">
         <div className="bg-white/90 dark:bg-slate-800/90 shadow-md rounded-xl p-6 max-w-md text-center">
           <h2 className="text-2xl font-bold text-red-600 mb-4">Access Denied</h2>
           <p className="text-slate-600 dark:text-slate-400 mb-6">
-            This dashboard is only available for supervisors and managers. Your current role is: <span className="font-semibold">{user?.role || 'Unknown'}</span>
+            This dashboard is only available for supervisors and admins. Your current role is: <span className="font-semibold">{user?.role || 'Unknown'}</span>
           </p>
           <p className="text-sm text-slate-500 dark:text-slate-500">
             If you believe this is an error, please contact your administrator.

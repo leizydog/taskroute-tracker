@@ -1,9 +1,7 @@
 from pydantic import BaseModel, Field, validator
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Any
 from app.models.task import TaskStatus, TaskPriority
-from app.schemas.location import LocationLogResponse
-
 
 # ✅ NEW: Schema for task destinations
 class TaskDestination(BaseModel):
@@ -30,6 +28,7 @@ class TaskBase(BaseModel):
     location_name: Optional[str] = Field(None, max_length=200)
     latitude: Optional[float] = Field(None, ge=-90, le=90)
     longitude: Optional[float] = Field(None, ge=-180, le=180)
+    address: Optional[str] = None
     
     estimated_duration: Optional[int] = Field(None, gt=0)
     due_date: Optional[datetime] = None
@@ -47,6 +46,10 @@ class TaskCreate(TaskBase):
     assigned_to: int
 
 
+class TaskCancel(BaseModel):
+    cancellation_reason: str = Field(..., min_length=1, description="Reason for cancelling the task")
+
+
 # Schema for task update
 class TaskUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=200)
@@ -62,6 +65,7 @@ class TaskUpdate(BaseModel):
     location_name: Optional[str] = Field(None, max_length=200)
     latitude: Optional[float] = Field(None, ge=-90, le=90)
     longitude: Optional[float] = Field(None, ge=-180, le=180)
+    address: Optional[str] = None
     
     estimated_duration: Optional[int] = Field(None, gt=0)
     actual_duration: Optional[int] = Field(None, gt=0)
@@ -80,6 +84,8 @@ class TaskStart(BaseModel):
 class TaskComplete(BaseModel):
     completion_notes: Optional[str] = None
     quality_rating: Optional[int] = Field(None, ge=1, le=5)
+    signature_url: Optional[str] = None  # ✅ Added signature_url
+    photo_urls: Optional[List[str]] = None
     latitude: Optional[float] = Field(None, ge=-90, le=90)
     longitude: Optional[float] = Field(None, ge=-180, le=180)
 
@@ -90,13 +96,19 @@ class TaskResponse(TaskBase):
     status: TaskStatus
     assigned_to: int
     created_by: int
+    
+    # Metrics
     actual_duration: Optional[int] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
+    
+    # Completion Details
     completion_notes: Optional[str] = None
     quality_rating: Optional[int] = None
+    signature_url: Optional[str] = None  # ✅ Added signature_url
+    photo_urls: Optional[List[str]] = None
 
     class Config:
         from_attributes = True
@@ -104,8 +116,11 @@ class TaskResponse(TaskBase):
 
 # Schema with user information
 class TaskWithUsers(TaskResponse):
-    assigned_user_name: str
-    created_user_name: str
+    assigned_user_name: Optional[str] = None
+    created_user_name: Optional[str] = None
+
+    class Config:
+        from_attributes = True  # ✅ This is critical for Pydantic v2
 
 
 # Schema for task statistics
@@ -117,7 +132,7 @@ class TaskStats(BaseModel):
     average_quality_rating: Optional[float] = None
     tasks_by_status: dict
     tasks_by_priority: dict
-    
+
 
 class UserWithOngoingTask(BaseModel):
     user_id: int
@@ -125,7 +140,8 @@ class UserWithOngoingTask(BaseModel):
     user_email: str
     user_role: str
     ongoing_task_count: int
-    current_task: TaskWithUsers
+    current_task: Optional[TaskWithUsers] = None
+    current_location: Optional[Any] = None 
     
     class Config:
         from_attributes = True

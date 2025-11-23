@@ -7,6 +7,9 @@ class UserModel {
   final String role;
   final DateTime createdAt;
   final DateTime? updatedAt;
+  // ✅ Added missing fields for profile update
+  final String? phone;
+  final String? avatarUrl;
 
   UserModel({
     required this.id,
@@ -17,6 +20,9 @@ class UserModel {
     required this.role,
     required this.createdAt,
     this.updatedAt,
+    // ✅ Added to constructor
+    this.phone,
+    this.avatarUrl,
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
@@ -31,6 +37,9 @@ class UserModel {
       updatedAt: json['updated_at'] != null 
           ? DateTime.parse(json['updated_at']) 
           : null,
+      // ✅ Added to fromJson
+      phone: json['phone'],
+      avatarUrl: json['avatar_url'],
     );
   }
 
@@ -44,10 +53,14 @@ class UserModel {
       'role': role,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt?.toIso8601String(),
+      // ✅ Added to toJson
+      'phone': phone,
+      'avatar_url': avatarUrl,
     };
   }
 
   String get displayName => fullName.isNotEmpty ? fullName : username;
+
   String get initials {
     if (fullName.isNotEmpty) {
       final parts = fullName.split(' ');

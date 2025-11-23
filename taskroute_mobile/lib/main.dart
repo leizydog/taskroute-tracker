@@ -1,26 +1,30 @@
+import 'dart:async'; // ✅ Added for StreamSubscription
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:app_links/app_links.dart'; // ✅ Added for Deep Linking
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
 import 'providers/auth_provider.dart' as auth;
 import 'providers/task_provider.dart';
 import 'providers/location_provider.dart';
+import 'providers/theme_provider.dart';
 import 'screens/auth/login_screen.dart';
+import 'screens/auth/reset_password_screen.dart'; // ✅ Added Reset Screen Import
 import 'screens/home/home_screen.dart';
+import 'screens/splash_screen.dart';
 import 'services/storage_service.dart';
 import 'utils/app_theme.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+
+// ✅ 1. Define Global Navigator Key
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Initialize storage service
   await StorageService.instance.init();
-
-// Tell dotenv to load the correct file based on the environment
   await dotenv.load(fileName: ".env");
-
   
-  // Set system UI overlay style
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -31,24 +35,101 @@ void main() async {
   runApp(const TaskRouteApp());
 }
 
-class TaskRouteApp extends StatelessWidget {
+// ✅ 2. Converted to StatefulWidget to handle Deep Link Subscription
+class TaskRouteApp extends StatefulWidget {
   const TaskRouteApp({super.key});
+
+  @override
+  State<TaskRouteApp> createState() => _TaskRouteAppState();
+}
+
+class _TaskRouteAppState extends State<TaskRouteApp> {
+  late AppLinks _appLinks;
+  StreamSubscription<Uri>? _linkSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _initDeepLinks();
+  }
+
+  @override
+  void dispose() {
+    _linkSubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _initDeepLinks() async {
+    _appLinks = AppLinks();
+
+    // Handle App Start with Link (Cold Start)
+    try {
+      final Uri? initialUri = await _appLinks.getInitialLink();
+      if (initialUri != null) {
+        _handleDeepLink(initialUri);
+      }
+    } catch (e) {
+      debugPrint("Deep Link Init Error: $e");
+    }
+
+    // Handle Link when App is in Background (Stream)
+    _linkSubscription = _appLinks.uriLinkStream.listen((Uri? uri) {
+      if (uri != null) {
+        _handleDeepLink(uri);
+      }
+    }, onError: (err) {
+      debugPrint("Deep Link Stream Error: $err");
+    });
+  }
+
+  void _handleDeepLink(Uri uri) {
+    debugPrint("🔗 Deep Link Received: $uri"); 
+
+    // ✅ Logic for Custom Scheme: taskroute://reset-password?token=...
+    // In this format, 'reset-password' is the host
+    if (uri.scheme == 'taskroute' && uri.host == 'reset-password') {
+      
+      final String? token = uri.queryParameters['token'];
+      
+      if (token != null) {
+        navigatorKey.currentState?.push(
+          MaterialPageRoute(
+            builder: (context) => ResetPasswordScreen(token: token),
+          ),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => auth.AuthProvider()),
         ChangeNotifierProvider(create: (_) => TaskProvider()),
         ChangeNotifierProvider(create: (_) => LocationProvider()),
       ],
-      child: MaterialApp(
-        title: 'TaskRoute Mobile',
-        theme: AppTheme.lightTheme,
-        darkTheme: AppTheme.darkTheme,
-        themeMode: ThemeMode.system,
-        home: const AuthWrapper(),
-        debugShowCheckedModeBanner: false,
+      child: Consumer<ThemeProvider>(
+        builder: (context, themeProvider, _) {
+          return MaterialApp(
+            navigatorKey: navigatorKey, // ✅ Pass the global key here
+            title: 'TaskRoute Tracker',
+            theme: AppTheme.lightTheme,
+            darkTheme: AppTheme.darkTheme,
+            themeMode: themeProvider.themeMode,
+            
+            // ✅ Add Routes for named navigation (used by ResetPasswordScreen success button)
+            routes: {
+              '/login': (context) => const LoginScreen(),
+            },
+            
+            home: const SplashScreen(
+              nextScreen: AuthWrapper(),
+            ),
+            debugShowCheckedModeBanner: false,
+          );
+        },
       ),
     );
   }
@@ -67,21 +148,21 @@ class _AuthWrapperState extends State<AuthWrapper> {
   @override
   void initState() {
     super.initState();
-    _checkAuthStatus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkAuthStatus();
+    });
   }
 
   Future<void> _checkAuthStatus() async {
     final authProvider = Provider.of<auth.AuthProvider>(context, listen: false);
     await authProvider.checkAuthStatus();
-    setState(() {
-      _isLoading = false;
-    });
+    
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
-
-  Future<void> main() async {
-  await dotenv.load(fileName: ".env");
-  runApp(const TaskRouteApp());
-}
 
   @override
   Widget build(BuildContext context) {

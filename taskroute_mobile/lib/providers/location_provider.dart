@@ -35,6 +35,8 @@ class LocationProvider with ChangeNotifier {
 
   /// Initialize location provider
   Future<void> init() async {
+    await _apiService.initializeAuthToken();
+    
     await _checkLocationStatus();
     
     // Start tracking if enabled in settings
@@ -65,39 +67,39 @@ class LocationProvider with ChangeNotifier {
     notifyListeners();
   }
 
- /// Request location permission
-Future<bool> requestPermission() async {
-  try {
-    // First check if location services are enabled
-    bool serviceEnabled = await _locationService.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      _setError('Location services are disabled. Please enable location services.');
-      return false;
-    }
-
-    // Request permission
-    LocationPermission permission = await Geolocator.checkPermission();
-    
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        _setError('Location permissions are denied');
+  /// Request location permission
+  Future<bool> requestPermission() async {
+    try {
+      // First check if location services are enabled
+      bool serviceEnabled = await _locationService.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        _setError('Location services are disabled. Please enable location services.');
         return false;
       }
-    }
 
-    if (permission == LocationPermission.deniedForever) {
-      _setError('Location permissions are permanently denied. Please enable in settings.');
+      // Request permission
+      LocationPermission permission = await Geolocator.checkPermission();
+      
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          _setError('Location permissions are denied');
+          return false;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        _setError('Location permissions are permanently denied. Please enable in settings.');
+        return false;
+      }
+
+      await _checkLocationStatus();
+      return true;
+    } catch (e) {
+      _setError('Failed to request location permission: ${e.toString()}');
       return false;
     }
-
-    await _checkLocationStatus();
-    return true;
-  } catch (e) {
-    _setError('Failed to request location permission: ${e.toString()}');
-    return false;
   }
-}
 
   /// Get current position
   Future<Position?> getCurrentPosition({bool forceUpdate = false}) async {
@@ -199,10 +201,21 @@ Future<bool> requestPermission() async {
     await StorageService.instance.setLocationTrackingEnabled(false);
   }
 
-  /// Log location to API (with offline support)
+  /// ✅ MODIFIED: Log location to API - Supports both task-based and general tracking
   Future<void> _logLocationToAPI(Position position) async {
     try {
+      // Get the current active task ID (optional - can be null)
+      final currentTaskId = await StorageService.instance.getCurrentTaskId();
+      
+      if (currentTaskId == null) {
+        print('📍 No active task - logging location for employee tracking');
+      } else {
+        print('📍 Logging location for active task $currentTaskId');
+      }
+      
+      // ✅ Send task_id as null if no active task (for general employee tracking)
       final locationData = {
+        'task_id': currentTaskId,  // ✅ Can be null - backend will handle it
         'latitude': position.latitude,
         'longitude': position.longitude,
         'altitude': position.altitude,
@@ -212,15 +225,25 @@ Future<bool> requestPermission() async {
         'timestamp': position.timestamp.toIso8601String(),
       };
 
+      print('   Coordinates: (${position.latitude}, ${position.longitude})');
+      
       final response = await _apiService.logLocation(locationData);
       
-      if (response.statusCode != 200) {
+      if (response.statusCode == 201) {
+        print('✅ Location logged successfully to backend');
+      } else {
+        print('⚠️ Location log failed: ${response.statusCode}');
+        print('   Response: ${response.body}');
         // Save for offline sync if API call fails
         await StorageService.instance.saveLocationLog(locationData);
       }
     } catch (e) {
+      print('❌ Location log error: $e');
       // Save for offline sync on network error
+      final currentTaskId = await StorageService.instance.getCurrentTaskId();
+      
       final locationData = {
+        'task_id': currentTaskId,
         'latitude': position.latitude,
         'longitude': position.longitude,
         'altitude': position.altitude,

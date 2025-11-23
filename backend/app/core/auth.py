@@ -13,6 +13,7 @@ from app.schemas.user import TokenData
 SECRET_KEY = "your-secret-key-change-this-in-production"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
+RESET_TOKEN_EXPIRE_MINUTES = 15  # ✅ Added for password reset tokens
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -80,13 +81,23 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         raise credentials_exception
     return user
 
-
 def get_current_active_user(current_user: User = Depends(get_current_user)):
     """Get the current authenticated and active user."""
     if not current_user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
     return current_user
 
+def get_current_admin(current_user: User = Depends(get_current_active_user)) -> User:
+    """
+    Dependency used to protect admin-only routes.
+    Ensures the current user has the ADMIN role.
+    """
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin privileges required",
+        )
+    return current_user
 
 def get_current_admin_user(current_user: User = Depends(get_current_active_user)) -> User:
     """

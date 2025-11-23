@@ -37,6 +37,46 @@ class TaskProvider with ChangeNotifier {
   List<TaskModel> get cancelledTasks => 
       _tasks.where((task) => task.status == TaskStatus.cancelled).toList();
 
+  // Filtered list getter update
+  List<TaskModel> get queuedTasks => 
+      _tasks.where((task) => task.status == TaskStatus.queued).toList();
+
+  Future<bool> acceptTask(int taskId) async {
+    _setLoading(true);
+    try {
+      final response = await _apiService.acceptTask(taskId);
+      if (response.statusCode == 200) {
+        await fetchTasks(); // Refresh to get updated status/lists
+        _setLoading(false);
+        return true;
+      } else {
+        _setError('Failed to accept task');
+      }
+    } catch (e) {
+      _setError(e.toString());
+    }
+    _setLoading(false);
+    return false;
+  }
+
+  Future<bool> declineTask(int taskId) async {
+    _setLoading(true);
+    try {
+      final response = await _apiService.declineTask(taskId);
+      if (response.statusCode == 200) {
+        await fetchTasks();
+        _setLoading(false);
+        return true;
+      } else {
+        _setError('Failed to decline task');
+      }
+    } catch (e) {
+      _setError(e.toString());
+    }
+    _setLoading(false);
+    return false;
+  }
+
   void _setLoading(bool loading) {
     _isLoading = loading;
     notifyListeners();
@@ -79,6 +119,15 @@ Future<void> fetchTasks({bool assignedToMe = true}) async {
       
       // Update current task if exists
       _updateCurrentTask();
+
+      if (_currentTask != null && _currentTask!.status == TaskStatus.inProgress) {
+        await StorageService.instance.setCurrentTaskId(_currentTask!.id);
+        print('✅ Restored current task ID for location tracking: ${_currentTask!.id}');
+      } else {
+        // No in-progress task, clear the saved ID
+        await StorageService.instance.setCurrentTaskId(null);
+        print('🧹 Cleared task ID (no in-progress task)');
+      }
       
       // Save to local storage
       await StorageService.instance.saveTasks(_tasks);
@@ -167,27 +216,74 @@ Future<void> fetchTasks({bool assignedToMe = true}) async {
         _tasks[index] = updatedTask;
         _updateCurrentTask();
         
+        // ✅ Save the current task ID for location tracking
+        await StorageService.instance.setCurrentTaskId(taskId);
+        
         // Save to cache
         await StorageService.instance.saveTasks(_tasks);
       }
       
-      // ✅ FIX: Just set loading to false directly, no need for postFrameCallback
       _setLoading(false);
       return true;
     } else {
       final errorData = json.decode(response.body);
       _setError(errorData['message'] ?? 'Failed to start task');
-      _setLoading(false);  // Add this
+      _setLoading(false);
     }
   } catch (e) {
     print('StartTask parsing error: $e');
     _setError('Network error: ${e.toString()}');
     await _saveTaskStartOffline(taskId, locationData);
-    _setLoading(false);  // Add this
+    _setLoading(false);
   }
   
   return false;
 }
+
+/// Cancel a task
+  Future<bool> cancelTask(int taskId, String reason) async {
+    _setLoading(true);
+    _setError(null);
+
+    try {
+      final response = await _apiService.cancelTask(taskId, reason);
+      
+      if (response.statusCode == 200) {
+        // Parse the updated task from response
+        final taskJson = json.decode(response.body);
+        final updatedTask = TaskModel.fromJson(taskJson);
+        
+        // Update local list
+        final index = _tasks.indexWhere((t) => t.id == taskId);
+        if (index != -1) {
+          _tasks[index] = updatedTask;
+          _updateCurrentTask();
+          notifyListeners();
+          
+          // Save to cache
+          await StorageService.instance.saveTasks(_tasks);
+        }
+        
+        // If this was the current active task, clear the tracking ID
+        if (_currentTask?.id == taskId) {
+           await StorageService.instance.setCurrentTaskId(null);
+        }
+
+        _setLoading(false);
+        return true;
+      } else {
+        final errorData = json.decode(response.body);
+        _setError(errorData['message'] ?? 'Failed to cancel task');
+      }
+    } catch (e) {
+      print('Cancel task error: $e');
+      _setError('Network error: ${e.toString()}');
+    } finally {
+      _setLoading(false);
+    }
+    
+    return false;
+  }
 
   /// Complete a task
   Future<bool> completeTask(
@@ -228,6 +324,8 @@ Future<void> fetchTasks({bool assignedToMe = true}) async {
           // Save to cache
           await StorageService.instance.saveTasks(_tasks);
         }
+
+        await StorageService.instance.setCurrentTaskId(null);
         
         _setLoading(false);
         return true;

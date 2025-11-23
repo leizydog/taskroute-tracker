@@ -1,23 +1,27 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, Enum, ForeignKey, Boolean, Float, JSON
-from sqlalchemy.sql import func
+# ============================================================================
+# OPTION 2: Update models/task.py to use UPPERCASE values (match database)
+# ============================================================================
+
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Float, Enum, Text, JSON
 from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
 from app.database import Base
 import enum
 
+class TaskStatus(str, enum.Enum):
+    # ✅ FIX: Change all values to UPPERCASE to match database
+    PENDING = "PENDING"           # Was: "pending"
+    IN_PROGRESS = "IN_PROGRESS"   # Was: "in_progress"
+    COMPLETED = "COMPLETED"       # Was: "completed"
+    CANCELLED = "CANCELLED"       # Was: "cancelled"
+    QUEUED = "QUEUED"             # Was: "queued" - CHANGE THIS!
+    DECLINED = "DECLINED"         # Was: "declined" - CHANGE THIS!
 
-class TaskStatus(enum.Enum):
-    PENDING = "pending"
-    IN_PROGRESS = "in_progress"
-    COMPLETED = "completed"
-    CANCELLED = "cancelled"
-
-
-class TaskPriority(enum.Enum):
+class TaskPriority(str, enum.Enum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
     URGENT = "urgent"
-
 
 class Task(Base):
     __tablename__ = "tasks"
@@ -32,18 +36,19 @@ class Task(Base):
     assigned_to = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     
-    # ✅ NEW: Multi-destination support
+    # Multi-destination support
     is_multi_destination = Column(Boolean, default=False)
-    destinations = Column(JSON)  # Array of {location_name, latitude, longitude, sequence}
+    destinations = Column(Text) 
     
-    # Location data (for single destination tasks - backward compatible)
+    # Location data
     location_name = Column(String(200))
     latitude = Column(Float)
     longitude = Column(Float)
+    address = Column(String, nullable=True)
     
     # Time tracking
-    estimated_duration = Column(Integer)  # minutes
-    actual_duration = Column(Integer)  # minutes
+    estimated_duration = Column(Integer)
+    actual_duration = Column(Integer)
     due_date = Column(DateTime)
     started_at = Column(DateTime)
     completed_at = Column(DateTime)
@@ -52,13 +57,23 @@ class Task(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
-    # Notes and completion details
+    # Completion Details
     completion_notes = Column(Text)
-    quality_rating = Column(Integer)  # 1-5 scale for ML analysis
+    quality_rating = Column(Integer) 
+    signature_url = Column(String(500), nullable=True)
+    photo_urls = Column(JSON, nullable=True)
     
     # Relationships
     assigned_user = relationship("User", foreign_keys=[assigned_to], backref="assigned_tasks")
     created_user = relationship("User", foreign_keys=[created_by], backref="created_tasks")
 
+    # ML Fields
+    city = Column(String(100), nullable=True)
+    transport_method = Column(String(50), default="Drive")
+    weather_conditions = Column(String(50), nullable=True)
+    actual_start_lat = Column(Float, nullable=True) 
+    actual_start_lng = Column(Float, nullable=True)
+
     def __repr__(self):
         return f"<Task(id={self.id}, title='{self.title}', status='{self.status.value}')>"
+

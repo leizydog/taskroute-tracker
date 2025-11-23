@@ -1,4 +1,5 @@
 # Updated: backend/app/routers/analytics.py
+# ✅ MIGRATED TO USE task_duration_predictor.py
 
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
@@ -6,53 +7,130 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func, desc
 from pydantic import BaseModel
-
-# --- ADDED PANDAS IMPORT ---
 import pandas as pd
+import os
+import numpy as np
+
 
 from app.database import get_db
 from app.models.user import User, UserRole
 from app.models.task import Task, TaskStatus
 from app.core.auth import get_current_active_user
-# --- UPDATED FORECASTING IMPORT ---
-from app.core.forecasting import (
-    predict_duration, 
-    model, 
-    model_columns,
-    get_employee_forecast_comparison  # NEW: Compare multiple employees
-)
+
+# ✅ NEW: Import the Google Directions-based predictor
+from app.services.task_duration_predictor import TaskDurationPredictor
+from dotenv import load_dotenv
+
 
 router = APIRouter(prefix="/analytics", tags=["Performance Analytics"])
+
+# ============================================================================
+# INITIALIZE PREDICTOR (SINGLETON)
+# ============================================================================
+load_dotenv("/app/.env")  
+GOOGLE_API_KEY = os.getenv("GOOGLE_DIRECTIONS_API_KEY")
+predictor = None
+
+if GOOGLE_API_KEY:
+    predictor = TaskDurationPredictor(GOOGLE_API_KEY)
+    try:
+        models_loaded = predictor.load_models(model_dir='./app/ml_models')
+        if models_loaded:
+            print("✅ ML models loaded successfully for analytics")
+        else:
+            print("⚠️  Warning: Could not load ML models")
+            predictor = None
+    except Exception as e:
+        print(f"⚠️  Warning: Could not load ML models: {e}")
+        predictor = None
+else:
+    print("⚠️  Warning: GOOGLE_DIRECTIONS_API_KEY not set")
+
+
+# Add this helper somewhere at the top of analytics.py
+def np_to_python(obj):
+    """Recursively convert NumPy types to native Python types for JSON serialization"""
+    if isinstance(obj, np.generic):
+        return obj.item()
+    if isinstance(obj, dict):
+        return {k: np_to_python(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [np_to_python(i) for i in obj]
+    return obj
+
+def make_aware(dt):
+    """Convert naive datetime to UTC timezone-aware datetime"""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        # Naive datetime - assume it's UTC
+        from datetime import timezone
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
 
 # ============================================================================
 # FORECASTING SCHEMAS
 # ============================================================================
 
-# In analytics.py, update the TaskForecastInput schema:
-
 class TaskForecastInput(BaseModel):
-    """Input schema for task duration forecasting with auto-detection"""
-    Date: datetime
-    StartTime: datetime
-    latitude: float  # ✅ Required for city auto-detection
-    longitude: float  # ✅ Required for city auto-detection
-    ParticipantID: Optional[str] = None  # Employee ID for KPI lookup
+    """Input schema for task duration forecasting with Google Directions"""
     
-    # ✅ These are now OPTIONAL - will be auto-detected if not provided
-    City: Optional[str] = None
-    Conditions: Optional[str] = None
-    Method: Optional[str] = None
-    Reliability_pct: Optional[float] = None
+    # Required fields
+    employee_lat: float
+    employee_lng: float
+    task_lat: float
+    task_lng: float
+    
+    # Context (with smart defaults)
+    city: Optional[str] = "Manila"
+    conditions: Optional[str] = "Normal"
+    method: Optional[str] = "Drive"
+    
+    # Timing (defaults to current time if not provided)
+    scheduled_hour: Optional[int] = None
+    scheduled_day_of_week: Optional[int] = None
+    scheduled_date: Optional[str] = None
+    
+    # Employee ID (optional - uses current user if not provided)
+    ParticipantID: Optional[str] = None
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "employee_lat": 14.5657,
+                "employee_lng": 121.0346,
+                "task_lat": 14.5547,
+                "task_lng": 121.0244,
+                "city": "Makati",
+                "conditions": "Heavy Traffic",
+                "method": "Drive",
+                "scheduled_hour": 18
+            }
+        }
 
 
 class EmployeeComparisonInput(BaseModel):
     """Compare forecast for multiple employees"""
-    Date: datetime
-    StartTime: datetime
-    City: str
-    Conditions: str
-    Method: str
-    employee_ids: List[str]  # List of employee IDs to compare
+    
+    # Location
+    employee_lat: float
+    employee_lng: float
+    task_lat: float
+    task_lng: float
+    
+    # Context
+    city: str = "Manila"
+    conditions: str = "Normal"
+    method: str = "Drive"
+    
+    # Timing
+    scheduled_hour: Optional[int] = None
+    scheduled_day_of_week: Optional[int] = None
+    scheduled_date: Optional[str] = None
+    
+    # Employees to compare
+    employee_ids: List[str]
 
 
 # ============================================================================
@@ -62,87 +140,173 @@ class EmployeeComparisonInput(BaseModel):
 @router.post("/forecast")
 async def get_task_forecast(
     input_data: TaskForecastInput,
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
 ):
     """
-    🎯 Main forecasting endpoint - predicts task duration for a specific employee.
+    🎯 Main forecasting endpoint - predicts task duration using Google Directions API.
     
-    This is called when a supervisor:
-    1. Selects an employee to assign a task
-    2. Wants to see estimated completion time
-    
-    The prediction considers:
-    - Employee's historical KPI (avg duration, reliability, success rate)
-    - Temporal patterns (time of day, day of week, seasonality)
-    - Current conditions (traffic, weather)
-    - Location characteristics (city patterns)
-    - Transportation method
+    Returns:
+    - Total predicted duration
+    - Travel time breakdown
+    - Work time estimate
+    - Route details
+    - Employee KPI context
     """
-    task_data = input_data.dict()
-    prediction = predict_duration(task_data)
     
-    if "error" in prediction:
+    if predictor is None:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=prediction["error"]
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Prediction service is not available. ML models not loaded."
         )
     
-    return prediction
+    try:
+        # Use current time if not specified
+        now = datetime.now()
+        hour = input_data.scheduled_hour if input_data.scheduled_hour is not None else now.hour
+        day_of_week = input_data.scheduled_day_of_week if input_data.scheduled_day_of_week is not None else now.weekday()
+        date_str = input_data.scheduled_date if input_data.scheduled_date else now.strftime('%Y-%m-%d')
+        
+        # Format participant ID
+        participant_id = input_data.ParticipantID or f"P{current_user.id:03d}"
+        
+        # Make prediction
+        prediction = predictor.predict(
+            participant_id=participant_id,
+            city=input_data.city,
+            conditions=input_data.conditions,
+            method=input_data.method,
+            hour=hour,
+            day_of_week=day_of_week,
+            date=date_str,
+            employee_lat=input_data.employee_lat,
+            employee_lng=input_data.employee_lng,
+            task_lat=input_data.task_lat,
+            task_lng=input_data.task_lng
+        )
+        
+        return np_to_python({
+            "status": "success",
+            "prediction": prediction,
+            "metadata": {
+                "participant_id": participant_id,
+                "prediction_time": datetime.now().isoformat(),
+                "uses_google_directions": True
+            }
+        })
+
+        
+    except Exception as e:
+        print(f"Prediction error: {e}")
+        # Add detailed error logging
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Prediction failed: {str(e)}"
+        )
 
 
 @router.post("/forecast/compare-employees")
 async def compare_employee_forecasts(
     input_data: EmployeeComparisonInput,
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
 ):
     """
     🔍 Compare multiple employees for the same task.
     
     Returns forecasts sorted by predicted duration (fastest first).
     Useful for supervisors to choose the best employee for a task.
-    
-    Example response:
-    [
-        {
-            "employee_id": "P164",
-            "predicted_duration": 23.5,
-            "confidence_lower": 18.2,
-            "confidence_upper": 28.8,
-            "employee_kpi": {...}
-        },
-        ...
-    ]
     """
-    # Only supervisors and admins can compare employees
+    
+    # Permission check
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPERVISOR]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only supervisors and admins can compare employee forecasts"
         )
     
-    task_data = {
-        "Date": input_data.Date,
-        "StartTime": input_data.StartTime,
-        "City": input_data.City,
-        "Conditions": input_data.Conditions,
-        "Method": input_data.Method
-    }
-    
-    forecasts = get_employee_forecast_comparison(task_data, input_data.employee_ids)
-    
-    if not forecasts:
+    if predictor is None:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Could not generate forecasts for any employee"
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Prediction service is not available"
         )
     
-    return {
-        "task_details": task_data,
-        "employee_count": len(forecasts),
-        "forecasts": forecasts,
-        "fastest_employee": forecasts[0]["employee_id"],
-        "slowest_employee": forecasts[-1]["employee_id"]
-    }
+    try:
+        # Use current time if not specified
+        now = datetime.now()
+        hour = input_data.scheduled_hour if input_data.scheduled_hour is not None else now.hour
+        day_of_week = input_data.scheduled_day_of_week if input_data.scheduled_day_of_week is not None else now.weekday()
+        date_str = input_data.scheduled_date if input_data.scheduled_date else now.strftime('%Y-%m-%d')
+        
+        forecasts = []
+        
+        for emp_id in input_data.employee_ids:
+            try:
+                prediction = predictor.predict(
+                    participant_id=emp_id,
+                    city=input_data.city,
+                    conditions=input_data.conditions,
+                    method=input_data.method,
+                    hour=hour,
+                    day_of_week=day_of_week,
+                    date=date_str,
+                    employee_lat=input_data.employee_lat,
+                    employee_lng=input_data.employee_lng,
+                    task_lat=input_data.task_lat,
+                    task_lng=input_data.task_lng
+                )
+                
+                forecasts.append({
+                    "employee_id": emp_id,
+                    "predicted_duration_minutes": prediction['predicted_duration_minutes'],
+                    "travel_time_minutes": prediction['travel_time_minutes'],
+                    "work_time_minutes": prediction['work_time_minutes'],
+                    "confidence_interval_lower": prediction['confidence_interval_lower'],
+                    "confidence_interval_upper": prediction['confidence_interval_upper'],
+                    "employee_kpi": {
+                        "avg_duration": prediction['employee_avg_duration'],
+                        "reliability": prediction['employee_reliability'],
+                        "success_rate": prediction['employee_success_rate']
+                    }
+                })
+                
+            except Exception as e:
+                print(f"Error predicting for employee {emp_id}: {e}")
+                continue
+        
+        if not forecasts:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Could not generate forecasts for any employee"
+            )
+        
+        # Sort by predicted duration (fastest first)
+        forecasts.sort(key=lambda x: x['predicted_duration_minutes'])
+        
+        return {
+            "task_details": {
+                "city": input_data.city,
+                "conditions": input_data.conditions,
+                "method": input_data.method,
+                "distance_km": forecasts[0].get('distance_km', 'N/A') if forecasts else 'N/A'
+            },
+            "employee_count": len(forecasts),
+            "forecasts": forecasts,
+            "fastest_employee": forecasts[0]["employee_id"],
+            "slowest_employee": forecasts[-1]["employee_id"],
+            "time_difference_minutes": forecasts[-1]["predicted_duration_minutes"] - forecasts[0]["predicted_duration_minutes"]
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Comparison error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Comparison failed: {str(e)}"
+        )
 
 
 @router.get("/forecast/model-status")
@@ -152,25 +316,25 @@ async def get_model_status():
     
     Returns model metadata and health status.
     """
-    if model is None or model_columns is None:
+    if predictor is None:
         return {
             "status": "error",
             "loaded": False,
+            "google_api_configured": GOOGLE_API_KEY is not None,
             "message": "Forecasting model not loaded"
         }
     
     return {
         "status": "ready",
         "loaded": True,
-        "feature_count": len(model_columns),
-        "model_type": "XGBoost + Prophet Hybrid",
-        "features": model_columns
+        "model_type": "XGBoost + Google Directions API",
+        "features": predictor.selected_features if predictor.selected_features else [],
+        "feature_count": len(predictor.selected_features) if predictor.selected_features else 0,
+        "google_api_configured": GOOGLE_API_KEY is not None,
+        "has_employee_stats": predictor.employee_stats is not None,
+        "has_city_stats": predictor.city_stats is not None
     }
 
-
-# ============================================================================
-# FEATURE IMPORTANCE ENDPOINT
-# ============================================================================
 
 @router.get("/feature-importance")
 async def get_feature_importance():
@@ -179,16 +343,16 @@ async def get_feature_importance():
     
     Helps understand what factors most influence task completion time.
     """
-    if model is None or model_columns is None:
+    if predictor is None or predictor.xgb_model is None:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Forecasting model or columns not loaded."
+            detail="Forecasting model not loaded."
         )
 
     try:
         # Get importance scores from the loaded XGBoost model
-        importance_scores = model.feature_importances_
-        feature_names = model_columns
+        importance_scores = predictor.xgb_model.feature_importances_
+        feature_names = predictor.selected_features
 
         # Create a DataFrame and sort
         importance_df = pd.DataFrame({
@@ -201,7 +365,8 @@ async def get_feature_importance():
 
         return {
             "top_features": top_features,
-            "total_features": len(feature_names)
+            "total_features": len(feature_names),
+            "model_type": "XGBoost with Google Directions"
         }
     except Exception as e:
         print(f"Error getting feature importance: {e}")
@@ -212,7 +377,7 @@ async def get_feature_importance():
 
 
 # ============================================================================
-# KPI ANALYTICS ENDPOINTS
+# KPI ANALYTICS ENDPOINTS (UNCHANGED)
 # ============================================================================
 
 @router.get("/kpi/overview")
@@ -498,5 +663,294 @@ def get_team_overview(
             "total_completed": total_team_tasks_completed,
             "team_completion_rate": round(overall_team_completion_rate, 1),
             "top_performer": top_performer_name
+        }
+    }
+
+# Add this endpoint to analytics.py
+
+# Fixed section of analytics.py - Replace the get_employee_kpis function
+
+@router.get("/employees/{employee_id}/kpis")
+def get_employee_kpis(
+    employee_id: int,
+    days: int = Query(30, ge=7, le=365),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    📊 Get comprehensive KPI dashboard for a specific employee
+    
+    Returns:
+    - Core KPIs (completion rate, quality, duration, reliability)
+    - Task statistics breakdown
+    - Performance trends over time
+    - Team comparisons
+    - Forecast accuracy metrics
+    """
+    
+    # Permission check: admin/supervisor can view anyone, users can only view themselves
+    if employee_id != current_user.id and current_user.role not in [UserRole.ADMIN, UserRole.SUPERVISOR]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only view your own performance data"
+        )
+    
+    # Verify employee exists
+    employee = db.query(User).filter(User.id == employee_id).first()
+    if not employee:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Employee {employee_id} not found"
+        )
+    
+    # Date range - FIXED: Use timezone-aware datetimes from the start
+    from datetime import timezone
+    end_date = datetime.now(timezone.utc)
+    start_date = end_date - timedelta(days=days)
+    
+    # Get tasks in date range
+    tasks = db.query(Task).filter(
+        and_(
+            Task.assigned_to == employee_id,
+            Task.created_at >= start_date,
+            Task.created_at <= end_date
+        )
+    ).order_by(Task.created_at.desc()).all()
+    
+    if not tasks:
+        return {
+            "employee_id": employee_id,
+            "employee_name": employee.full_name or employee.username,
+            "period_days": days,
+            "has_data": False,
+            "message": f"No tasks found in the last {days} days"
+        }
+    
+    # ========================================================================
+    # CORE KPI CALCULATIONS
+    # ========================================================================
+    
+    total_tasks = len(tasks)
+    completed_tasks = [t for t in tasks if t.status == TaskStatus.COMPLETED]
+    in_progress_tasks = [t for t in tasks if t.status == TaskStatus.IN_PROGRESS]
+    
+    # FIXED: Make sure due_date comparison uses timezone-aware datetime
+    overdue_tasks = [
+        t for t in tasks 
+        if t.due_date and make_aware(t.due_date) < end_date and t.status != TaskStatus.COMPLETED
+    ]
+    
+    # Completion Rate
+    completion_rate = len(completed_tasks) / total_tasks if total_tasks > 0 else 0
+    
+    # Average Quality Rating
+    rated_tasks = [t for t in completed_tasks if t.quality_rating is not None]
+    avg_quality = sum(t.quality_rating for t in rated_tasks) / len(rated_tasks) if rated_tasks else None
+    
+    # On-Time Completion Rate - FIXED: Ensure timezone-aware comparisons
+    on_time_tasks = [
+        t for t in completed_tasks 
+        if t.due_date and t.completed_at 
+        and make_aware(t.completed_at) <= make_aware(t.due_date)
+    ]
+    on_time_rate = len(on_time_tasks) / len(completed_tasks) if completed_tasks else 0
+    
+    # Average Task Duration (in minutes)
+    completed_with_duration = [t for t in completed_tasks if t.actual_duration is not None]
+    avg_duration_seconds = sum(t.actual_duration for t in completed_with_duration) / len(completed_with_duration) if completed_with_duration else None
+    avg_duration_minutes = avg_duration_seconds / 60 if avg_duration_seconds else None
+    
+    # Reliability (on-time rate as reliability proxy)
+    reliability = on_time_rate
+    
+    # Forecast Accuracy (if estimates exist)
+    tasks_with_estimates = [
+        t for t in completed_tasks 
+        if t.estimated_duration and t.actual_duration and t.estimated_duration > 0
+    ]
+    
+    forecast_accuracy = None
+    if tasks_with_estimates:
+        # Calculate mean absolute percentage error (MAPE)
+        errors = []
+        for task in tasks_with_estimates:
+            mape = abs(task.actual_duration - task.estimated_duration) / task.estimated_duration
+            errors.append(mape)
+        
+        avg_mape = sum(errors) / len(errors)
+        forecast_accuracy = max(0, 1 - avg_mape)  # Convert MAPE to accuracy (0-1)
+    
+    # ========================================================================
+    # PERFORMANCE TRENDS (Weekly Aggregations)
+    # ========================================================================
+    
+    num_weeks = min(8, (days + 6) // 7)  # Up to 8 weeks of data
+    
+    # Task Duration Trend - FIXED: Proper timezone handling
+    duration_trend = []
+    for week_num in range(num_weeks):
+        week_end = end_date - timedelta(weeks=week_num)
+        week_start = end_date - timedelta(weeks=week_num + 1)
+        
+        week_tasks = [
+            t for t in completed_tasks 
+            if t.completed_at and week_start < make_aware(t.completed_at) <= week_end and t.actual_duration
+        ]
+        
+        if week_tasks:
+            avg_week_duration = sum(t.actual_duration for t in week_tasks) / len(week_tasks)
+            duration_trend.append({
+                "week_label": f"Week {num_weeks - week_num}",
+                "week_start": week_start.strftime('%Y-%m-%d'),
+                "week_end": week_end.strftime('%Y-%m-%d'),
+                "avg_duration_minutes": round(avg_week_duration / 60, 1),
+                "task_count": len(week_tasks)
+            })
+    
+    duration_trend.reverse()
+    
+    # Completion Rate Trend - FIXED: Proper timezone handling
+    completion_trend = []
+    for week_num in range(num_weeks):
+        week_end = end_date - timedelta(weeks=week_num)
+        week_start = end_date - timedelta(weeks=week_num + 1)
+        
+        # FIXED: Make sure created_at comparisons work with timezone-aware week bounds
+        week_all_tasks = [
+            t for t in tasks 
+            if t.created_at and week_start < make_aware(t.created_at) <= week_end
+        ]
+        week_completed = [t for t in week_all_tasks if t.status == TaskStatus.COMPLETED]
+        
+        week_completion_rate = len(week_completed) / len(week_all_tasks) if week_all_tasks else 0
+        
+        completion_trend.append({
+            "week_label": f"Week {num_weeks - week_num}",
+            "week_start": week_start.strftime('%Y-%m-%d'),
+            "week_end": week_end.strftime('%Y-%m-%d'),
+            "completion_rate": round(week_completion_rate, 3),
+            "total_tasks": len(week_all_tasks),
+            "completed_tasks": len(week_completed)
+        })
+    
+    completion_trend.reverse()
+    
+    # Quality Score Trend - FIXED: Proper timezone handling
+    quality_trend = []
+    for week_num in range(num_weeks):
+        week_end = end_date - timedelta(weeks=week_num)
+        week_start = end_date - timedelta(weeks=week_num + 1)
+        
+        week_rated = [
+            t for t in rated_tasks 
+            if t.completed_at and week_start < make_aware(t.completed_at) <= week_end
+        ]
+        
+        if week_rated:
+            avg_week_quality = sum(t.quality_rating for t in week_rated) / len(week_rated)
+            quality_trend.append({
+                "week_label": f"Week {num_weeks - week_num}",
+                "week_start": week_start.strftime('%Y-%m-%d'),
+                "week_end": week_end.strftime('%Y-%m-%d'),
+                "avg_quality": round(avg_week_quality, 2),
+                "rated_tasks": len(week_rated)
+            })
+    
+    quality_trend.reverse()
+    
+    # ========================================================================
+    # TEAM COMPARISON
+    # ========================================================================
+    
+    # Get all active team members' stats for comparison
+    all_team_members = db.query(User).filter(User.is_active == True).all()
+    
+    team_completion_rates = []
+    team_quality_scores = []
+    team_durations = []
+    
+    for member in all_team_members:
+        if member.id == employee_id:
+            continue  # Skip current employee
+        
+        member_tasks = db.query(Task).filter(
+            and_(
+                Task.assigned_to == member.id,
+                Task.created_at >= start_date,
+                Task.created_at <= end_date
+            )
+        ).all()
+        
+        if not member_tasks:
+            continue
+        
+        # Completion rate
+        member_completed = [t for t in member_tasks if t.status == TaskStatus.COMPLETED]
+        member_completion_rate = len(member_completed) / len(member_tasks)
+        team_completion_rates.append(member_completion_rate)
+        
+        # Quality
+        member_rated = [t for t in member_completed if t.quality_rating is not None]
+        if member_rated:
+            member_avg_quality = sum(t.quality_rating for t in member_rated) / len(member_rated)
+            team_quality_scores.append(member_avg_quality)
+        
+        # Duration
+        member_with_duration = [t for t in member_completed if t.actual_duration]
+        if member_with_duration:
+            member_avg_duration = sum(t.actual_duration for t in member_with_duration) / len(member_with_duration)
+            team_durations.append(member_avg_duration / 60)  # Convert to minutes
+    
+    team_avg_completion = sum(team_completion_rates) / len(team_completion_rates) if team_completion_rates else None
+    team_avg_quality = sum(team_quality_scores) / len(team_quality_scores) if team_quality_scores else None
+    team_avg_duration = sum(team_durations) / len(team_durations) if team_durations else None
+    
+    # ========================================================================
+    # BUILD RESPONSE
+    # ========================================================================
+    
+    return {
+        "employee_id": employee_id,
+        "employee_name": employee.full_name or employee.username,
+        "period_days": days,
+        "has_data": True,
+        
+        # Core KPIs
+        "kpis": {
+            "completion_rate": round(completion_rate, 3),
+            "completion_rate_percent": round(completion_rate * 100, 1),
+            "average_quality_rating": round(avg_quality, 2) if avg_quality else None,
+            "on_time_rate": round(on_time_rate, 3),
+            "on_time_rate_percent": round(on_time_rate * 100, 1),
+            "avg_task_duration_minutes": round(avg_duration_minutes, 1) if avg_duration_minutes else None,
+            "reliability": round(reliability, 3),
+            "forecast_accuracy": round(forecast_accuracy, 3) if forecast_accuracy else None,
+            "forecast_accuracy_percent": round(forecast_accuracy * 100, 1) if forecast_accuracy else None
+        },
+        
+        # Task Statistics
+        "task_stats": {
+            "total_tasks": total_tasks,
+            "completed_tasks": len(completed_tasks),
+            "in_progress_tasks": len(in_progress_tasks),
+            "overdue_tasks": len(overdue_tasks),
+            "on_time_tasks": len(on_time_tasks),
+            "rated_tasks": len(rated_tasks),
+            "tasks_with_estimates": len(tasks_with_estimates)
+        },
+        
+        # Performance Trends
+        "trends": {
+            "task_duration": duration_trend,
+            "completion_rate": completion_trend,
+            "quality_score": quality_trend
+        },
+        
+        # Team Comparison
+        "team_comparison": {
+            "team_avg_completion_rate": round(team_avg_completion, 3) if team_avg_completion else None,
+            "team_avg_quality": round(team_avg_quality, 2) if team_avg_quality else None,
+            "team_avg_duration": round(team_avg_duration, 1) if team_avg_duration else None,
+            "team_member_count": len(all_team_members) - 1  # Exclude current employee
         }
     }

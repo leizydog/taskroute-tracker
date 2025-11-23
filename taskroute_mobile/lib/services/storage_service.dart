@@ -185,6 +185,20 @@ class StorageService {
     await setBool('notifications_enabled', enabled);
   }
 
+  // Store current active task ID
+Future<void> setCurrentTaskId(int? taskId) async {
+  if (taskId == null) {
+    await _prefs.remove('current_task_id');
+  } else {
+    await _prefs.setInt('current_task_id', taskId);
+  }
+}
+
+// Get current active task ID
+Future<int?> getCurrentTaskId() async {
+  return _prefs.getInt('current_task_id');
+}
+
   Future<bool> areNotificationsEnabled() async {
     return getBool('notifications_enabled', defaultValue: true);
   }

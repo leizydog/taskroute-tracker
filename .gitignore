@@ -55,7 +55,7 @@ yarn-error.log*
 .env
 .env.local
 .env.*.local
-taskroute_mobile/android/app/src/main/AndroidManifest.xml
+C:\Users\karlk\taskroute-tracker\taskroute_mobile\android\app\src\main\AndroidManifest.xml
 
 # Logs
 logs/

@@ -1,13 +1,25 @@
 #!/usr/bin/env python3
 """
-Seed data script for task management system
+Enhanced Seed Data Script - Creates employees with varied KPI performance
 Usage: python seed_data.py [--base-url http://localhost:8000]
+
+Performance Tiers:
+- Top Performers (2 employees): 90%+ completion, high quality, reliable
+- Mid Performers (3 employees): 70-80% completion, average quality, moderate reliability
+- Poor Performers (2 employees): <60% completion, low quality, unreliable
 """
 
 import requests
 import json
 import argparse
-from typing import Dict, Any
+from datetime import datetime, timedelta, timezone
+from typing import Dict, Any, List
+
+# ✅ NEW IMPORTS FOR DIRECT DB ACCESS
+from app.models.user import User, UserRole
+from app.database import SessionLocal
+from app.core.auth import get_password_hash
+
 
 # Base URL for API
 DEFAULT_BASE_URL = "http://localhost:8000"
@@ -26,20 +38,16 @@ def print_status(message: str, status: str = "INFO"):
 def login_user(base_url: str, email: str, password: str) -> str:
     """Login and return access token"""
     try:
-        # Try JSON login with email
         response = requests.post(
             f"{base_url}/api/v1/auth/login-json",
-            json={
-                "email": email,
-                "password": password
-            }
+            json={"email": email, "password": password}
         )
         
         if response.status_code == 200:
             token_data = response.json()
             return token_data.get("access_token")
         
-        print_status(f"Login failed for {email}: {response.status_code} - {response.text}", "DEBUG")
+        print_status(f"Login failed for {email}: {response.status_code}", "DEBUG")
         return None
         
     except Exception as e:
@@ -47,39 +55,65 @@ def login_user(base_url: str, email: str, password: str) -> str:
         return None
 
 def create_admin_user(base_url: str) -> tuple:
-    """Create admin user and return (token, user_id)"""
+    """
+    Create admin user directly in DB if not exists, then login via API.
+    This bypasses the API protection that requires an admin to create an admin.
+    """
     admin_data = {
         "email": "admin@company.com",
         "username": "admin_user",
         "full_name": "Maria Santos",
         "password": "Admin123!",
-        "role": "admin"
+        "role": UserRole.ADMIN
     }
+
+    print_status("Checking for existing admin user...", "DEBUG")
     
+    # 1. Direct Database Operation
+    db = SessionLocal()
     try:
-        # Try to register admin
-        response = requests.post(
-            f"{base_url}/api/v1/auth/register",
-            json=admin_data
-        )
+        user = db.query(User).filter(User.email == admin_data["email"]).first()
         
-        print_status(f"Admin registration response: {response.status_code}", "DEBUG")
-        
-        if response.status_code not in [200, 201]:
-            # Maybe admin already exists, try to login
-            print_status(f"Admin registration failed, trying to login...", "DEBUG")
-        
-        # Login to get token
-        token = login_user(base_url, admin_data["email"], admin_data["password"])
-        
-        if not token:
-            print_status("Failed to get admin token", "ERROR")
-            return None, None
-        
-        # Get user info
+        if not user:
+            print_status("Creating admin user directly in database...", "INFO")
+            new_admin = User(
+                email=admin_data["email"],
+                username=admin_data["username"],
+                full_name=admin_data["full_name"],
+                hashed_password=get_password_hash(admin_data["password"]),
+                role=admin_data["role"],
+                is_active=True
+            )
+            db.add(new_admin)
+            db.commit()
+            db.refresh(new_admin)
+            print_status(f"Admin user created in DB: {new_admin.username}", "SUCCESS")
+        else:
+            print_status("Admin user already exists in DB", "INFO")
+            # Ensure existing user is actually an admin
+            if user.role != UserRole.ADMIN:
+                print_status("Updating existing user to ADMIN role...", "WARNING")
+                user.role = UserRole.ADMIN
+                db.commit()
+            
+    except Exception as e:
+        print_status(f"Database error: {str(e)}", "ERROR")
+        print_status("Ensure DATABASE_URL is set or localhost:5433 is accessible", "WARNING")
+        return None, None
+    finally:
+        db.close()
+
+    # 2. Log in via API to get token
+    print_status("Logging in as admin...", "DEBUG")
+    token = login_user(base_url, admin_data["email"], admin_data["password"])
+    if not token:
+        print_status("Failed to get admin token via API", "ERROR")
+        return None, None
+
+    # 3. Fetch admin info from API to get ID
+    try:
         headers = {"Authorization": f"Bearer {token}"}
         me_response = requests.get(f"{base_url}/api/v1/auth/me", headers=headers)
-        
         if me_response.status_code == 200:
             user_info = me_response.json()
             user_id = user_info.get("id")
@@ -88,85 +122,111 @@ def create_admin_user(base_url: str) -> tuple:
         else:
             print_status(f"Failed to get admin info: {me_response.text}", "ERROR")
             return None, None
-            
+
     except Exception as e:
-        print_status(f"Error with admin user: {str(e)}", "ERROR")
+        print_status(f"Error with admin user verification: {str(e)}", "ERROR")
         return None, None
 
+
 def create_users(base_url: str, admin_token: str) -> tuple:
-    """Create users and return mapping of old_id -> (new_id, token)"""
+    """Create users with varied performance profiles"""
     users_data = [
-        # Skip supervisors for now - just create regular users
-        # {
-        #     "old_id": 2,
-        #     "email": "supervisor1@company.com",
-        #     "username": "supervisor_juan",
-        #     "full_name": "Juan Dela Cruz",
-        #     "password": "Super123!",
-        #     "role": "supervisor"
-        # },
-        # {
-        #     "old_id": 3,
-        #     "email": "supervisor2@company.com",
-        #     "username": "supervisor_ana",
-        #     "full_name": "Ana Reyes",
-        #     "password": "Super123!",
-        #     "role": "supervisor"
-        # },
+        # ============================================================
+        # TOP PERFORMERS - Excellent KPIs
+        # ============================================================
         {
-            "old_id": 4,
-            "email": "user1@company.com",
-            "username": "field_worker_pedro",
-            "full_name": "Pedro Garcia",
+            "old_id": 101,
+            "email": "star.employee1@company.com",
+            "username": "maria_excellence",
+            "full_name": "Maria Dela Cruz",
             "password": "User123!",
-            "role": "user"
+            "role": "user",
+            "tier": "top"
         },
         {
-            "old_id": 5,
-            "email": "user2@company.com",
-            "username": "field_worker_lisa",
-            "full_name": "Lisa Mendoza",
+            "old_id": 102,
+            "email": "star.employee2@company.com",
+            "username": "james_reliable",
+            "full_name": "James Rodriguez",
             "password": "User123!",
-            "role": "user"
+            "role": "user",
+            "tier": "top"
         },
+        
+        # ============================================================
+        # MID PERFORMERS - Average KPIs
+        # ============================================================
         {
-            "old_id": 6,
-            "email": "user3@company.com",
-            "username": "field_worker_carlo",
+            "old_id": 201,
+            "email": "avg.employee1@company.com",
+            "username": "carlo_average",
             "full_name": "Carlo Ramos",
             "password": "User123!",
-            "role": "user"
+            "role": "user",
+            "tier": "mid"
         },
         {
-            "old_id": 7,
-            "email": "user4@company.com",
-            "username": "field_worker_nina",
+            "old_id": 202,
+            "email": "avg.employee2@company.com",
+            "username": "lisa_decent",
+            "full_name": "Lisa Mendoza",
+            "password": "User123!",
+            "role": "user",
+            "tier": "mid"
+        },
+        {
+            "old_id": 203,
+            "email": "avg.employee3@company.com",
+            "username": "pedro_moderate",
+            "full_name": "Pedro Garcia",
+            "password": "User123!",
+            "role": "user",
+            "tier": "mid"
+        },
+        
+        # ============================================================
+        # POOR PERFORMERS - Below Average KPIs
+        # ============================================================
+        {
+            "old_id": 301,
+            "email": "struggling.employee1@company.com",
+            "username": "tony_struggling",
+            "full_name": "Tony Santos",
+            "password": "User123!",
+            "role": "user",
+            "tier": "poor"
+        },
+        {
+            "old_id": 302,
+            "email": "struggling.employee2@company.com",
+            "username": "nina_unreliable",
             "full_name": "Nina Torres",
             "password": "User123!",
-            "role": "user"
+            "role": "user",
+            "tier": "poor"
         }
     ]
     
     user_tokens = {}
     user_ids = {}
+    user_tiers = {}
     
     for user in users_data:
         try:
             old_id = user.pop("old_id")
+            tier = user.pop("tier")
             
-            # All users register as regular users
-            response = requests.post(
-                f"{base_url}/api/v1/auth/register",
-                json=user
-            )
+            response = requests.post(f"{base_url}/api/v1/auth/register", json=user)
             
-            print_status(f"Registration response for {user['username']}: {response.status_code}", "DEBUG")
+            # Accept 201 (Created) or 400 (Already exists)
+            if response.status_code == 400 and "already registered" in response.text:
+                print_status(f"User {user['username']} already exists, skipping creation.", "DEBUG")
+            elif response.status_code != 201:
+                print_status(f"Registration failed for {user['username']}: {response.status_code}", "WARNING")
             
-            # Login to get token
             token = login_user(base_url, user["email"], user["password"])
             
             if token:
-                # Get user info to get actual ID
                 headers = {"Authorization": f"Bearer {token}"}
                 me_response = requests.get(f"{base_url}/api/v1/auth/me", headers=headers)
                 
@@ -175,7 +235,10 @@ def create_users(base_url: str, admin_token: str) -> tuple:
                     actual_id = user_info.get("id")
                     user_tokens[old_id] = token
                     user_ids[old_id] = actual_id
-                    print_status(f"Created {user['role']}: {user['username']} (ID: {actual_id})", "SUCCESS")
+                    user_tiers[old_id] = tier
+                    
+                    tier_emoji = {"top": "⭐", "mid": "📊", "poor": "⚠️"}
+                    print_status(f"{tier_emoji[tier]} Ready {tier.upper()} performer: {user['username']} (ID: {actual_id})", "SUCCESS")
                 else:
                     print_status(f"Failed to get user info for {user['username']}", "ERROR")
             else:
@@ -184,438 +247,305 @@ def create_users(base_url: str, admin_token: str) -> tuple:
         except Exception as e:
             print_status(f"Error creating user {user['username']}: {str(e)}", "ERROR")
     
-    return user_tokens, user_ids
+    return user_tokens, user_ids, user_tiers
 
-def create_tasks(base_url: str, admin_token: str, user_ids: Dict[int, int]) -> Dict[int, int]:
-    """Create tasks and return mapping of old_id -> new_id"""
-    tasks_data = [
+def generate_historical_tasks(user_ids: Dict[int, int], user_tiers: Dict[int, str]) -> List[Dict]:
+    """
+    Generate 30 days of historical tasks with performance patterns:
+    - Top performers: 95% completion, 4.5+ stars, always on time
+    - Mid performers: 75% completion, 3.5 stars, sometimes late
+    - Poor performers: 50% completion, 2.5 stars, often late
+    """
+    now = datetime.now(timezone.utc)
+    tasks = []
+    task_id_counter = 1
+    
+    # Task templates
+    task_templates = [
+        {"title": "Electrical inspection", "location": "Makati Office", "lat": 14.5547, "lng": 121.0244, "duration": 120},
+        {"title": "HVAC maintenance", "location": "Ortigas Center", "lat": 14.5866, "lng": 121.0582, "duration": 180},
+        {"title": "Plumbing repair", "location": "Quezon City Office", "lat": 14.6507, "lng": 121.0494, "duration": 90},
+        {"title": "Security camera installation", "location": "BGC Tower", "lat": 14.5518, "lng": 121.0475, "duration": 150},
+        {"title": "Equipment delivery", "location": "Alabang Branch", "lat": 14.4198, "lng": 121.0395, "duration": 60},
+        {"title": "Network cabling", "location": "Eastwood Office", "lat": 14.6091, "lng": 121.0780, "duration": 120},
+        {"title": "Fire safety inspection", "location": "Mandaluyong Site", "lat": 14.5814, "lng": 121.0509, "duration": 75},
+        {"title": "Painting work", "location": "Manila Head Office", "lat": 14.5995, "lng": 120.9842, "duration": 240},
+    ]
+    
+    # Generate tasks for each user over the past 30 days
+    for old_id, actual_id in user_ids.items():
+        if old_id == 1:  # Skip admin
+            continue
+        
+        tier = user_tiers.get(old_id, "mid")
+        
+        # Task count per tier (over 30 days)
+        task_counts = {
+            "top": 25,   # ~5 tasks per week
+            "mid": 20,   # ~4 tasks per week
+            "poor": 15   # ~3 tasks per week
+        }
+        
+        num_tasks = task_counts[tier]
+        
+        for i in range(num_tasks):
+            # Distribute tasks evenly over 30 days
+            days_ago = 30 - (i * 30 // num_tasks)
+            task_date = now - timedelta(days=days_ago)
+            
+            template = task_templates[i % len(task_templates)]
+            
+            # Determine if task should be completed based on tier
+            completion_rates = {"top": 0.95, "mid": 0.75, "poor": 0.50}
+            should_complete = (i / num_tasks) < completion_rates[tier]
+            
+            # Calculate due date and completion time
+            due_date = task_date + timedelta(hours=4)
+            
+            if should_complete:
+                # Completion time variance by tier
+                if tier == "top":
+                    # Top performers: complete early or on time, accurate estimates
+                    time_variance = 0.95 + (i % 10) * 0.01  # 95-105% of estimate
+                    delay_hours = -0.5 - (i % 3) * 0.25  # Complete 0.5-1.5 hours early
+                elif tier == "mid":
+                    # Mid performers: sometimes late, moderate variance
+                    time_variance = 0.90 + (i % 20) * 0.01  # 90-110% of estimate
+                    delay_hours = -0.5 + (i % 5) * 0.5  # -0.5 to +2 hours
+                else:  # poor
+                    # Poor performers: often late, high variance
+                    time_variance = 0.80 + (i % 40) * 0.01  # 80-120% of estimate
+                    delay_hours = 0 + (i % 8) * 0.5  # 0 to +4 hours late
+                
+                actual_duration = int(template["duration"] * time_variance)
+                completed_at = due_date + timedelta(hours=delay_hours)
+                
+                # Quality ratings by tier
+                if tier == "top":
+                    quality = 5 if i % 2 == 0 else 4  # Mostly 5 stars, some 4
+                elif tier == "mid":
+                    quality = [3, 4, 4, 3, 4][i % 5]  # Mix of 3-4 stars
+                else:  # poor
+                    quality = [2, 3, 2, 3, 2][i % 5]  # Mostly 2-3 stars
+                
+                status = "completed"
+            else:
+                # Incomplete tasks
+                actual_duration = None
+                completed_at = None
+                quality = None
+                
+                # Vary status for incomplete tasks
+                if tier == "poor" and i % 3 == 0:
+                    status = "in_progress"  # Poor performers have more stalled tasks
+                else:
+                    status = "pending"
+            
+            task = {
+                "old_id": task_id_counter,
+                "title": f"{template['title']} - Site {i+1}",
+                "description": f"Task assigned to test employee performance tracking. Location: {template['location']}",
+                "priority": ["high", "medium", "low"][i % 3],
+                "location_name": template["location"],
+                "latitude": template["lat"],
+                "longitude": template["lng"],
+                "estimated_duration": template["duration"],
+                "actual_duration": actual_duration if actual_duration else None,
+                "due_date": due_date.isoformat(),
+                "completed_at": completed_at.isoformat() if completed_at else None,
+                "quality_rating": quality,
+                "status": status,
+                "assigned_to": old_id,
+                "created_at": task_date.isoformat()
+            }
+            
+            tasks.append(task)
+            task_id_counter += 1
+    
+    return tasks
+
+def create_historical_tasks(base_url: str, admin_token: str, tasks: List[Dict], user_ids: Dict[int, int]) -> Dict[int, int]:
+    """Create historical tasks with completion data, using correct task endpoints"""
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    task_ids = {}
+
+    completed_count = 0
+    pending_count = 0
+    in_progress_count = 0
+
+    for task in tasks:
+        try:
+            old_id = task.pop("old_id")
+            old_assigned_id = task["assigned_to"]
+
+            if old_assigned_id in user_ids:
+                task["assigned_to"] = user_ids[old_assigned_id]
+            else:
+                continue
+
+            # Extract special fields
+            status = task.pop("status")
+            completed_at = task.pop("completed_at", None)
+            quality_rating = task.pop("quality_rating", None)
+            actual_duration = task.pop("actual_duration", None)
+
+            # Step 1: Create the task
+            response = requests.post(f"{base_url}/api/v1/tasks/", json=task, headers=headers)
+            if response.status_code not in [200, 201]:
+                # Skip status print for bulk operations to reduce noise, unless error
+                # print_status(f"Failed to create task: {response.status_code} - {response.text}", "ERROR")
+                continue
+
+            task_data = response.json()
+            new_task_id = task_data.get("id")
+            task_ids[old_id] = new_task_id
+
+            # Step 2: Update task status using correct endpoints
+            update_response = None
+            if status == "completed":
+                payload = {
+                    "completed_at": completed_at,
+                    "quality_rating": quality_rating,
+                    "actual_duration": actual_duration
+                }
+                update_response = requests.post(
+                    f"{base_url}/api/v1/tasks/{new_task_id}/complete",
+                    json=payload,
+                    headers=headers
+                )
+                completed_count += 1
+
+            elif status == "in_progress":
+                update_response = requests.post(
+                    f"{base_url}/api/v1/tasks/{new_task_id}/start",
+                    headers=headers
+                )
+                in_progress_count += 1
+
+            else:  # pending tasks require no update
+                pending_count += 1
+
+            if update_response and update_response.status_code not in [200, 201]:
+                print_status(f"Failed to update task status: {update_response.text}", "WARNING")
+
+        except Exception as e:
+            print_status(f"Error creating task: {str(e)}", "ERROR")
+
+    print()
+    print_status(
+        f"Task Summary: {completed_count} completed, {in_progress_count} in progress, {pending_count} pending",
+        "INFO"
+    )
+    return task_ids
+
+
+def create_current_tasks(base_url: str, admin_token: str, user_ids: Dict[int, int]) -> Dict[int, int]:
+    """Create current/future tasks for ongoing work"""
+    current_tasks = [
         {
-            "old_id": 1,
-            "title": "Inspect electrical panel at Makati Office",
-            "description": "Perform quarterly inspection of main electrical panel. Check for loose connections, signs of overheating, and verify proper labeling.",
+            "old_id": 9001,
+            "title": "Emergency electrical repair - Makati",
+            "description": "Urgent: Power outage in server room, immediate response required",
             "priority": "high",
-            "location_name": "Ayala Tower, Makati City",
+            "location_name": "Ayala Tower, Makati",
             "latitude": 14.5547,
             "longitude": 121.0244,
-            "estimated_duration": 120,
-            "due_date": "2025-10-25T14:00:00.000Z",
-            "assigned_to": 4
+            "estimated_duration": 90,
+            "due_date": (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat(),
+            "assigned_to": 101  # Top performer
         },
         {
-            "old_id": 2,
-            "title": "Delivery to BGC warehouse",
-            "description": "Deliver 15 boxes of office supplies to warehouse facility. Obtain signature from receiving clerk.",
+            "old_id": 9002,
+            "title": "Routine maintenance - BGC",
+            "description": "Monthly equipment check and calibration",
             "priority": "medium",
-            "location_name": "BGC Corporate Center, Taguig",
+            "location_name": "BGC Corporate Center",
             "latitude": 14.5518,
             "longitude": 121.0475,
-            "estimated_duration": 90,
-            "due_date": "2025-10-24T16:00:00.000Z",
-            "assigned_to": 5
+            "estimated_duration": 120,
+            "due_date": (datetime.now(timezone.utc) + timedelta(hours=6)).isoformat(),
+            "assigned_to": 102  # Top performer
         },
         {
-            "old_id": 3,
-            "title": "HVAC maintenance - Ortigas branch",
-            "description": "Replace air filters and clean condenser coils for all units on 3rd floor.",
+            "old_id": 9003,
+            "title": "HVAC filter replacement - Ortigas",
+            "description": "Replace air filters in all units, 5th floor",
             "priority": "medium",
-            "location_name": "Ortigas Center, Pasig City",
+            "location_name": "Ortigas Center",
             "latitude": 14.5866,
             "longitude": 121.0582,
-            "estimated_duration": 180,
-            "due_date": "2025-10-26T10:00:00.000Z",
-            "assigned_to": 6
+            "estimated_duration": 150,
+            "due_date": (datetime.now(timezone.utc) + timedelta(hours=8)).isoformat(),
+            "assigned_to": 201  # Mid performer
         },
         {
-            "old_id": 4,
-            "title": "Emergency plumbing repair",
-            "description": "Fix leaking pipe in 2nd floor restroom. Water damage reported, urgent response needed.",
-            "priority": "high",
-            "location_name": "Quezon City Office Building",
-            "latitude": 14.6507,
-            "longitude": 121.0494,
-            "estimated_duration": 60,
-            "due_date": "2025-10-24T12:00:00.000Z",
-            "assigned_to": 4
-        },
-        {
-            "old_id": 5,
-            "title": "Install new security cameras",
-            "description": "Install 4 new security cameras in parking area. Configure network connection and test recording.",
+            "old_id": 9004,
+            "title": "Equipment delivery - Alabang",
+            "description": "Deliver and install new workstation equipment",
             "priority": "low",
-            "location_name": "Alabang Town Center Area",
+            "location_name": "Alabang Office",
             "latitude": 14.4198,
             "longitude": 121.0395,
-            "estimated_duration": 240,
-            "due_date": "2025-10-28T13:00:00.000Z",
-            "assigned_to": 5
+            "estimated_duration": 180,
+            "due_date": (datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
+            "assigned_to": 202  # Mid performer
         },
         {
-            "old_id": 6,
-            "title": "Routine equipment check - Mandaluyong",
-            "description": "Monthly inspection of all fire extinguishers and emergency exits.",
-            "priority": "medium",
-            "location_name": "Shaw Boulevard, Mandaluyong",
-            "latitude": 14.5814,
-            "longitude": 121.0509,
-            "estimated_duration": 90,
-            "due_date": "2025-10-27T09:00:00.000Z",
-            "assigned_to": 7
-        },
-        {
-            "old_id": 7,
-            "title": "Paint office reception area",
-            "description": "Repaint reception area walls. Two coats required. Must be completed outside business hours.",
-            "priority": "low",
-            "location_name": "Manila Head Office",
-            "latitude": 14.5995,
-            "longitude": 120.9842,
-            "estimated_duration": 300,
-            "due_date": "2025-10-29T20:00:00.000Z",
-            "assigned_to": 4
-        },
-        {
-            "old_id": 8,
-            "title": "Network cabling for new workstations",
-            "description": "Install ethernet cabling for 8 new workstations on 5th floor.",
+            "old_id": 9005,
+            "title": "Network troubleshooting - Eastwood",
+            "description": "Investigate slow network speeds on 3rd floor",
             "priority": "high",
-            "location_name": "Eastwood City, Quezon City",
+            "location_name": "Eastwood City",
             "latitude": 14.6091,
             "longitude": 121.0780,
-            "estimated_duration": 150,
-            "due_date": "2025-10-25T15:00:00.000Z",
-            "assigned_to": 5
+            "estimated_duration": 120,
+            "due_date": (datetime.now(timezone.utc) + timedelta(hours=4)).isoformat(),
+            "assigned_to": 301  # Poor performer
         }
     ]
     
     headers = {"Authorization": f"Bearer {admin_token}"}
     task_ids = {}
     
-    for task in tasks_data:
+    for task in current_tasks:
         try:
             old_id = task.pop("old_id")
-            
-            # Map old assigned_to ID to new ID
             old_assigned_id = task["assigned_to"]
+            
             if old_assigned_id in user_ids:
                 task["assigned_to"] = user_ids[old_assigned_id]
             else:
-                print_status(f"Warning: User ID {old_assigned_id} not found, skipping task", "WARNING")
                 continue
             
-            response = requests.post(
-                f"{base_url}/api/v1/tasks/",
-                json=task,
-                headers=headers
-            )
+            response = requests.post(f"{base_url}/api/v1/tasks/", json=task, headers=headers)
             
             if response.status_code in [200, 201]:
                 task_data = response.json()
                 new_task_id = task_data.get("id")
                 task_ids[old_id] = new_task_id
-                print_status(f"Created task: {task['title']} (ID: {new_task_id})", "SUCCESS")
+                print_status(f"📋 Created current task: {task['title']}", "SUCCESS")
             else:
-                print_status(f"Failed to create task {task['title']}: {response.status_code} - {response.text}", "ERROR")
+                print_status(f"Failed to create task: {response.status_code}", "ERROR")
+                
         except Exception as e:
-            print_status(f"Error creating task {task['title']}: {str(e)}", "ERROR")
+            print_status(f"Error creating task: {str(e)}", "ERROR")
     
     return task_ids
 
-def start_ongoing_tasks(base_url: str, user_tokens: Dict[int, str], task_ids: Dict[int, int]):
-    """
-    Start some tasks to create ongoing tasks.
-    Each user starts ONE task from their current location (not the task destination).
-    The /start endpoint automatically creates the initial location log.
-    """
-    tasks_to_start = [
-        # Pedro (user 4) - Electrical inspection at Makati
-        # Task destination: Ayala Tower (14.5547, 121.0244)
-        # Starting from San Juan area, about 4km away
-        {
-            "old_task_id": 1,
-            "user_id": 4,
-            "latitude": 14.5900,
-            "longitude": 121.0380
-        },
-        # Lisa (user 5) - Network cabling at Eastwood
-        # Task destination: Eastwood City (14.6091, 121.0780)
-        # Starting from Quezon City Hall area, about 4.5km away
-        {
-            "old_task_id": 8,
-            "user_id": 5,
-            "latitude": 14.6350,
-            "longitude": 121.0350
-        },
-        # Carlo (user 6) - HVAC maintenance at Ortigas
-        # Task destination: Ortigas Center (14.5866, 121.0582)
-        # Starting from Kapitolyo/Pasig area, about 3km away
-        {
-            "old_task_id": 3,
-            "user_id": 6,
-            "latitude": 14.5650,
-            "longitude": 121.0650
-        },
-        # Nina (user 7) - Equipment check at Mandaluyong
-        # Task destination: Shaw Boulevard (14.5814, 121.0509)
-        # Starting from Boni Avenue area, about 2km away
-        {
-            "old_task_id": 6,
-            "user_id": 7,
-            "latitude": 14.5650,
-            "longitude": 121.0350
-        }
-    ]
-    
-    for task_start in tasks_to_start:
-        try:
-            old_task_id = task_start["old_task_id"]
-            new_task_id = task_ids.get(old_task_id)
-            user_id = task_start["user_id"]
-            token = user_tokens.get(user_id)
-            
-            if not new_task_id:
-                print_status(f"Task ID {old_task_id} not found, skipping start", "WARNING")
-                continue
-                
-            if not token:
-                print_status(f"Token for user {user_id} not found, skipping start", "WARNING")
-                continue
-            
-            headers = {"Authorization": f"Bearer {token}"}
-            
-            # Start task
-            start_response = requests.post(
-                f"{base_url}/api/v1/tasks/{new_task_id}/start",
-                json={
-                    "latitude": task_start["latitude"],
-                    "longitude": task_start["longitude"]
-                },
-                headers=headers
-            )
-            
-            if start_response.status_code in [200, 201]:
-                print_status(f"Started task ID {new_task_id} for user {user_id}", "SUCCESS")
-            else:
-                print_status(f"Failed to start task {new_task_id}: {start_response.status_code} - {start_response.text}", "ERROR")
-        except Exception as e:
-            print_status(f"Error starting task: {str(e)}", "ERROR")
-
-def create_locations(base_url: str, user_tokens: Dict[int, str], task_ids: Dict[int, int]):
-    """
-    Create additional location logs (simulating GPS tracking updates as users move).
-    These represent the user's position updates as they work on tasks.
-    IMPORTANT: Timestamps must be AFTER the task start time so they appear as the latest location.
-    """
-    from datetime import datetime, timedelta, timezone
-    
-    # Generate timestamps that are recent (current time + offsets)
-    now = datetime.now(timezone.utc)
-    
-    locations_data = [
-        # Pedro - Task 1 (Electrical inspection) - Moving from San Juan to Makati
-        {
-            "old_task_id": 1,
-            "user_id": 4,
-            "latitude": 14.5750,
-            "longitude": 14.5750,
-            "accuracy": 5.2,
-            "altitude": 42.0,
-            "speed": 8.5,
-            "address": "N. Domingo Street, San Juan City",
-            "notes": "En route to Makati, passing through EDSA",
-            "location_type": "auto",
-            "recorded_at": (now - timedelta(minutes=30)).isoformat()
-        },
-        {
-            "old_task_id": 1,
-            "user_id": 4,
-            "latitude": 14.5600,
-            "longitude": 121.0280,
-            "accuracy": 4.0,
-            "altitude": 44.5,
-            "speed": 3.5,
-            "address": "Approaching Makati via Guadalupe",
-            "notes": "Almost at destination, 10 minutes away",
-            "location_type": "auto",
-            "recorded_at": (now - timedelta(minutes=10)).isoformat()
-        },
-        {
-            "old_task_id": 1,
-            "user_id": 4,
-            "latitude": 14.5545,
-            "longitude": 121.0243,
-            "accuracy": 3.2,
-            "altitude": 45.8,
-            "speed": 0.5,
-            "address": "Ayala Tower entrance, Makati City",
-            "notes": "Arrived at building, checking in with security",
-            "location_type": "auto",
-            "recorded_at": (now - timedelta(minutes=2)).isoformat()
-        },
-        # Lisa - Task 8 (Network cabling) - Moving from QC to Eastwood
-        {
-            "old_task_id": 8,
-            "user_id": 5,
-            "latitude": 14.6280,
-            "longitude": 121.0420,
-            "accuracy": 6.0,
-            "altitude": 18.0,
-            "speed": 12.0,
-            "address": "Quezon Avenue, Quezon City",
-            "notes": "Heading to Eastwood via Commonwealth",
-            "location_type": "auto",
-            "recorded_at": (now - timedelta(minutes=28)).isoformat()
-        },
-        {
-            "old_task_id": 8,
-            "user_id": 5,
-            "latitude": 14.6180,
-            "longitude": 121.0650,
-            "accuracy": 5.5,
-            "altitude": 20.0,
-            "speed": 8.0,
-            "address": "Near Eastwood City, Libis",
-            "notes": "Almost there, 5 minutes out",
-            "location_type": "auto",
-            "recorded_at": (now - timedelta(minutes=12)).isoformat()
-        },
-        {
-            "old_task_id": 8,
-            "user_id": 5,
-            "latitude": 14.6091,
-            "longitude": 121.0780,
-            "accuracy": 4.2,
-            "altitude": 22.3,
-            "speed": 0.0,
-            "address": "Eastwood City Corporate Center, 5th Floor",
-            "notes": "Arrived, setting up equipment for cabling",
-            "location_type": "auto",
-            "recorded_at": (now - timedelta(minutes=3)).isoformat()
-        },
-        # Carlo - Task 3 (HVAC maintenance) - Moving from Kapitolyo to Ortigas
-        {
-            "old_task_id": 3,
-            "user_id": 6,
-            "latitude": 14.5680,
-            "longitude": 121.0620,
-            "accuracy": 6.8,
-            "altitude": 15.0,
-            "speed": 5.5,
-            "address": "Kapitolyo, Pasig City",
-            "notes": "Left warehouse, heading to Ortigas site",
-            "location_type": "auto",
-            "recorded_at": (now - timedelta(minutes=25)).isoformat()
-        },
-        {
-            "old_task_id": 3,
-            "user_id": 6,
-            "latitude": 14.5780,
-            "longitude": 121.0600,
-            "accuracy": 5.5,
-            "altitude": 16.5,
-            "speed": 2.5,
-            "address": "Near Ortigas Center, looking for parking",
-            "notes": "Arrived at area, finding parking spot",
-            "location_type": "auto",
-            "recorded_at": (now - timedelta(minutes=8)).isoformat()
-        },
-        {
-            "old_task_id": 3,
-            "user_id": 6,
-            "latitude": 14.5866,
-            "longitude": 121.0582,
-            "accuracy": 5.8,
-            "altitude": 18.2,
-            "speed": 0.0,
-            "address": "Ortigas Center Building, 3rd Floor",
-            "notes": "Starting HVAC inspection, first unit",
-            "location_type": "auto",
-            "recorded_at": (now - timedelta(minutes=2)).isoformat()
-        },
-        # Nina - Task 6 (Equipment check) - Moving through Mandaluyong
-        {
-            "old_task_id": 6,
-            "user_id": 7,
-            "latitude": 14.5680,
-            "longitude": 121.0380,
-            "accuracy": 5.8,
-            "altitude": 12.0,
-            "speed": 4.0,
-            "address": "Boni Avenue, Mandaluyong",
-            "notes": "En route from previous site",
-            "location_type": "auto",
-            "recorded_at": (now - timedelta(minutes=18)).isoformat()
-        },
-        {
-            "old_task_id": 6,
-            "user_id": 7,
-            "latitude": 14.5750,
-            "longitude": 121.0450,
-            "accuracy": 5.0,
-            "altitude": 14.0,
-            "speed": 1.5,
-            "address": "Shaw Boulevard, approaching building",
-            "notes": "Almost at inspection site",
-            "location_type": "auto",
-            "recorded_at": (now - timedelta(minutes=8)).isoformat()
-        },
-        {
-            "old_task_id": 6,
-            "user_id": 7,
-            "latitude": 14.5814,
-            "longitude": 121.0509,
-            "accuracy": 4.5,
-            "altitude": 15.8,
-            "speed": 0.0,
-            "address": "Shaw Boulevard Building, 3rd Floor",
-            "notes": "Conducting equipment inspection, 2nd floor complete",
-            "location_type": "auto",
-            "recorded_at": (now - timedelta(minutes=1)).isoformat()
-        }
-    ]
-    
-    for location in locations_data:
-        try:
-            old_task_id = location.pop("old_task_id")
-            user_id = location.pop("user_id")
-            new_task_id = task_ids.get(old_task_id)
-            token = user_tokens.get(user_id)
-            
-            if not new_task_id:
-                print_status(f"Task ID {old_task_id} not found, skipping location", "WARNING")
-                continue
-                
-            if not token:
-                print_status(f"Token for user {user_id} not found, skipping location", "WARNING")
-                continue
-            
-            location["task_id"] = new_task_id
-            headers = {"Authorization": f"Bearer {token}"}
-            
-            response = requests.post(
-                f"{base_url}/api/v1/locations/",
-                json=location,
-                headers=headers
-            )
-            
-            if response.status_code in [200, 201]:
-                print_status(f"Created location log for task {new_task_id}", "SUCCESS")
-            else:
-                print_status(f"Failed to create location: {response.status_code} - {response.text}", "ERROR")
-        except Exception as e:
-            print_status(f"Error creating location: {str(e)}", "ERROR")
-
 def main():
-    parser = argparse.ArgumentParser(description="Seed database with initial data")
+    parser = argparse.ArgumentParser(description="Seed database with varied employee performance data")
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="Base URL for API")
     parser.add_argument("--debug", action="store_true", help="Enable debug output")
     args = parser.parse_args()
     
     base_url = args.base_url.rstrip("/")
     
-    print_status(f"Starting seed process for {base_url}...", "INFO")
+    print("=" * 70)
+    print("🎯 PERFORMANCE-BASED EMPLOYEE SEEDING")
+    print("=" * 70)
     print()
     
-    # Step 1: Create/Login admin user
+    # Step 1: Create admin
     print_status("Setting up admin user...", "INFO")
     admin_token, admin_id = create_admin_user(base_url)
     
@@ -623,56 +553,129 @@ def main():
         print_status("Failed to setup admin user. Cannot continue.", "ERROR")
         return
     
-    # Store admin in the mappings
     user_tokens = {1: admin_token}
     user_ids = {1: admin_id}
+    user_tiers = {1: "admin"}
     print()
     
-    # Step 2: Create other users
-    print_status("Creating other users...", "INFO")
-    other_tokens, other_ids = create_users(base_url, admin_token)
+    # Step 2: Create employees with different performance tiers
+    print_status("Creating employees with varied performance profiles...", "INFO")
+    other_tokens, other_ids, other_tiers = create_users(base_url, admin_token)
     user_tokens.update(other_tokens)
     user_ids.update(other_ids)
+    user_tiers.update(other_tiers)
     print()
     
-    # Step 3: Create tasks
-    print_status("Creating tasks...", "INFO")
-    task_ids = create_tasks(base_url, admin_token, user_ids)
+    # Step 3: Generate and create historical tasks (30 days of data)
+    print_status("Generating 30 days of historical task data...", "INFO")
+    historical_tasks = generate_historical_tasks(user_ids, user_tiers)
+    print_status(f"Generated {len(historical_tasks)} historical tasks", "INFO")
     print()
     
-    # Step 4: Start some tasks (creates initial location logs automatically)
-    print_status("Starting ongoing tasks...", "INFO")
-    start_ongoing_tasks(base_url, user_tokens, task_ids)
+    print_status("Creating historical tasks with completion data...", "INFO")
+    historical_task_ids = create_historical_tasks(base_url, admin_token, historical_tasks, user_ids)
     print()
     
-    # Step 5: Create additional location logs (GPS tracking updates)
-    print_status("Creating location tracking updates...", "INFO")
-    create_locations(base_url, user_tokens, task_ids)
+    # Step 4: Create current/future tasks
+    print_status("Creating current tasks...", "INFO")
+    current_task_ids = create_current_tasks(base_url, admin_token, user_ids)
+    print()
+
+    # =============================
+    # VERIFY KPI ENDPOINTS
+    # =============================
+    print_status("Fetching KPI data for verification...", "INFO")
+
+    headers = {"Authorization": f"Bearer {admin_token}"}
+
+    # First verify admin user role
+    me_response = requests.get(f"{base_url}/api/v1/auth/me", headers=headers)
+    if me_response.status_code == 200:
+        admin_info = me_response.json()
+        print_status(f"Admin user info: ID={admin_info.get('id')}, Role={admin_info.get('role')}", "DEBUG")
+    else:
+        print_status(f"Failed to get admin info: {me_response.text}", "ERROR")
+
+    for old_id, actual_id in user_ids.items():
+        if old_id == 1:
+            continue  # skip admin internally
+
+        kpi_url = f"{base_url}/api/v1/analytics/employees/{actual_id}/kpis?days=30"
+        resp = requests.get(kpi_url, headers=headers)
+
+        if resp.status_code == 200:
+            print_status(f"KPI OK for user {actual_id}", "SUCCESS")
+        else:
+            print_status(f"KPI ERROR for {actual_id}: {resp.text}", "ERROR")
+
+
+    
+    # Summary
+    print("=" * 70)
+    print_status("✅ SEEDING COMPLETED SUCCESSFULLY!", "SUCCESS")
+    print("=" * 70)
     print()
     
-    print_status("Seed process completed!", "SUCCESS")
+    # Performance summary
+    print_status("📊 EMPLOYEE PERFORMANCE TIERS:", "INFO")
     print()
-    print_status("Summary:", "INFO")
-    print("  - 4 ongoing tasks with live GPS tracking:")
-    print("    • Pedro: Electrical inspection at Makati (almost at destination)")
-    print("    • Lisa: Network cabling at Eastwood (actively working)")
-    print("    • Carlo: HVAC maintenance at Ortigas (in progress)")
-    print("    • Nina: Equipment check at Mandaluyong (final inspection)")
-    print("  - 4 pending tasks (not yet started)")
+    print("  ⭐ TOP PERFORMERS (2 employees):")
+    print("     • Maria Dela Cruz (maria_excellence)")
+    print("       - 95%+ task completion rate")
+    print("       - Average quality: 4.5+ stars")
+    print("       - Always completes on time or early")
+    print("       - Accurate time estimates (±5%)")
     print()
-    print_status("Login credentials:", "INFO")
-    print("  Admin: admin_user / Admin123!")
-    print("  Supervisor 1: supervisor_juan / Super123!")
-    print("  Supervisor 2: supervisor_ana / Super123!")
-    print("  User 1 (Pedro): field_worker_pedro / User123!")
-    print("  User 2 (Lisa): field_worker_lisa / User123!")
-    print("  User 3 (Carlo): field_worker_carlo / User123!")
-    print("  User 4 (Nina): field_worker_nina / User123!")
+    print("     • James Rodriguez (james_reliable)")
+    print("       - 95%+ task completion rate")
+    print("       - Average quality: 4.5+ stars")
+    print("       - Consistently reliable")
+    print("       - Efficient task execution")
     print()
-    print_status("Test the live tracking:", "INFO")
-    print(f"  - Visit the Supervisor Dashboard")
-    print(f"  - Check 'Live Employee Tracking' section")
-    print(f"  - You should see 4 employees with different locations on the map")
+    
+    print("  📊 MID PERFORMERS (3 employees):")
+    print("     • Carlo Ramos (carlo_average)")
+    print("     • Lisa Mendoza (lisa_decent)")
+    print("     • Pedro Garcia (pedro_moderate)")
+    print("       - 75% task completion rate")
+    print("       - Average quality: 3.5 stars")
+    print("       - Occasionally late on deadlines")
+    print("       - Moderate time estimate variance")
+    print()
+    
+    print("  ⚠️  POOR PERFORMERS (2 employees):")
+    print("     • Tony Santos (tony_struggling)")
+    print("     • Nina Torres (nina_unreliable)")
+    print("       - 50% task completion rate")
+    print("       - Average quality: 2.5 stars")
+    print("       - Frequently late or incomplete tasks")
+    print("       - High time estimate variance (±20%)")
+    print()
+    
+    print_status("🔑 LOGIN CREDENTIALS:", "INFO")
+    print("  Password for all users: User123!")
+    print()
+    print("  Top Performers:")
+    print("    • maria_excellence / User123!")
+    print("    • james_reliable / User123!")
+    print()
+    print("  Mid Performers:")
+    print("    • carlo_average / User123!")
+    print("    • lisa_decent / User123!")
+    print("    • pedro_moderate / User123!")
+    print()
+    print("  Poor Performers:")
+    print("    • tony_struggling / User123!")
+    print("    • nina_unreliable / User123!")
+    print()
+    
+    print_status("📈 NEXT STEPS:", "INFO")
+    print("  1. Login as admin: admin_user / Admin123!")
+    print("  2. Navigate to Analytics/Team Overview")
+    print("  3. View individual employee KPI dashboards")
+    print("  4. Compare performance across all 3 tiers")
+    print("  5. Test ML predictions with different employees")
+    print()
 
 if __name__ == "__main__":
     main()

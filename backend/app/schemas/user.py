@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, validator
 from datetime import datetime
 from typing import Optional
 from app.models.user import UserRole
@@ -9,6 +9,8 @@ class UserBase(BaseModel):
     email: EmailStr
     username: str = Field(..., min_length=3, max_length=50)
     full_name: str = Field(..., min_length=1, max_length=100)
+    # ✅ Added phone number (optional)
+    phone: Optional[str] = None
 
 
 # Schema for user creation (registration)
@@ -28,6 +30,8 @@ class UserResponse(UserBase):
     id: int
     is_active: bool
     role: UserRole
+    # ✅ Added avatar_url so frontend knows where the image is
+    avatar_url: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
 
@@ -40,6 +44,8 @@ class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
     username: Optional[str] = Field(None, min_length=3, max_length=50)
     full_name: Optional[str] = Field(None, min_length=1, max_length=100)
+    # ✅ Added phone number to update schema
+    phone: Optional[str] = None
     is_active: Optional[bool] = None
     role: Optional[UserRole] = None
 
@@ -52,3 +58,36 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     email: Optional[str] = None
+
+
+class PasswordChange(BaseModel):
+    """Schema for password change request"""
+    current_password: str
+    new_password: str
+    
+    @validator('new_password')
+    def validate_new_password(cls, v):
+        if len(v) < 8:
+            raise ValueError('Password must be at least 8 characters long')
+        return v
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "current_password": "OldPassword123!",
+                "new_password": "NewSecurePassword456!"
+            }
+        }
+
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+class PasswordResetConfirm(BaseModel):
+    token: str
+    new_password: str
+    
+    @validator('new_password')
+    def validate_new_password(cls, v):
+        if len(v) < 8:
+            raise ValueError('Password must be at least 8 characters long')
+        return v
