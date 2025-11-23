@@ -216,7 +216,9 @@ async def update_user_profile(
 
         await manager.broadcast_json({
             "event": "user_profile_updated",
-            "user_id": user_id
+            "user_id": user_id,
+            "user_name": user.full_name, # ✅ Added this
+            "details": ", ".join(changes) # ✅ Added this to show what changed
         })
     
     return {
@@ -308,6 +310,7 @@ async def upload_avatar(
     await manager.broadcast_json({
         "event": "user_avatar_updated",
         "user_id": user_id,
+        "user_name": user.full_name, # ✅ Added this
         "avatar_url": user.avatar_url
     })
     
