@@ -19,13 +19,10 @@ services:
   backend:
     build: ./backend
     container_name: taskroute_backend
+    env_file:
+    - ./backend/.env
     ports:
       - "8000:8000"
-    environment:
-      DATABASE_URL: "postgresql://postgres:password@postgres:5432/taskroute"
-      SECRET_KEY: "xK9mP2vN8qR5wT7yU4jL6hG3fD1sA0zX9cV8bN7mQ5"
-      ALGORITHM: "HS256"
-      ACCESS_TOKEN_EXPIRE_MINUTES: 30
     volumes:
       - ./backend:/app
     depends_on:
@@ -44,7 +41,7 @@ services:
     restart: unless-stopped
     environment:
       - REACT_APP_API_URL=http://localhost:8000/api/v1  # ✅ Changed to localhost
-      - REACT_APP_WS_URL=ws://localhost:8000/ws/location # ✅ Changed to localhost
+      - REACT_APP_WS_URL=ws://192.168.102.25:8000/ws/location # ✅ Changed to localhost
 
 volumes:
   postgres_data:
