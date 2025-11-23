@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { MapPin, Clock, BarChart3, Users, CheckCircle, TrendingUp, Shield, Menu, X } from 'lucide-react';
+import AppDownload from '../components/AppDownload';
 
 // ✅ IMPORT LOGO
 import logo from '../assets/Logo.png';
@@ -47,6 +48,7 @@ const LandingPage = () => {
               <button onClick={() => scrollToSection('about')} className="hover:text-blue-400 transition">About</button>
               <button onClick={() => scrollToSection('features')} className="hover:text-blue-400 transition">Features</button>
               <button onClick={() => scrollToSection('how-it-works')} className="hover:text-blue-400 transition">How It Works</button>
+              <button onClick={() => scrollToSection('download')} className="hover:text-blue-400 transition">Download App</button>
               <Link to="/login" className="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded-lg font-semibold transition duration-200">
                 Login
               </Link>
@@ -67,6 +69,7 @@ const LandingPage = () => {
               <button onClick={() => scrollToSection('about')} className="block w-full text-left px-4 hover:text-blue-400 transition">About</button>
               <button onClick={() => scrollToSection('features')} className="block w-full text-left px-4 hover:text-blue-400 transition">Features</button>
               <button onClick={() => scrollToSection('how-it-works')} className="block w-full text-left px-4 hover:text-blue-400 transition">How It Works</button>
+              <button onClick={() => scrollToSection('download')} className="block w-full text-left px-4 hover:text-blue-400 transition">Download App</button>
               <div className="px-4 pt-2">
                 <Link to="/login" className="block w-full bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded-lg font-semibold text-center transition duration-200">
                     Login
@@ -81,19 +84,13 @@ const LandingPage = () => {
       <section className="pt-32 pb-20 px-4">
         <div className="max-w-7xl mx-auto text-center">
           
-          {/* ✅ HERO LOGO: Original Size pero "Zoomed" (Less Padding) */}
+          {/* ✅ HERO LOGO */}
           <div className="flex justify-center mb-8">
             <div className="relative group">
-                {/* Glow Effect */}
                 <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-cyan-600 rounded-[2rem] blur opacity-25 group-hover:opacity-75 transition duration-1000 group-hover:duration-200"></div>
-                
-                {/* Main Logo */}
                 <img 
                     src={logo} 
                     alt="TaskRoute Tracker Logo" 
-                    // CLASS CHANGES:
-                    // md:h-40 md:w-40 -> Binalik sa dating size (hindi sobrang laki)
-                    // p-2 -> Binawasan padding para lumaki ang drawing sa loob (Zoom effect)
                     className="relative h-32 w-32 md:h-40 md:w-40 bg-white p-2 rounded-[2rem] shadow-2xl object-contain transform transition duration-500 hover:scale-105"
                 />
             </div>
@@ -118,6 +115,12 @@ const LandingPage = () => {
             >
               Login to Dashboard
             </Link>
+            <button
+              onClick={() => scrollToSection('download')}
+              className="bg-slate-700 hover:bg-slate-600 text-white px-8 py-4 rounded-lg font-semibold text-lg shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition duration-200 border border-slate-600"
+            >
+              Get Mobile App
+            </button>
           </div>
 
           {/* Hero Stats */}
@@ -298,13 +301,26 @@ const LandingPage = () => {
                   <p className="text-gray-300 leading-relaxed">{item.description}</p>
                 </div>
               </div>
+              
             ))}
           </div>
         </div>
       </section>
 
+      {/* ✅ NEW APP DOWNLOAD SECTION */}
+      <section id="download" className="py-20">
+        <div className="max-w-7xl mx-auto px-4">
+           <div className="text-center mb-12">
+             <h2 className="text-3xl md:text-4xl font-bold mb-4">Download Mobile App</h2>
+             <p className="text-gray-400">Field personnel can scan below to install the app directly.</p>
+           </div>
+           {/* Embed the Component */}
+           <AppDownload />
+        </div>
+      </section>
+
       {/* CTA Section */}
-      <section className="py-20">
+      <section className="py-20 bg-slate-800/50">
         <div className="max-w-4xl mx-auto px-4 text-center">
           <h2 className="text-4xl md:text-5xl font-bold mb-6">Ready to Transform Your Field Operations?</h2>
           <p className="text-xl text-gray-300 mb-8">
@@ -339,6 +355,7 @@ const LandingPage = () => {
               <ul className="space-y-2 text-gray-400 text-sm">
                 <li><button onClick={() => scrollToSection('features')} className="hover:text-blue-400 transition">Features</button></li>
                 <li><button onClick={() => scrollToSection('how-it-works')} className="hover:text-blue-400 transition">How It Works</button></li>
+                <li><button onClick={() => scrollToSection('download')} className="hover:text-blue-400 transition">Download App</button></li>
                 <li><Link to="/login" className="hover:text-blue-400 transition">Login</Link></li>
               </ul>
             </div>
