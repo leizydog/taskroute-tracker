@@ -4,7 +4,7 @@ import 'storage_service.dart';
 
 class ApiService {
   // ✅ Base URL with /api/v1
-  static const String baseUrl = 'http://192.168.102.41:8000/api/v1';
+  static const String baseUrl = 'http://192.168.102.8:8000/api/v1';
 
   // Singleton pattern
   static final ApiService _instance = ApiService._internal();
@@ -88,6 +88,27 @@ class ApiService {
     return response;
   }
 
+  // ✅ Profile Management (Added)
+  Future<http.Response> updateProfile(int userId, Map<String, dynamic> profileData) async {
+    print('=== UPDATE PROFILE API DEBUG ===');
+    print('User ID: $userId');
+    print('Data: $profileData');
+    
+    try {
+      final response = await http.put(
+        Uri.parse('$baseUrl/users/$userId/profile'),
+        headers: _headers,
+        body: json.encode(profileData),
+      );
+      
+      print('Update Profile Response Status: ${response.statusCode}');
+      return response;
+    } catch (e) {
+      print('Update Profile Exception: $e');
+      rethrow;
+    }
+  }
+
   // Task endpoints
   Future<http.Response> getTasks({bool assignedToMe = false}) async {
     print('=== GET TASKS API DEBUG ===');
@@ -162,17 +183,30 @@ class ApiService {
     return response;
   }
 
+  Future<http.Response> cancelTask(int taskId, String reason) async {
+    print('=== CANCEL TASK API DEBUG ===');
+    print('Task ID: $taskId');
+    print('Reason: $reason');
+    
+    final response = await http.post(
+      Uri.parse('$baseUrl/tasks/$taskId/cancel'), 
+      headers: _headers,
+      body: json.encode({'cancellation_reason': reason}), 
+    );
+    
+    return response;
+  }
+
   // Location endpoints
-  // ✅ FIXED: Changed from /locations/log to /locations/
   Future<http.Response> logLocation(Map<String, dynamic> locationData) async {
     print('=== LOG LOCATION API DEBUG ===');
     print('Location Data: $locationData');
-    print('URL: $baseUrl/locations/');  // ✅ Changed endpoint
+    print('URL: $baseUrl/locations/');
     print('Headers: $_headers');
     
     try {
       final response = await http.post(
-        Uri.parse('$baseUrl/locations/'),  // ✅ Changed from /log to /
+        Uri.parse('$baseUrl/locations/'),
         headers: _headers,
         body: json.encode(locationData),
       );
@@ -202,7 +236,7 @@ class ApiService {
     return response;
   }
 
-  // File upload endpoints (for signatures and photos)
+  // File upload endpoints
   Future<http.Response> uploadSignature(int taskId, List<int> signatureBytes) async {
     final request = http.MultipartRequest(
       'POST',
@@ -235,6 +269,22 @@ class ApiService {
     
     final streamedResponse = await request.send();
     return await http.Response.fromStream(streamedResponse);
+  }
+
+  Future<http.Response> acceptTask(int taskId) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/tasks/$taskId/accept'),
+      headers: _headers,
+    );
+    return response;
+  }
+
+  Future<http.Response> declineTask(int taskId) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/tasks/$taskId/decline'),
+      headers: _headers,
+    );
+    return response;
   }
 
   // Health check

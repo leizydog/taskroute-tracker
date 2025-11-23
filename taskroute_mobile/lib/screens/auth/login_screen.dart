@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/loading_button.dart';
-// ❌ REMOVED: import '../auth/register_screen.dart';
+import 'forgot_password_screen.dart';
+import '../home/home_screen.dart'; // ✅ 1. Added Import for Home Screen
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -88,6 +89,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     super.dispose();
   }
 
+  // ✅ 2. Updated Login Logic
   Future<void> _handleLogin() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -99,10 +101,19 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       _passwordController.text,
     );
 
-    if (!success && mounted) {
-      _showErrorSnackBar(
-        authProvider.error ?? 'Login failed. Please check your credentials.',
-      );
+    if (mounted) {
+      if (success) {
+        // ✅ SUCCESS: Navigate to Home Screen and clear history
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const HomeScreen()),
+          (route) => false,
+        );
+      } else {
+        // ❌ FAILURE: Show error
+        _showErrorSnackBar(
+          authProvider.error ?? 'Login failed. Please check your credentials.',
+        );
+      }
     }
   }
 
@@ -182,7 +193,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                       
                       const SizedBox(height: 24),
                       
-                      // ✅ REPLACED: Register link with info message
                       _buildInfoMessage(isDark),
                     ],
                   ),
@@ -212,13 +222,13 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                   borderRadius: BorderRadius.circular(28),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.3),
+                      color: Colors.black.withValues(alpha: 0.3),
                       blurRadius: 30,
                       spreadRadius: 5,
                       offset: const Offset(0, 15),
                     ),
                     BoxShadow(
-                      color: const Color(0xFF2196F3).withOpacity(0.5),
+                      color: const Color(0xFF2196F3).withValues(alpha: 0.5),
                       blurRadius: 40,
                       spreadRadius: -5,
                       offset: const Offset(0, 20),
@@ -276,7 +286,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
             letterSpacing: 1,
             shadows: [
               Shadow(
-                color: Colors.black.withOpacity(0.3),
+                color: Colors.black.withValues(alpha: 0.3),
                 offset: const Offset(0, 4),
                 blurRadius: 10,
               ),
@@ -288,12 +298,12 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
           'Field Task Management',
           style: TextStyle(
             fontSize: isSmallScreen ? 15 : 17,
-            color: Colors.white.withOpacity(0.95),
+            color: Colors.white.withValues(alpha: 0.95),
             letterSpacing: 1.5,
             fontWeight: FontWeight.w300,
             shadows: [
               Shadow(
-                color: Colors.black.withOpacity(0.2),
+                color: Colors.black.withValues(alpha: 0.2),
                 offset: const Offset(0, 2),
                 blurRadius: 5,
               ),
@@ -311,15 +321,15 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         borderRadius: BorderRadius.circular(28),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.25),
+            color: Colors.black.withValues(alpha: 0.25),
             blurRadius: 40,
             spreadRadius: 5,
             offset: const Offset(0, 20),
           ),
           BoxShadow(
             color: isDark 
-                ? Colors.blue.withOpacity(0.1)
-                : Colors.blue.withOpacity(0.15),
+                ? Colors.blue.withValues(alpha: 0.1)
+                : Colors.blue.withValues(alpha: 0.15),
             blurRadius: 60,
             spreadRadius: -10,
             offset: const Offset(0, 30),
@@ -374,14 +384,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                   );
                 },
               ),
-              
-              const SizedBox(height: 20),
-              
-              _buildDivider(isDark),
-              
-              const SizedBox(height: 20),
-              
-              _buildGoogleButton(isDark, isSmallScreen),
             ],
           ),
         ),
@@ -408,8 +410,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
           boxShadow: [
             BoxShadow(
               color: isDark 
-                  ? Colors.black.withOpacity(0.3)
-                  : Colors.grey.withOpacity(0.1),
+                  ? Colors.black.withValues(alpha: 0.3)
+                  : Colors.grey.withValues(alpha: 0.1),
               blurRadius: 15,
               offset: const Offset(0, 5),
             ),
@@ -484,8 +486,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
           boxShadow: [
             BoxShadow(
               color: isDark 
-                  ? Colors.black.withOpacity(0.3)
-                  : Colors.grey.withOpacity(0.1),
+                  ? Colors.black.withValues(alpha: 0.3)
+                  : Colors.grey.withValues(alpha: 0.1),
               blurRadius: 15,
               offset: const Offset(0, 5),
             ),
@@ -555,10 +557,14 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   }
 
   Widget _buildRememberMeRow(bool isDark) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    return Wrap(
+      alignment: WrapAlignment.spaceBetween,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 8,
+      runSpacing: 8,
       children: [
         Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
             SizedBox(
               height: 22,
@@ -589,14 +595,18 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         ),
         TextButton(
           onPressed: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: const Text('Forgot password feature coming soon!'),
-                behavior: SnackBarBehavior.floating,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const ForgotPasswordScreen(),
               ),
             );
           },
+          style: TextButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            minimumSize: Size.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
           child: const Text(
             'Forgot Password?',
             style: TextStyle(
@@ -633,7 +643,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFF2196F3).withOpacity(0.4),
+              color: const Color(0xFF2196F3).withValues(alpha: 0.4),
               blurRadius: 20,
               spreadRadius: 2,
               offset: const Offset(0, 8),
@@ -645,7 +655,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF2196F3),
             foregroundColor: Colors.white,
-            disabledBackgroundColor: const Color(0xFF2196F3).withOpacity(0.6),
+            disabledBackgroundColor: const Color(0xFF2196F3).withValues(alpha: 0.6),
             padding: const EdgeInsets.symmetric(vertical: 18),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
@@ -674,125 +684,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     );
   }
 
-  Widget _buildDivider(bool isDark) {
-    return Row(
-      children: [
-        Expanded(
-          child: Divider(
-            color: isDark ? Colors.grey[700] : Colors.grey[300],
-            thickness: 1.5,
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Text(
-            'OR',
-            style: TextStyle(
-              color: isDark ? Colors.grey[500] : Colors.grey[600],
-              fontSize: 13,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 1,
-            ),
-          ),
-        ),
-        Expanded(
-          child: Divider(
-            color: isDark ? Colors.grey[700] : Colors.grey[300],
-            thickness: 1.5,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildGoogleButton(bool isDark, bool isSmallScreen) {
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0.0, end: 1.0),
-      duration: const Duration(milliseconds: 1200),
-      builder: (context, value, child) {
-        return Transform.scale(
-          scale: 0.8 + (0.2 * value),
-          child: Opacity(
-            opacity: value,
-            child: child,
-          ),
-        );
-      },
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: isDark 
-                  ? Colors.black.withOpacity(0.3)
-                  : Colors.grey.withOpacity(0.15),
-              blurRadius: 15,
-              offset: const Offset(0, 5),
-            ),
-          ],
-        ),
-        child: OutlinedButton.icon(
-          onPressed: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: const Text('Google Sign In coming soon!'),
-                behavior: SnackBarBehavior.floating,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-            );
-          },
-          icon: Image.network(
-            'https://www.google.com/favicon.ico',
-            height: 24,
-            width: 24,
-            errorBuilder: (context, error, stackTrace) {
-              return Container(
-                height: 24,
-                width: 24,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF4285F4), Color(0xFFDB4437), Color(0xFFF4B400), Color(0xFF0F9D58)],
-                  ),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: const Center(
-                  child: Text(
-                    'G',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-          label: Text(
-            'Continue with Google',
-            style: TextStyle(
-              fontSize: isSmallScreen ? 14 : 15,
-              color: isDark ? Colors.white : Colors.black87,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          style: OutlinedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            side: BorderSide(
-              color: isDark ? Colors.grey[700]! : Colors.grey[300]!,
-              width: 1.5,
-            ),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            backgroundColor: isDark ? Colors.grey[850] : Colors.white,
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ✅ NEW: Info message instead of register link
   Widget _buildInfoMessage(bool isDark) {
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0.0, end: 1.0),
@@ -810,16 +701,16 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           color: isDark 
-              ? Colors.white.withOpacity(0.08) 
-              : Colors.white.withOpacity(0.35),
+              ? Colors.white.withValues(alpha: 0.08) 
+              : Colors.white.withValues(alpha: 0.35),
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: Colors.white.withOpacity(0.3),
+            color: Colors.white.withValues(alpha: 0.3),
             width: 1.5,
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.1),
+              color: Colors.black.withValues(alpha: 0.1),
               blurRadius: 15,
               offset: const Offset(0, 5),
             ),
@@ -830,7 +721,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
           children: [
             Icon(
               Icons.info_outline,
-              color: Colors.white.withOpacity(0.95),
+              color: Colors.white.withValues(alpha: 0.95),
               size: 20,
             ),
             const SizedBox(width: 12),
@@ -838,7 +729,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
               child: Text(
                 'Contact your administrator for account access',
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.95),
+                  color: Colors.white.withValues(alpha: 0.95),
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
                 ),

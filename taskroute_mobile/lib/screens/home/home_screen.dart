@@ -6,7 +6,6 @@ import '../../providers/location_provider.dart';
 import '../auth/tasks/task_list_screen.dart';
 import '../auth/tasks/task_detail_screen.dart';
 import '../profile/profile_screen.dart';
-import '../../widgets/task_summary_card.dart';
 import '../../models/task_model.dart';
 import '../../services/notification_service.dart';
 
@@ -178,83 +177,123 @@ class _DashboardTabState extends State<DashboardTab> with TickerProviderStateMix
     
     return Scaffold(
       appBar: AppBar(
-        title: Consumer<AuthProvider>(
-          builder: (context, authProvider, _) {
-            return Text(
-              'Hi, ${authProvider.user?.fullName?.split(' ').first ?? 'Employee'}',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 22,
-                color: isDark ? Colors.white : Colors.black87,
-              ),
-            );
-          },
-        ),
-        actions: [
-          // Notification Bell Icon
-          _buildNotificationBell(context, isDark),
-          
-          const SizedBox(width: 8),
-          
-          // GPS Status
-          Consumer<LocationProvider>(
-            builder: (context, locationProvider, _) {
-              return Container(
-                margin: const EdgeInsets.only(right: 16),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: locationProvider.isLocationEnabled 
-                      ? Colors.green.withOpacity(0.15)
-                      : Colors.red.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: locationProvider.isLocationEnabled 
-                        ? Colors.green
-                        : Colors.red,
-                    width: 1.5,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: (locationProvider.isLocationEnabled 
-                          ? Colors.green
-                          : Colors.red).withOpacity(0.3),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      locationProvider.isLocationEnabled 
-                        ? Icons.location_on 
-                        : Icons.location_off,
-                      color: locationProvider.isLocationEnabled 
-                        ? Colors.green
-                        : Colors.red,
-                      size: 18,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      locationProvider.isLocationEnabled ? 'GPS ON' : 'GPS OFF',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: locationProvider.isLocationEnabled 
-                          ? Colors.green
-                          : Colors.red,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-        ],
+        automaticallyImplyLeading: false,
+        titleSpacing: 0, // Remove default padding to allow full control
         backgroundColor: Colors.transparent,
         elevation: 0,
+        title: SizedBox(
+          height: 56, // Standard AppBar height
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              // 1. LEFT: Greeting (with width constraint to avoid overlapping center)
+              Positioned(
+                left: 20, // Matches your body padding
+                top: 0,
+                bottom: 0,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: MediaQuery.of(context).size.width * 0.35, // Prevent text from hitting the bell
+                    ),
+                    child: Consumer<AuthProvider>(
+                      builder: (context, authProvider, _) {
+                        return Text(
+                          'Hi, ${authProvider.user?.fullName?.split(' ').first ?? 'Employee'}',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 22,
+                            color: isDark ? Colors.white : Colors.black87,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ),
+
+              // 2. CENTER: Notification Bell
+              // Uses Positioned.fill + Center to grab absolute middle
+              Positioned.fill(
+                child: Center(
+                  // Your _buildNotificationBell has a 'margin: right: 8', which makes it 
+                  // look slightly off-center to the left. This transform fixes that 
+                  // so the icon is perfectly in the middle.
+                  child: Transform.translate(
+                    offset: const Offset(4, 0), 
+                    child: _buildNotificationBell(context, isDark),
+                  ),
+                ),
+              ),
+
+              // 3. RIGHT: GPS Status
+              Positioned(
+                right: 4, // Set to 4 because your GPS widget already has 'margin: right: 16' (4+16=20px total)
+                top: 0,
+                bottom: 0,
+                child: Center(
+                  child: Consumer<LocationProvider>(
+                    builder: (context, locationProvider, _) {
+                      return Container(
+                        margin: const EdgeInsets.only(right: 16), // Existing margin from your code
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: locationProvider.isLocationEnabled 
+                              ? Colors.green.withOpacity(0.15)
+                              : Colors.red.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: locationProvider.isLocationEnabled 
+                                ? Colors.green
+                                : Colors.red,
+                            width: 1.5,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: (locationProvider.isLocationEnabled 
+                                  ? Colors.green
+                                  : Colors.red).withOpacity(0.3),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              locationProvider.isLocationEnabled 
+                                ? Icons.location_on 
+                                : Icons.location_off,
+                              color: locationProvider.isLocationEnabled 
+                                ? Colors.green
+                                : Colors.red,
+                              size: 18,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              locationProvider.isLocationEnabled ? 'GPS ON' : 'GPS OFF',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: locationProvider.isLocationEnabled 
+                                  ? Colors.green
+                                  : Colors.red,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
       body: RefreshIndicator(
         onRefresh: () async {
@@ -280,11 +319,9 @@ class _DashboardTabState extends State<DashboardTab> with TickerProviderStateMix
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Error message if any
                     if (taskProvider.error != null)
                       _buildErrorCard(taskProvider, isDark),
 
-                    // Current active task
                     if (taskProvider.currentTask != null)
                       SlideTransition(
                         position: _slideAnimation,
@@ -296,13 +333,8 @@ class _DashboardTabState extends State<DashboardTab> with TickerProviderStateMix
                       ),
 
                     const SizedBox(height: 24),
-
-                    // Task summary cards
                     _buildTaskSummary(context, taskProvider, isDark),
-
                     const SizedBox(height: 28),
-
-                    // Recent tasks section
                     _buildRecentTasksSection(context, taskProvider, isDark),
                   ],
                 ),
@@ -827,6 +859,7 @@ class _DashboardTabState extends State<DashboardTab> with TickerProviderStateMix
     );
   }
 
+  // ✅ FIXED: Added queued and declined cases
   Color _getStatusColor(TaskStatus status) {
     switch (status) {
       case TaskStatus.pending:
@@ -837,9 +870,14 @@ class _DashboardTabState extends State<DashboardTab> with TickerProviderStateMix
         return Colors.green;
       case TaskStatus.cancelled:
         return Colors.red;
+      case TaskStatus.queued:
+        return Colors.purple;
+      case TaskStatus.declined:
+        return Colors.grey;
     }
   }
 
+  // ✅ FIXED: Added queued and declined cases
   IconData _getStatusIcon(TaskStatus status) {
     switch (status) {
       case TaskStatus.pending:
@@ -850,6 +888,10 @@ class _DashboardTabState extends State<DashboardTab> with TickerProviderStateMix
         return Icons.check_circle_rounded;
       case TaskStatus.cancelled:
         return Icons.cancel_rounded;
+      case TaskStatus.queued:
+        return Icons.hourglass_empty_rounded;
+      case TaskStatus.declined:
+        return Icons.block_rounded;
     }
   }
 
@@ -978,7 +1020,7 @@ class _DashboardTabState extends State<DashboardTab> with TickerProviderStateMix
   }
 }
 
-// Notification Panel Widget
+// Notification Panel Widget (same as previous, just making sure file is complete)
 class NotificationPanel extends StatefulWidget {
   final bool isDark;
   

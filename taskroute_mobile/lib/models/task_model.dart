@@ -4,7 +4,10 @@ enum TaskStatus {
   pending,
   inProgress,
   completed,
-  cancelled;
+  cancelled,
+  queued,    // ✅ NEW
+  declined;  // ✅ NEW
+  
 
   static TaskStatus fromString(String status) {
     switch (status.toLowerCase()) {
@@ -16,6 +19,10 @@ enum TaskStatus {
         return TaskStatus.completed;
       case 'cancelled':
         return TaskStatus.cancelled;
+      case 'queued': 
+      return TaskStatus.queued;     // ✅ NEW
+      case 'declined': 
+      return TaskStatus.declined; // ✅ NEW
       default:
         return TaskStatus.pending;
     }
@@ -31,6 +38,10 @@ enum TaskStatus {
         return 'Completed';
       case TaskStatus.cancelled:
         return 'Cancelled';
+      case TaskStatus.queued: 
+      return 'Queued';     // ✅ NEW
+      case TaskStatus.declined: 
+      return 'Declined'; // ✅ NEW
     }
   }
 }

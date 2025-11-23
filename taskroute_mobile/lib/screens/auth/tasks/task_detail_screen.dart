@@ -26,15 +26,18 @@ class TaskDetailScreen extends StatefulWidget {
 class _TaskDetailScreenState extends State<TaskDetailScreen> {
   final _completionNotesController = TextEditingController();
   final _signatureController = SignatureController(
-    penStrokeWidth: 2,
+    penStrokeWidth: 3,
     penColor: Colors.black,
     exportBackgroundColor: Colors.white,
   );
   
-  final List<File> _photos = [];
+  // Single file instead of List<File>
+  File? _photo;
+  
   bool _isLoading = false;
   int _qualityRating = 5;
   Position? _currentPosition;
+  bool _isFetchingLocation = false;
 
   @override
   void initState() {
@@ -50,189 +53,294 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   }
 
   Future<void> _getCurrentLocation() async {
-    final locationProvider = Provider.of<LocationProvider>(context, listen: false);
-    _currentPosition = await locationProvider.getCurrentPosition();
+    setState(() => _isFetchingLocation = true);
+    try {
+      final locationProvider = Provider.of<LocationProvider>(context, listen: false);
+      _currentPosition = await locationProvider.getCurrentPosition();
+    } catch (e) {
+      debugPrint("Error getting location: $e");
+    } finally {
+      if (mounted) setState(() => _isFetchingLocation = false);
+    }
   }
 
   Future<void> _takePhoto() async {
     final picker = ImagePicker();
     final pickedFile = await picker.pickImage(
       source: ImageSource.camera,
-      imageQuality: 80,
+      imageQuality: 70,
       maxWidth: 1920,
       maxHeight: 1920,
     );
 
     if (pickedFile != null) {
       setState(() {
-        _photos.add(File(pickedFile.path));
+        _photo = File(pickedFile.path);
       });
     }
   }
 
   Future<void> _selectFromGallery() async {
     final picker = ImagePicker();
-    final pickedFiles = await picker.pickMultiImage(
-      imageQuality: 80,
+    final pickedFile = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 70,
       maxWidth: 1920,
       maxHeight: 1920,
     );
 
-    if (pickedFiles.isNotEmpty) {
+    if (pickedFile != null) {
       setState(() {
-        _photos.addAll(pickedFiles.map((file) => File(file.path)));
+        _photo = File(pickedFile.path);
       });
     }
   }
 
-  void _removePhoto(int index) {
+  void _clearPhoto() {
     setState(() {
-      _photos.removeAt(index);
+      _photo = null;
     });
   }
 
-  void _clearSignature() {
-    _signatureController.clear();
-  }
-
- Future<void> _startTask() async {
-  if (_currentPosition == null) {
-    final locationProvider = Provider.of<LocationProvider>(context, listen: false);
-    _currentPosition = await locationProvider.getCurrentPosition();
-
-    if (_currentPosition == null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Unable to get current location. Please try again.'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      });
-      return;
-    }
-  }
-
-  if (mounted) {
+  // ✅ Accept Task (Queue)
+  Future<void> _handleAccept(int taskId) async {
     setState(() => _isLoading = true);
-  }
-
-  try {
-    // ensure task has a pinned location before starting / navigating
-    if (!widget.task.hasLocation) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('This task has no location to navigate to.'),
-            backgroundColor: Colors.orange,
-          ),
-        );
-      });
-      return;
-    }
-
-    final taskProvider = Provider.of<TaskProvider>(context, listen: false);
-
-    final locationData = {
-      'latitude': _currentPosition!.latitude,
-      'longitude': _currentPosition!.longitude,
-    };
-
-    final success = await taskProvider.startTask(widget.task.id, locationData);
-
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted) return;
-
-      if (success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Task started successfully!'),
-            backgroundColor: Colors.green,
-          ),
-        );
-
-        // Navigate to TaskMapScreen (pass the four required params)
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => TaskMapScreen(
-              key: UniqueKey(), // 👈 forces Flutter to rebuild fresh state
-              taskLat: widget.task.effectiveLatitude!,
-              taskLng: widget.task.effectiveLongitude!,
-              taskTitle: widget.task.title,
-              taskDescription: widget.task.description ?? 'No description provided.',
-              userLat: _currentPosition?.latitude,
-              userLng: _currentPosition?.longitude,
-              destinations: widget.task.destinations,  // ✅ Add this
-            ),
-          ),
-        );
-      } else {
-        final errorMessage = taskProvider.error ?? 'Failed to start task';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(errorMessage),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    });
-  } catch (e) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error starting task: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    });
-  } finally {
+    final provider = Provider.of<TaskProvider>(context, listen: false);
+    final success = await provider.acceptTask(taskId);
+    
     if (mounted) {
       setState(() => _isLoading = false);
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Task added to your queue"), backgroundColor: Colors.green),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(provider.error ?? "Failed to accept task"), backgroundColor: Colors.red),
+        );
+      }
     }
   }
-}
 
-
-
-  Future<void> _completeTask() async {
-    if (_completionNotesController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please add completion notes'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
+  // ✅ Decline Task
+  Future<void> _handleDecline(int taskId) async {
+    setState(() => _isLoading = true);
+    final provider = Provider.of<TaskProvider>(context, listen: false);
+    final success = await provider.declineTask(taskId);
+    
+    if (mounted) {
+      setState(() => _isLoading = false);
+      if (success) {
+        Navigator.pop(context); // Exit screen since we declined
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Task declined"), backgroundColor: Colors.grey),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(provider.error ?? "Failed to decline task"), backgroundColor: Colors.red),
+        );
+      }
     }
+  }
 
-    if (_signatureController.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please provide your signature'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
+  Future<void> _cancelTask(TaskModel currentTask) async {
+    final reasonController = TextEditingController();
+    
+    final shouldCancel = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        return AlertDialog(
+          title: const Text('Cancel Task'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.red.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.warning_amber_rounded, color: Colors.red),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Important: Please inform your supervisor before cancelling so they can reassign the task immediately.',
+                          style: TextStyle(
+                            color: isDark ? Colors.red[200] : Colors.red[800],
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Text('Please provide a reason for cancellation (e.g., emergency, vehicle breakdown):'),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: reasonController,
+                  maxLines: 2,
+                  decoration: const InputDecoration(
+                    hintText: 'Enter reason here...',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                SizedBox(height: MediaQuery.of(context).viewInsets.bottom > 0 ? 20 : 0),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Go Back'),
+            ),
+            TextButton(
+              onPressed: () {
+                if (reasonController.text.trim().isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Reason is required to cancel.')),
+                  );
+                  return;
+                }
+                Navigator.pop(context, true);
+              },
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('Confirm Cancel'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldCancel == true) {
+      setState(() => _isLoading = true);
+      try {
+        final taskProvider = Provider.of<TaskProvider>(context, listen: false);
+        
+        final success = await taskProvider.cancelTask(
+          currentTask.id, 
+          reasonController.text.trim()
+        );
+
+        if (mounted) {
+          if (success) {
+            _showSnack('Task cancelled successfully.', Colors.orange);
+            Navigator.of(context).pop(); 
+          } else {
+            _showSnack(taskProvider.error ?? 'Failed to cancel task', Colors.red);
+          }
+        }
+      } catch (e) {
+        if (mounted) _showSnack('Error cancelling task: $e', Colors.red);
+      } finally {
+        if (mounted) setState(() => _isLoading = false);
+      }
     }
+  }
 
+  Future<void> _startTask(TaskModel currentTask) async {
     if (_currentPosition == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Unable to get current location. Please try again.'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      await _getCurrentLocation();
+    }
+    
+    if (_currentPosition == null) {
+      _showSnack('Unable to get current location. Please enable GPS.', Colors.red);
       return;
     }
 
     setState(() => _isLoading = true);
 
     try {
+      if (!currentTask.hasLocation) {
+        _showSnack('This task has no location to navigate to.', Colors.orange);
+        return;
+      }
+
       final taskProvider = Provider.of<TaskProvider>(context, listen: false);
-      
-      // Get signature as bytes
+      final locationData = {
+        'latitude': _currentPosition!.latitude,
+        'longitude': _currentPosition!.longitude,
+      };
+
+      final success = await taskProvider.startTask(currentTask.id, locationData);
+
+      if (mounted) {
+        if (success) {
+          _showSnack('Task started successfully!', Colors.green);
+          
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => TaskMapScreen(
+                key: UniqueKey(),
+                taskLat: currentTask.effectiveLatitude!,
+                taskLng: currentTask.effectiveLongitude!,
+                taskTitle: currentTask.title,
+                taskDescription: currentTask.description ?? 'No description provided.',
+                userLat: _currentPosition?.latitude,
+                userLng: _currentPosition?.longitude,
+                destinations: currentTask.destinations,
+              ),
+            ),
+          );
+        } else {
+          _showSnack(taskProvider.error ?? 'Failed to start task', Colors.red);
+        }
+      }
+    } catch (e) {
+      if (mounted) _showSnack('Error starting task: $e', Colors.red);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _completeTask(TaskModel currentTask) async {
+    if (_completionNotesController.text.trim().isEmpty) {
+      _showSnack('Please add completion notes', Colors.orange);
+      return;
+    }
+
+    if (_signatureController.isEmpty) {
+      _showSnack('Client signature is required', Colors.orange);
+      return;
+    }
+
+    if (_currentPosition == null) {
+      await _getCurrentLocation();
+    }
+    if (_currentPosition == null) {
+      _showSnack('GPS location is required to complete tasks.', Colors.red);
+      return;
+    }
+
+    if (currentTask.hasLocation) {
+      double distanceInMeters = Geolocator.distanceBetween(
+        _currentPosition!.latitude,
+        _currentPosition!.longitude,
+        currentTask.effectiveLatitude!,
+        currentTask.effectiveLongitude!,
+      );
+
+      if (distanceInMeters > 500) {
+        _showSnack(
+          'You are too far (${distanceInMeters.round()}m). Please move within 500m.', 
+          Colors.red
+        );
+        return;
+      }
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final taskProvider = Provider.of<TaskProvider>(context, listen: false);
       final Uint8List? signatureBytes = await _signatureController.toPngBytes();
       
       final completionData = {
@@ -242,583 +350,511 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
         'longitude': _currentPosition!.longitude,
         'accuracy': _currentPosition!.accuracy,
         'timestamp': DateTime.now().toIso8601String(),
-        'photos_count': _photos.length,
+        'photos_count': _photo != null ? 1 : 0,
         'has_signature': signatureBytes != null,
       };
 
       final success = await taskProvider.completeTask(
-        widget.task.id,
+        currentTask.id,
         completionData,
         signatureBytes: signatureBytes,
-        photos: _photos,
+        photos: _photo != null ? [_photo!] : [],
       );
 
-      if (success) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Task completed successfully!'),
-              backgroundColor: Colors.green,
-            ),
-          );
+      if (mounted) {
+        if (success) {
+          _showSnack('Task completed successfully!', Colors.green);
           Navigator.of(context).pop();
-        }
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(taskProvider.error ?? 'Failed to complete task'),
-              backgroundColor: Colors.red,
-            ),
-          );
+        } else {
+          _showSnack(taskProvider.error ?? 'Failed to complete task', Colors.red);
         }
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error completing task: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      if (mounted) _showSnack('Error completing task: $e', Colors.red);
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  void _showSnack(String msg, Color color) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: color,
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textColor = isDark ? Colors.white : Colors.black;
+
+    final taskProvider = Provider.of<TaskProvider>(context);
+    final TaskModel currentTask = taskProvider.tasks.firstWhere(
+      (t) => t.id == widget.task.id,
+      orElse: () => widget.task,
+    );
+
     return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        title: Text('Task Details'),
-        actions: [
-          if (widget.task.status == TaskStatus.pending)
-            IconButton(
-              icon: const Icon(Icons.play_arrow),
-              onPressed: _isLoading ? null : _startTask,
-              tooltip: 'Start Task',
-            ),
-        ],
+        title: Text('Task Details', style: TextStyle(color: textColor)),
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        elevation: 0,
+        iconTheme: IconThemeData(color: textColor),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildTaskHeader(),
+            _buildHeader(currentTask, isDark, textColor),
             const SizedBox(height: 24),
-            _buildTaskDetails(),
+            _buildSectionTitle("Location", isDark),
+            _buildLocationCard(currentTask, isDark),
             const SizedBox(height: 24),
-            if (widget.task.hasLocation) _buildLocationSection(),
-            const SizedBox(height: 24),
-            if (widget.task.status == TaskStatus.inProgress) ...[
-              _buildCompletionSection(),
+            _buildSectionTitle("Details", isDark),
+            _buildInfoList(currentTask, isDark),
+            const SizedBox(height: 32),
+            
+            if (currentTask.status == TaskStatus.inProgress) ...[
+              Divider(thickness: 1, color: isDark ? Colors.grey[800] : Colors.grey[200]),
               const SizedBox(height: 24),
+              _buildSectionTitle("Proof of Delivery", isDark),
+              _buildProofOfDeliveryForm(isDark, textColor),
             ],
-            _buildActionButtons(),
           ],
         ),
       ),
+      bottomNavigationBar: _buildBottomAction(currentTask, isDark),
     );
   }
 
-  Widget _buildTaskHeader() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: _getStatusColor(widget.task.status).withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: _getStatusColor(widget.task.status).withOpacity(0.3),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: _getStatusColor(widget.task.status),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Text(
-                  widget.task.status.displayName.toUpperCase(),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: _getPriorityColor(widget.task.priority).withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  widget.task.priority.displayName,
-                  style: TextStyle(
-                    color: _getPriorityColor(widget.task.priority),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            widget.task.title,
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          if (widget.task.description != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              widget.task.description!,
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                color: Colors.grey[700],
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTaskDetails() {
+  Widget _buildHeader(TaskModel task, bool isDark, Color textColor) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Task Information',
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.bold,
-          ),
+        Row(
+          children: [
+            Chip(
+              label: Text(task.status.displayName.toUpperCase()),
+              backgroundColor: _getStatusColor(task.status).withOpacity(0.15),
+              labelStyle: TextStyle(
+                color: _getStatusColor(task.status),
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
+              ),
+              side: BorderSide.none,
+            ),
+            const SizedBox(width: 8),
+            Chip(
+              label: Text(task.priority.displayName),
+              backgroundColor: isDark ? Colors.grey[800] : Colors.grey[100],
+              labelStyle: TextStyle(color: isDark ? Colors.grey[300] : Colors.grey[800], fontSize: 12),
+              side: BorderSide.none,
+            ),
+          ],
         ),
         const SizedBox(height: 12),
-        _buildDetailRow('Assigned to', widget.task.assignedUserName),
-        _buildDetailRow('Created by', widget.task.createdUserName),
-        _buildDetailRow('Created', widget.task.formattedCreatedAt),
-        if (widget.task.dueDate != null)
-          _buildDetailRow('Due date', widget.task.formattedDueDate),
-        _buildDetailRow('Estimated duration', widget.task.estimatedDurationText),
-        if (widget.task.actualDuration != null)
-          _buildDetailRow('Actual duration', widget.task.actualDurationText),
-        if (widget.task.startedAt != null)
-          _buildDetailRow('Started at', widget.task.startedAt!.toString()),
-        if (widget.task.completedAt != null)
-          _buildDetailRow('Completed at', widget.task.completedAt!.toString()),
-        if (widget.task.completionNotes != null) ...[
+        Text(
+          task.title,
+          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: textColor),
+        ),
+        if (task.description != null) ...[
           const SizedBox(height: 8),
           Text(
-            'Completion Notes:',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
+            task.description!,
+            style: TextStyle(
+              color: isDark ? Colors.grey[400] : Colors.grey[600], 
+              fontSize: 16, 
+              height: 1.5
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            widget.task.completionNotes!,
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-        ],
-        if (widget.task.qualityRating != null) ...[
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Text(
-                'Quality Rating: ',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              ...List.generate(5, (index) => Icon(
-                index < widget.task.qualityRating!
-                    ? Icons.star
-                    : Icons.star_border,
-                color: Colors.amber,
-                size: 20,
-              )),
-            ],
           ),
         ],
       ],
     );
   }
 
-  Widget _buildDetailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+  Widget _buildLocationCard(TaskModel task, bool isDark) {
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E293B) : Colors.blue[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: isDark ? Colors.blue[900]! : Colors.blue[100]!),
+      ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 140,
-            child: Text(
-              '$label:',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.grey[800] : Colors.white, 
+              shape: BoxShape.circle
+            ),
+            child: const Icon(Icons.map_outlined, color: Colors.blue),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  task.effectiveLocationName ?? "No location set",
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold, 
+                    fontSize: 16,
+                    color: isDark ? Colors.white : Colors.black87
+                  ),
+                ),
+                if (task.isMultiDestination)
+                  Text(
+                    "${task.destinations?.length ?? 0} stops",
+                    style: TextStyle(color: Colors.blue[400], fontSize: 12),
+                  ),
+              ],
             ),
           ),
-          Expanded(
-            child: Text(
-              value,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
+          if (task.hasLocation)
+            IconButton(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => TaskMapScreen(
+                      taskLat: task.effectiveLatitude,
+                      taskLng: task.effectiveLongitude,
+                      taskTitle: task.title,
+                      taskDescription: task.description ?? '',
+                      destinations: task.destinations,
+                    ),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.blue),
+            )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoList(TaskModel task, bool isDark) {
+    return Column(
+      children: [
+        _buildDetailRow(Icons.calendar_today, "Due Date", task.formattedDueDate, isDark),
+        _buildDetailRow(Icons.person_outline, "Assigned By", task.createdUserName, isDark),
+        _buildDetailRow(Icons.timer_outlined, "Est. Duration", task.estimatedDurationText, isDark),
+      ],
+    );
+  }
+
+  Widget _buildDetailRow(IconData icon, String label, String value, bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: isDark ? Colors.grey[500] : Colors.grey[400]),
+          const SizedBox(width: 12),
+          Text(
+            label, 
+            style: TextStyle(color: isDark ? Colors.grey[400] : Colors.grey, fontSize: 14)
+          ),
+          const Spacer(),
+          Text(
+            value, 
+            style: TextStyle(
+              fontWeight: FontWeight.w500, 
+              fontSize: 14,
+              color: isDark ? Colors.grey[200] : Colors.black87
+            )
           ),
         ],
       ),
     );
   }
 
-  // In _buildLocationSection(), update the coordinates text and button:
-Widget _buildLocationSection() {
-  return Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(
-        'Location',
-        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-          fontWeight: FontWeight.bold,
+  Widget _buildProofOfDeliveryForm(bool isDark, Color textColor) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 12),
+        TextField(
+          controller: _completionNotesController,
+          maxLines: 3,
+          style: TextStyle(color: textColor),
+          decoration: InputDecoration(
+            hintText: 'Add completion notes...',
+            hintStyle: TextStyle(color: isDark ? Colors.grey[500] : Colors.grey[500]),
+            filled: true,
+            fillColor: isDark ? Colors.grey[800] : Colors.grey[50],
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide.none,
+            ),
+          ),
         ),
-      ),
-      const SizedBox(height: 12),
-      Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.grey[50],
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey[300]!),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        const SizedBox(height: 20),
+        
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            if (widget.task.isMultiDestination && widget.task.destinations != null) ...[
+            Text("Photo", style: TextStyle(fontWeight: FontWeight.w600, color: textColor)),
+            if (_photo == null)
               Row(
                 children: [
-                  const Icon(Icons.route, color: Colors.blue),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      '${widget.task.destinations!.length} Destinations',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
+                  IconButton(icon: Icon(Icons.camera_alt_outlined, color: textColor), onPressed: _takePhoto),
+                  IconButton(icon: Icon(Icons.photo_library_outlined, color: textColor), onPressed: _selectFromGallery),
+                ],
+              )
+          ],
+        ),
+        
+        if (_photo != null)
+          Container(
+            height: 200,
+            width: double.infinity,
+            margin: const EdgeInsets.only(top: 8),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: isDark ? Colors.grey[700]! : Colors.grey[300]!),
+              image: DecorationImage(
+                image: FileImage(_photo!),
+                fit: BoxFit.cover,
+              ),
+            ),
+            child: Stack(
+              children: [
+                Positioned(
+                  right: 8,
+                  top: 8,
+                  child: GestureDetector(
+                    onTap: _clearPhoto,
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: const BoxDecoration(
+                        color: Colors.red,
+                        shape: BoxShape.circle,
+                        boxShadow: [BoxShadow(blurRadius: 4, color: Colors.black26)],
                       ),
+                      child: const Icon(Icons.close, size: 20, color: Colors.white),
                     ),
                   ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              ...widget.task.destinations!.map((dest) => Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 20,
-                      height: 20,
-                      decoration: BoxDecoration(
-                        color: Colors.blue,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Center(
-                        child: Text(
-                          '${dest.sequence}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        dest.locationName,
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                    ),
-                  ],
                 ),
-              )).toList(),
-            ] else if (widget.task.effectiveLocationName != null) ...[
+              ],
+            ),
+          ),
+        
+        const SizedBox(height: 20),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text("Signature *", style: TextStyle(fontWeight: FontWeight.w600, color: textColor)),
+            TextButton(onPressed: () => _signatureController.clear(), child: const Text("Clear")),
+          ],
+        ),
+        Container(
+          height: 180,
+          decoration: BoxDecoration(
+            border: Border.all(color: isDark ? Colors.grey[700]! : Colors.grey[300]!, width: 1),
+            borderRadius: BorderRadius.circular(12),
+            color: Colors.white, 
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Signature(
+              controller: _signatureController,
+              backgroundColor: Colors.transparent,
+            ),
+          ),
+        ),
+        
+        const SizedBox(height: 20),
+        Text("Quality Rating", style: TextStyle(fontWeight: FontWeight.w600, color: textColor)),
+        const SizedBox(height: 8),
+        Row(
+          children: List.generate(5, (index) => GestureDetector(
+            onTap: () => setState(() => _qualityRating = index + 1),
+            child: Padding(
+              padding: const EdgeInsets.only(right: 8.0),
+              child: Icon(
+                index < _qualityRating ? Icons.star : Icons.star_border,
+                color: Colors.amber,
+                size: 32,
+              ),
+            ),
+          )),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBottomAction(TaskModel task, bool isDark) {
+    // Hide actions for non-actionable statuses
+    if (task.status == TaskStatus.completed || 
+        task.status == TaskStatus.cancelled ||
+        task.status == TaskStatus.declined) {
+      return const SizedBox.shrink();
+    }
+
+    final bool isBusy = _isLoading || _isFetchingLocation;
+    final double bottomPadding = MediaQuery.of(context).padding.bottom;
+    
+    // Check if any OTHER task is in progress
+    final taskProvider = Provider.of<TaskProvider>(context, listen: false);
+    final bool hasActiveTask = taskProvider.tasks.any(
+      (t) => t.status == TaskStatus.inProgress && t.id != task.id
+    );
+
+    return Container(
+      padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + bottomPadding),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(isDark ? 0.3 : 0.05), 
+            blurRadius: 10, 
+            offset: const Offset(0, -5)
+          )
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_isFetchingLocation)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8.0),
+              child: Text(
+                "Acquiring GPS Location...", 
+                style: TextStyle(fontSize: 12, color: Colors.blue)
+              ),
+            ),
+
+          // 1. PENDING Tasks
+          if (task.status == TaskStatus.pending) ...[
+            if (hasActiveTask) ...[
+              // Busy -> Show Accept/Decline
               Row(
                 children: [
-                  const Icon(Icons.location_on, color: Colors.blue),
-                  const SizedBox(width: 8),
                   Expanded(
-                    child: Text(
-                      widget.task.effectiveLocationName!,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
+                    child: OutlinedButton(
+                      onPressed: isBusy ? null : () => _handleDecline(task.id),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.red,
+                        side: const BorderSide(color: Colors.red),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
                       ),
+                      child: const Text('Decline'),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: isBusy ? null : () => _handleAccept(task.id),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue[700],
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                      child: const Text('Accept (Queue)'),
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 8),
-              Text(
-                'Coordinates: ${widget.task.effectiveLatitude!.toStringAsFixed(6)}, ${widget.task.effectiveLongitude!.toStringAsFixed(6)}',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Colors.grey[600],
-                ),
+              const Text(
+                "You have a task in progress. Accepting this will add it to your queue.",
+                style: TextStyle(fontSize: 11, color: Colors.grey),
+                textAlign: TextAlign.center,
               ),
-            ],
-            const SizedBox(height: 12),
-            if (widget.task.hasLocation)
-              SizedBox(
+            ] else ...[
+              // Free -> Show Start Task
+              LoadingButton(
+                onPressed: () => _startTask(task),
+                isLoading: isBusy,
+                text: 'Start Task',
+                backgroundColor: isDark ? Colors.white : Colors.black,
+                textColor: isDark ? Colors.black : Colors.white,
                 width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => TaskMapScreen(
-                          taskLat: widget.task.effectiveLatitude,
-                          taskLng: widget.task.effectiveLongitude,
-                          taskTitle: widget.task.title,
-                          taskDescription: widget.task.description ?? 'No description provided.',
-                          destinations: widget.task.destinations,  // ✅ Add this
-                        ),
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.map),
-                  label: const Text('View on Map'),
-                ),
               ),
+            ]
           ],
-        ),
+
+          // 2. QUEUED Tasks
+          if (task.status == TaskStatus.queued) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.purple.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.purple.withOpacity(0.3)),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.hourglass_empty, size: 20, color: Colors.purple),
+                  SizedBox(width: 8),
+                  Text(
+                    "Queued - Will start automatically", 
+                    style: TextStyle(color: Colors.purple, fontWeight: FontWeight.bold)
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          // 3. IN PROGRESS Tasks
+          if (task.status == TaskStatus.inProgress) ...[
+            LoadingButton(
+              onPressed: () => _completeTask(task),
+              isLoading: isBusy,
+              text: 'Complete Task',
+              backgroundColor: Colors.blue[600],
+              width: double.infinity,
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: isBusy ? null : () => _cancelTask(task),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.red[400],
+                  side: BorderSide(color: Colors.red[400]!.withOpacity(0.5)),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+                child: const Text("Cancel Task"),
+              ),
+            ),
+          ],
+        ],
       ),
-    ],
-  );
-}
-
-  Widget _buildCompletionSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Complete Task',
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 16),
-        
-        // Completion Notes
-        TextFormField(
-          controller: _completionNotesController,
-          maxLines: 4,
-          decoration: InputDecoration(
-            labelText: 'Completion Notes *',
-            hintText: 'Describe the work performed, any issues encountered, etc.',
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            filled: true,
-            fillColor: Colors.grey[50],
-          ),
-        ),
-        const SizedBox(height: 16),
-
-        // Quality Rating
-        Text(
-          'Quality Rating',
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: List.generate(5, (index) => GestureDetector(
-            onTap: () => setState(() => _qualityRating = index + 1),
-            child: Icon(
-              index < _qualityRating ? Icons.star : Icons.star_border,
-              color: Colors.amber,
-              size: 32,
-            ),
-          )),
-        ),
-        const SizedBox(height: 16),
-
-        // Photos
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'Photos (${_photos.length})',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            Row(
-              children: [
-                IconButton(
-                  onPressed: _takePhoto,
-                  icon: const Icon(Icons.camera_alt),
-                  tooltip: 'Take Photo',
-                ),
-                IconButton(
-                  onPressed: _selectFromGallery,
-                  icon: const Icon(Icons.photo_library),
-                  tooltip: 'Select from Gallery',
-                ),
-              ],
-            ),
-          ],
-        ),
-        if (_photos.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          SizedBox(
-            height: 100,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: _photos.length,
-              itemBuilder: (context, index) => Container(
-                width: 100,
-                margin: const EdgeInsets.only(right: 8),
-                child: Stack(
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Image.file(
-                        _photos[index],
-                        width: 100,
-                        height: 100,
-                        fit: BoxFit.cover,
-                      ),
-                    ),
-                    Positioned(
-                      top: 4,
-                      right: 4,
-                      child: GestureDetector(
-                        onTap: () => _removePhoto(index),
-                        child: Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: const BoxDecoration(
-                            color: Colors.red,
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.close,
-                            color: Colors.white,
-                            size: 16,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-        const SizedBox(height: 16),
-
-        // Signature
-        Text(
-          'Signature *',
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Container(
-          width: double.infinity,
-          height: 200,
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.grey[300]!),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Signature(
-            controller: _signatureController,
-            backgroundColor: Colors.white,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Align(
-          alignment: Alignment.centerRight,
-          child: TextButton.icon(
-            onPressed: _clearSignature,
-            icon: const Icon(Icons.clear),
-            label: const Text('Clear'),
-          ),
-        ),
-      ],
     );
   }
 
-  Widget _buildActionButtons() {
-    if (widget.task.status == TaskStatus.completed) {
-      return const SizedBox.shrink();
-    }
-
-    return Column(
-      children: [
-        if (widget.task.status == TaskStatus.pending)
-          LoadingButton(
-            onPressed: _startTask,
-            isLoading: _isLoading,
-            text: 'Start Task',
-            width: double.infinity,
-            backgroundColor: Colors.green,
-          ),
-        if (widget.task.status == TaskStatus.inProgress) ...[
-          LoadingButton(
-            onPressed: _completeTask,
-            isLoading: _isLoading,
-            text: 'Complete Task',
-            width: double.infinity,
-            backgroundColor: Colors.blue,
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton(
-              onPressed: _isLoading ? null : () {
-                // TODO: Add pause/cancel functionality
-              },
-              child: const Text('Pause Task'),
-            ),
-          ),
-        ],
-      ],
+  Widget _buildSectionTitle(String title, bool isDark) {
+    return Text(
+      title.toUpperCase(),
+      style: TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.bold,
+        color: isDark ? Colors.grey[400] : Colors.grey[500],
+        letterSpacing: 1.2,
+      ),
     );
   }
 
+  // ✅ Fixed non-exhaustive switch error
   Color _getStatusColor(TaskStatus status) {
     switch (status) {
-      case TaskStatus.pending:
-        return Colors.orange;
-      case TaskStatus.inProgress:
-        return Colors.blue;
-      case TaskStatus.completed:
-        return Colors.green;
-      case TaskStatus.cancelled:
-        return Colors.red;
-    }
-  }
-
-  Color _getPriorityColor(TaskPriority priority) {
-    switch (priority) {
-      case TaskPriority.low:
-        return Colors.green;
-      case TaskPriority.medium:
-        return Colors.orange;
-      case TaskPriority.high:
-        return Colors.red;
-      case TaskPriority.urgent:
-        return Colors.purple;
+      case TaskStatus.pending: return Colors.orange;
+      case TaskStatus.inProgress: return Colors.blue;
+      case TaskStatus.completed: return Colors.green;
+      case TaskStatus.cancelled: return Colors.red;
+      case TaskStatus.queued: return Colors.purple;
+      case TaskStatus.declined: return Colors.grey;
     }
   }
 }

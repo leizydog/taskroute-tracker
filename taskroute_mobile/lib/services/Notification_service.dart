@@ -34,39 +34,54 @@ class NotificationService {
   Future<void> _saveReadTaskIds() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setStringList(
-        'read_task_ids',
-        _readTaskIds.map((id) => id.toString()).toList(),
-      );
+      await prefs.setStringList('read_task_ids', _readTaskIds.map((id) => id.toString()).toList());
     } catch (e) {
       print('Error saving read task IDs: $e');
     }
   }
 
+  // Method to add a notification when a new task arrives
   void addNotification(TaskModel task) {
-    // Don't add if task was already read or already in unread list
-    if (_readTaskIds.contains(task.id)) {
-      print('Task ${task.id} was already read, skipping notification');
-      return;
-    }
-    
-    // Don't add notification for completed or in-progress tasks
-    if (task.status == TaskStatus.completed || task.status == TaskStatus.inProgress) {
-      print('Task ${task.id} is ${task.status.displayName}, skipping notification');
-      return;
-    }
-    
-    if (!_unreadTasks.any((t) => t.id == task.id)) {
-      print('Adding notification for task: ${task.title}');
+    // Only add if not previously read and not already in list
+    if (!_readTaskIds.contains(task.id) && !_unreadTasks.any((t) => t.id == task.id)) {
       _unreadTasks.insert(0, task); // Add to front for newest first
       _notificationStream.add(task);
     }
   }
-  
+
   // Remove notification when task status changes
   void removeNotificationByTaskId(int taskId) {
     _unreadTasks.removeWhere((t) => t.id == taskId);
-    print('Removed notification for task $taskId');
+    // We don't necessarily mark as read here, just remove from active notifications
+  }
+  
+  // 1. Task Archived: Remove from notifications if it exists
+  void notifyTaskArchived(int taskId) {
+    removeNotificationByTaskId(taskId);
+  }
+
+  // 2. Task Deleted: Remove from notifications if it exists
+  void notifyTaskDeleted(int taskId) {
+    removeNotificationByTaskId(taskId);
+  }
+
+  // 3. Employee Complete Task: Receive a notification
+  void notifyTaskCompleted(TaskModel task) {
+    // We stream the task so the UI can show a success message/snackbar
+    _notificationStream.add(task);
+    
+    // We remove it from unread "To Do" notifications since it's done
+    removeNotificationByTaskId(task.id);
+  }
+
+  // 4. Employee Accepted/Started Queued Task: Notification when it starts
+  void notifyTaskStarted(TaskModel task) {
+    // Ensure it's in the unread list as it is now an active task
+    if (!_unreadTasks.any((t) => t.id == task.id)) {
+      _unreadTasks.insert(0, task);
+    }
+    // Broadcast to UI
+    _notificationStream.add(task);
   }
   
   // Update existing notifications based on task status
@@ -93,11 +108,10 @@ class NotificationService {
     _unreadTasks.removeWhere((t) => t.id == taskId);
     _readTaskIds.add(taskId);
     _saveReadTaskIds();
-    print('Marked task $taskId as read');
   }
 
-  // Call this when you want to reset all notifications (e.g., on logout)
-  Future<void> clearAllReadHistory() async {
+  // Call this when you want to reset read status (e.g. logout)
+  Future<void> clearReadHistory() async {
     _readTaskIds.clear();
     _unreadTasks.clear();
     final prefs = await SharedPreferences.getInstance();
