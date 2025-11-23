@@ -7,12 +7,11 @@ from app.database import get_db
 from app.models.user import User, UserRole
 from app.models.task import Task, TaskStatus
 from app.models.location import LocationLog
-# ✅ Import AuditLog
 from app.models.audit import AuditLog
 from app.schemas.location import LocationLogCreate
 from app.schemas.task import (
     TaskCreate, TaskUpdate, TaskResponse, TaskStart,
-    TaskComplete, TaskWithUsers, TaskStats, OngoingTasksByUser, UserWithOngoingTask
+    TaskComplete, TaskWithUsers, TaskStats, OngoingTasksByUser, UserWithOngoingTask, TaskCancel
 )
 from app.core.auth import get_current_active_user
 from app.websocket_manager import manager
@@ -28,207 +27,9 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 PHOTO_DIR.mkdir(parents=True, exist_ok=True)
 
 
-@router.post("/", response_model=TaskWithUsers, status_code=status.HTTP_201_CREATED)
-async def create_task(
-    task_data: TaskCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
-):
-    assigned_user = db.query(User).filter(User.id == task_data.assigned_to).first()
-    if not assigned_user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Assigned user not found"
-        )
-
-    # --- ✅ START OF FIX ---
-    # Convert Pydantic model to a dictionary
-    task_dict = task_data.dict()
-    
-    # Manually serialize 'destinations' to a JSON string if it exists
-    if task_dict.get("destinations"):
-        task_dict["destinations"] = json.dumps(task_dict["destinations"])
-    
-    db_task = Task(
-        **task_dict,  # Use the modified dictionary instead of task_data.dict()
-        created_by=current_user.id
-    )
-
-    db.add(db_task)
-    db.commit()
-    db.refresh(db_task)
-
-    # ✅ Audit Log: Task Creation
-    audit = AuditLog(
-        user_id=current_user.id,
-        action="TASK_CREATE",
-        target_resource=f"Task #{db_task.id}",
-        details=f"Title: {db_task.title}, Assigned to: {assigned_user.full_name}"
-    )
-    db.add(audit)
-    db.commit()
-
-    # ⚡ Real-time Audit Broadcast
-    await manager.broadcast_json({
-        "event": "audit_log_created",
-        "log": {
-            "id": audit.id,
-            "action": audit.action,
-            "target_resource": audit.target_resource,
-            "details": audit.details,
-            "timestamp": audit.timestamp.isoformat(),
-            "user_email": current_user.email
-        }
-    })
-
-    # Re-query to load relationships before sending the response
-    created_task_with_users = db.query(Task).options(
-        joinedload(Task.assigned_user),
-        joinedload(Task.created_user)
-    ).filter(Task.id == db_task.id).first()
-
-    response_task = TaskWithUsers(
-        **created_task_with_users.__dict__,
-        assigned_user_name=created_task_with_users.assigned_user.full_name,
-        created_user_name=created_task_with_users.created_user.full_name
-    )
-
-    # Broadcast that a new task has been created (useful for live updates)
-    await manager.broadcast_json({
-        "event": "task_created",
-        "task": response_task.model_dump_json()
-    })
-
-    return response_task
-
-
-@router.get("/", response_model=List[TaskWithUsers])
-async def get_tasks(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=100),
-    status: Optional[TaskStatus] = None,
-    assigned_to_me: bool = False,
-    created_by_me: bool = False,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
-):
-    query = db.query(Task).options(
-        joinedload(Task.assigned_user),
-        joinedload(Task.created_user)
-    )
-
-    if status:
-        query = query.filter(Task.status == status)
-    if assigned_to_me:
-        query = query.filter(Task.assigned_to == current_user.id)
-    if created_by_me:
-        query = query.filter(Task.created_by == current_user.id)
-
-    query = query.order_by(desc(Task.created_at))
-    tasks = query.offset(skip).limit(limit).all()
-
-    return [
-        TaskWithUsers(
-           **t.__dict__,
-            # ✅ FIX: Safe navigation with 'if' check to prevent crashes
-            assigned_user_name=t.assigned_user.full_name if t.assigned_user else None,
-            created_user_name=t.created_user.full_name if t.created_user else None
-        )
-        for t in tasks
-    ]
-
-
-@router.get("/{task_id}", response_model=TaskWithUsers)
-async def get_task(
-    task_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
-):
-    task = db.query(Task).options(
-        joinedload(Task.assigned_user),
-        joinedload(Task.created_user)
-    ).filter(Task.id == task_id).first()
-
-    if not task:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Task not found"
-        )
-
-    return TaskWithUsers(
-        **task.__dict__,
-        assigned_user_name=task.assigned_user.full_name,
-        created_user_name=task.created_user.full_name
-    )
-
-
-@router.put("/{task_id}", response_model=TaskWithUsers)
-async def update_task(
-    task_id: int,
-    task_update: TaskUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
-):
-    task = db.query(Task).options(
-        joinedload(Task.assigned_user),
-        joinedload(Task.created_user)
-    ).filter(Task.id == task_id).first()
-    if not task:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Task not found"
-        )
-
-    update_data = task_update.dict(exclude_unset=True)
-    
-    # Capture changes for audit log
-    changes = []
-    for field, value in update_data.items():
-        old_val = getattr(task, field)
-        if old_val != value:
-            changes.append(f"{field}: {old_val} -> {value}")
-        setattr(task, field, value)
-
-    db.commit()
-    db.refresh(task)
-
-    # ✅ Audit Log: Task Update
-    if changes:
-        audit = AuditLog(
-            user_id=current_user.id,
-            action="TASK_UPDATE",
-            target_resource=f"Task #{task.id}",
-            details=", ".join(changes)[:500]  # Truncate if too long
-        )
-        db.add(audit)
-        db.commit()
-
-        # ⚡ Real-time Audit Broadcast
-        await manager.broadcast_json({
-            "event": "audit_log_created",
-            "log": {
-                "id": audit.id,
-                "action": audit.action,
-                "target_resource": audit.target_resource,
-                "details": audit.details,
-                "timestamp": audit.timestamp.isoformat(),
-                "user_email": current_user.email
-            }
-        })
-
-    response_task = TaskWithUsers(
-        **task.__dict__,
-        assigned_user_name=task.assigned_user.full_name,
-        created_user_name=task.created_user.full_name
-    )
-
-    await manager.broadcast_json({
-        "event": "task_updated",
-        "task": response_task.model_dump_json()
-    })
-
-    return response_task
-
+# ============================================================================
+# ADMIN OPERATIONS
+# ============================================================================
 
 @router.post("/{task_id}/seed-historical", response_model=TaskWithUsers)
 async def seed_historical_task(
@@ -264,7 +65,7 @@ async def seed_historical_task(
         if "status" in historical_data:
             status_value = historical_data["status"]
             if isinstance(status_value, str):
-                task.status = TaskStatus(status_value)
+                task.status = TaskStatus(status_value.upper())  # ✅ Ensure uppercase
             else:
                 task.status = status_value
         
@@ -302,380 +103,9 @@ async def seed_historical_task(
         )
 
 
-@router.post("/{task_id}/start", response_model=TaskWithUsers)
-async def start_task(
-    task_id: int,
-    start_data: TaskStart,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
-):
-    # Check if the user already has an active task
-    active_task = db.query(Task).filter(
-        Task.assigned_to == current_user.id,
-        Task.status == TaskStatus.IN_PROGRESS
-    ).first()
-
-    if active_task:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="You already have an active task. Complete it before starting a new one."
-        )
-
-    # Fetch the task to be started
-    task = db.query(Task).options(
-        joinedload(Task.assigned_user),
-        joinedload(Task.created_user)
-    ).filter(Task.id == task_id).first()
-
-    # --- Validation ---
-    if not task:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Task not found"
-        )
-    if task.assigned_to != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You can only start tasks assigned to you"
-        )
-    if task.status != TaskStatus.PENDING:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Task can only be started from pending status"
-        )
-
-    # --- Create the first location log for this task when it starts ---
-    if start_data.latitude is not None and start_data.longitude is not None:
-        location_log_data = LocationLogCreate(
-            latitude=start_data.latitude,
-            longitude=start_data.longitude,
-            task_id=task.id,
-            location_type="task_start"
-        )
-        db_location_log = LocationLog(**location_log_data.model_dump(), user_id=current_user.id)
-        db.add(db_location_log)
-
-    # Update task status and start time
-    task.status = TaskStatus.IN_PROGRESS
-    task.started_at = datetime.utcnow()
-
-    db.commit()
-    db.refresh(task)
-
-    # ✅ Audit Log: Task Started
-    audit = AuditLog(
-        user_id=current_user.id,
-        action="TASK_START",
-        target_resource=f"Task #{task.id}",
-        details=f"Started by user. Loc: {start_data.latitude},{start_data.longitude}"
-    )
-    db.add(audit)
-    db.commit()
-
-    # ⚡ Real-time Audit Broadcast
-    await manager.broadcast_json({
-        "event": "audit_log_created",
-        "log": {
-            "id": audit.id,
-            "action": audit.action,
-            "target_resource": audit.target_resource,
-            "details": audit.details,
-            "timestamp": audit.timestamp.isoformat(),
-            "user_email": current_user.email
-        }
-    })
-
-    # ✅ FIX: Use model_validate instead of **task.__dict__
-    # ✅ Manually construct with relationship data
-    response_task = TaskWithUsers(
-        id=task.id,
-        title=task.title,
-        description=task.description,
-        priority=task.priority,
-        is_multi_destination=task.is_multi_destination,
-        destinations=task.destinations,
-        location_name=task.location_name,
-        latitude=task.latitude,
-        longitude=task.longitude,
-        address=task.address,
-        estimated_duration=task.estimated_duration,
-        due_date=task.due_date,
-        status=task.status,
-        assigned_to=task.assigned_to,
-        created_by=task.created_by,
-        actual_duration=task.actual_duration,
-        started_at=task.started_at,
-        completed_at=task.completed_at,
-        created_at=task.created_at,
-        updated_at=task.updated_at,
-        completion_notes=task.completion_notes,
-        quality_rating=task.quality_rating,
-        signature_url=task.signature_url,
-        assigned_user_name=task.assigned_user.full_name if task.assigned_user else None,
-        created_user_name=task.created_user.full_name if task.created_user else None,
-    )
-
-    # Broadcast that the task has started
-    await manager.broadcast_json({
-        "event": "task_started",
-        "task": response_task.model_dump_json()
-    })
-
-    # Also broadcast the initial location so the map updates immediately
-    if start_data.latitude is not None and start_data.longitude is not None:
-        await manager.broadcast_json({
-            "event": "location_update",
-            "task_id": task.id,
-            "latitude": start_data.latitude,
-            "longitude": start_data.longitude,
-            "user_id": current_user.id,
-            "user_name": current_user.full_name,
-        })
-
-    return response_task
-
-
-@router.post("/{task_id}/complete", response_model=TaskWithUsers)
-async def complete_task(
-    task_id: int,
-    complete_data: TaskComplete,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
-):
-    task = db.query(Task).options(
-        joinedload(Task.assigned_user),
-        joinedload(Task.created_user)
-    ).filter(Task.id == task_id).first()
-    
-    if not task:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
-
-    if task.assigned_to != current_user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only complete tasks assigned to you")
-    
-    if task.status != TaskStatus.IN_PROGRESS:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Task must be in progress to be completed")
-
-    # Calculate Duration
-    completion_time = datetime.utcnow()
-    if task.started_at:
-        duration_seconds = (completion_time - task.started_at).total_seconds()
-        task.actual_duration = int(duration_seconds / 60)
-
-    # Update Status
-    task.status = TaskStatus.COMPLETED
-    task.completed_at = completion_time
-    
-    # Update Completion Details
-    task.completion_notes = complete_data.completion_notes
-    task.quality_rating = complete_data.quality_rating
-    task.signature_url = complete_data.signature_url # Save the signature path
-
-    # Location update on complete
-    if complete_data.latitude is not None:
-        task.latitude = complete_data.latitude
-    if complete_data.longitude is not None:
-        task.longitude = complete_data.longitude
-
-    db.commit()
-    db.refresh(task)
-
-    # Audit Log
-    audit = AuditLog(
-        user_id=current_user.id,
-        action="TASK_COMPLETE",
-        target_resource=f"Task #{task.id}",
-        details=f"Duration: {task.actual_duration}m, Rating: {task.quality_rating}"
-    )
-    db.add(audit)
-    db.commit()
-
-    # Broadcast
-    await manager.broadcast_json({
-        "event": "audit_log_created",
-        "log": {
-            "id": audit.id,
-            "action": audit.action,
-            "target_resource": audit.target_resource,
-            "details": audit.details,
-            "timestamp": audit.timestamp.isoformat(),
-            "user_email": current_user.email
-        }
-    })
-
-    # ✅ FIX: Use safe construction instead of **task.__dict__
-    response_task = TaskWithUsers(
-        id=task.id,
-        title=task.title,
-        description=task.description,
-        priority=task.priority,
-        is_multi_destination=task.is_multi_destination,
-        destinations=task.destinations,
-        location_name=task.location_name,
-        latitude=task.latitude,
-        longitude=task.longitude,
-        address=task.address,
-        estimated_duration=task.estimated_duration,
-        due_date=task.due_date,
-        status=task.status,
-        assigned_to=task.assigned_to,
-        created_by=task.created_by,
-        actual_duration=task.actual_duration,
-        started_at=task.started_at,
-        completed_at=task.completed_at,
-        created_at=task.created_at,
-        updated_at=task.updated_at,
-        completion_notes=task.completion_notes,
-        quality_rating=task.quality_rating,
-        signature_url=task.signature_url,
-        assigned_user_name=task.assigned_user.full_name if task.assigned_user else None,
-        created_user_name=task.created_user.full_name if task.created_user else None,
-    )
-
-    await manager.broadcast_json({
-        "event": "task_completed",
-        "task_id": task.id
-    })
-
-    return response_task
-
-@router.post("/{task_id}/signature")
-async def upload_signature(
-    task_id: int,
-    signature: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
-):
-    """Upload task completion signature"""
-    task = db.query(Task).filter(Task.id == task_id).first()
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-    
-    if task.assigned_to != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized")
-    
-    # Generate unique filename
-    file_extension = signature.filename.split('.')[-1] if '.' in signature.filename else 'png'
-    unique_filename = f"signature_{task_id}_{uuid.uuid4().hex[:8]}.{file_extension}"
-    file_path = UPLOAD_DIR / unique_filename
-    
-    # Save file
-    with open(file_path, "wb") as buffer:
-        content = await signature.read()
-        buffer.write(content)
-    
-    # Update task with signature URL
-    task.signature_url = f"/static/signatures/{unique_filename}"
-    db.commit()
-    db.refresh(task)
-    
-    print(f"✅ Signature saved: {task.signature_url}")
-    
-    return {
-        "message": "Signature uploaded successfully",
-        "signature_url": task.signature_url
-    }
-
-
-@router.post("/{task_id}/photo")
-async def upload_photo(
-    task_id: int,
-    photo: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
-):
-    """Upload task completion photo"""
-    task = db.query(Task).filter(Task.id == task_id).first()
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-    
-    if task.assigned_to != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized")
-    
-    # Generate unique filename
-    file_extension = photo.filename.split('.')[-1] if '.' in photo.filename else 'jpg'
-    unique_filename = f"photo_{task_id}_{uuid.uuid4().hex[:8]}.{file_extension}"
-    file_path = PHOTO_DIR / unique_filename
-    
-    # Save file
-    with open(file_path, "wb") as buffer:
-        content = await photo.read()
-        buffer.write(content)
-    
-    photo_url = f"/static/photos/{unique_filename}"
-    
-    # ✅ FIX: Store photo URL in task
-    if task.photo_urls is None:
-        task.photo_urls = []
-    
-    # Append to existing photos
-    task.photo_urls = task.photo_urls + [photo_url]
-    
-    db.commit()
-    db.refresh(task)
-    
-    print(f"✅ Photo saved and added to task: {photo_url}")
-    
-    return {
-        "message": "Photo uploaded successfully",
-        "photo_url": photo_url,
-        "total_photos": len(task.photo_urls)
-    }
-
-
-@router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_task(
-    task_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
-):
-    task = db.query(Task).filter(Task.id == task_id).first()
-    if not task:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Task not found"
-        )
-
-    # Allow admins and supervisors to delete any task
-    if current_user.role not in [UserRole.ADMIN, UserRole.SUPERVISOR] and task.created_by != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You can only delete tasks you created"
-        )
-
-    task_title = task.title
-    task_id_to_broadcast = task.id
-    db.delete(task)
-    db.commit()
-    
-    # ✅ Audit Log: Task Deletion
-    audit = AuditLog(
-        user_id=current_user.id,
-        action="TASK_DELETE",
-        target_resource=f"Task #{task_id_to_broadcast}",
-        details=f"Deleted task: {task_title}"
-    )
-    db.add(audit)
-    db.commit()
-    
-    # ⚡ Real-time Audit Broadcast
-    await manager.broadcast_json({
-        "event": "audit_log_created",
-        "log": {
-            "id": audit.id,
-            "action": audit.action,
-            "target_resource": audit.target_resource,
-            "details": audit.details,
-            "timestamp": audit.timestamp.isoformat(),
-            "user_email": current_user.email
-        }
-    })
-
-    await manager.broadcast_json({
-        "event": "task_deleted",
-        "task_id": task_id_to_broadcast
-    })
-
+# ============================================================================
+# STATISTICS AND REPORTING
+# ============================================================================
 
 @router.get("/stats/performance", response_model=TaskStats)
 async def get_task_statistics(
@@ -683,6 +113,7 @@ async def get_task_statistics(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
+    """Get task performance statistics for a user"""
     if user_id is None:
         user_id = current_user.id
 
@@ -728,7 +159,7 @@ async def get_task_statistics(
         tasks_by_status=tasks_by_status,
         tasks_by_priority=tasks_by_priority
     )
-    
+
 
 @router.get("/stats/ongoing-by-users", response_model=OngoingTasksByUser)
 async def get_ongoing_tasks_by_users(
@@ -795,3 +226,836 @@ async def get_ongoing_tasks_by_users(
         total_ongoing_tasks=len(ongoing_tasks),
         users=users_data
     )
+#============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
+async def auto_start_next_task(user_id: int, db: Session):
+    """Check for QUEUED tasks and start the next one automatically."""
+    next_task = db.query(Task).options(
+        joinedload(Task.assigned_user),
+        joinedload(Task.created_user)
+    ).filter(
+        Task.assigned_to == user_id,
+        Task.status == TaskStatus.QUEUED
+    ).order_by(Task.priority.desc(), Task.created_at.asc()).first()
+
+    if next_task:
+        next_task.status = TaskStatus.IN_PROGRESS
+        next_task.started_at = datetime.utcnow()
+        
+        db.commit()
+        db.refresh(next_task)
+        
+        # Audit
+        audit = AuditLog(
+            user_id=user_id, 
+            action="TASK_AUTO_START",
+            target_resource=f"Task #{next_task.id}", 
+            details="Auto-started from queue"
+        )
+        db.add(audit)
+        db.commit()
+        
+        # Broadcast
+        response_task = TaskWithUsers.model_validate(next_task)
+        await manager.broadcast_json({
+            "event": "task_started", 
+            "task": response_task.model_dump_json(),
+            "auto_started": True
+        })
+
+
+# ============================================================================
+# TASK CRUD OPERATIONS
+# ============================================================================
+
+@router.post("/", response_model=TaskWithUsers, status_code=status.HTTP_201_CREATED)
+async def create_task(
+    task_data: TaskCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    assigned_user = db.query(User).filter(User.id == task_data.assigned_to).first()
+    if not assigned_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Assigned user not found"
+        )
+
+    # Convert Pydantic model to dictionary
+    task_dict = task_data.dict()
+    
+    # Manually serialize 'destinations' to JSON string if it exists
+    if task_dict.get("destinations"):
+        task_dict["destinations"] = json.dumps(task_dict["destinations"])
+    
+    db_task = Task(
+        **task_dict,
+        created_by=current_user.id
+    )
+
+    db.add(db_task)
+    db.commit()
+    db.refresh(db_task)
+
+    # Audit Log: Task Creation
+    audit = AuditLog(
+        user_id=current_user.id,
+        action="TASK_CREATE",
+        target_resource=f"Task #{db_task.id}",
+        details=f"Title: {db_task.title}, Assigned to: {assigned_user.full_name}"
+    )
+    db.add(audit)
+    db.commit()
+
+    # Real-time Audit Broadcast
+    await manager.broadcast_json({
+        "event": "audit_log_created",
+        "log": {
+            "id": audit.id,
+            "action": audit.action,
+            "target_resource": audit.target_resource,
+            "details": audit.details,
+            "timestamp": audit.timestamp.isoformat(),
+            "user_email": current_user.email
+        }
+    })
+
+    # Re-query to load relationships
+    created_task_with_users = db.query(Task).options(
+        joinedload(Task.assigned_user),
+        joinedload(Task.created_user)
+    ).filter(Task.id == db_task.id).first()
+
+    response_task = TaskWithUsers(
+        **created_task_with_users.__dict__,
+        assigned_user_name=created_task_with_users.assigned_user.full_name,
+        created_user_name=created_task_with_users.created_user.full_name
+    )
+
+    # Broadcast task creation
+    await manager.broadcast_json({
+        "event": "task_created",
+        "task": response_task.model_dump_json()
+    })
+
+    return response_task
+
+
+@router.get("/", response_model=List[TaskWithUsers])
+async def get_tasks(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=100),
+    status: Optional[TaskStatus] = None,
+    assigned_to_me: bool = False,
+    created_by_me: bool = False,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    query = db.query(Task).options(
+        joinedload(Task.assigned_user),
+        joinedload(Task.created_user)
+    )
+
+    if status:
+        query = query.filter(Task.status == status)
+    if assigned_to_me:
+        query = query.filter(Task.assigned_to == current_user.id)
+    if created_by_me:
+        query = query.filter(Task.created_by == current_user.id)
+
+    query = query.order_by(desc(Task.created_at))
+    tasks = query.offset(skip).limit(limit).all()
+
+    return [
+        TaskWithUsers(
+           **t.__dict__,
+            assigned_user_name=t.assigned_user.full_name if t.assigned_user else None,
+            created_user_name=t.created_user.full_name if t.created_user else None
+        )
+        for t in tasks
+    ]
+
+
+@router.get("/{task_id}", response_model=TaskWithUsers)
+async def get_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    task = db.query(Task).options(
+        joinedload(Task.assigned_user),
+        joinedload(Task.created_user)
+    ).filter(Task.id == task_id).first()
+
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found"
+        )
+
+    return TaskWithUsers(
+        **task.__dict__,
+        assigned_user_name=task.assigned_user.full_name,
+        created_user_name=task.created_user.full_name
+    )
+
+
+@router.put("/{task_id}", response_model=TaskWithUsers)
+async def update_task(
+    task_id: int,
+    task_update: TaskUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    task = db.query(Task).options(
+        joinedload(Task.assigned_user),
+        joinedload(Task.created_user)
+    ).filter(Task.id == task_id).first()
+    
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found"
+        )
+
+    update_data = task_update.dict(exclude_unset=True)
+    
+    # Capture changes for audit log
+    changes = []
+    for field, value in update_data.items():
+        old_val = getattr(task, field)
+        if old_val != value:
+            changes.append(f"{field}: {old_val} -> {value}")
+        setattr(task, field, value)
+
+    db.commit()
+    db.refresh(task)
+
+    # Audit Log: Task Update
+    if changes:
+        audit = AuditLog(
+            user_id=current_user.id,
+            action="TASK_UPDATE",
+            target_resource=f"Task #{task.id}",
+            details=", ".join(changes)[:500]
+        )
+        db.add(audit)
+        db.commit()
+
+        # Real-time Audit Broadcast
+        await manager.broadcast_json({
+            "event": "audit_log_created",
+            "log": {
+                "id": audit.id,
+                "action": audit.action,
+                "target_resource": audit.target_resource,
+                "details": audit.details,
+                "timestamp": audit.timestamp.isoformat(),
+                "user_email": current_user.email
+            }
+        })
+
+    response_task = TaskWithUsers(
+        **task.__dict__,
+        assigned_user_name=task.assigned_user.full_name,
+        created_user_name=task.created_user.full_name
+    )
+
+    await manager.broadcast_json({
+        "event": "task_updated",
+        "task": response_task.model_dump_json()
+    })
+
+    return response_task
+
+
+@router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found"
+        )
+
+    # Allow admins and supervisors to delete any task
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPERVISOR] and task.created_by != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only delete tasks you created"
+        )
+
+    task_title = task.title
+    task_id_to_broadcast = task.id
+    db.delete(task)
+    db.commit()
+    
+    # Audit Log: Task Deletion
+    audit = AuditLog(
+        user_id=current_user.id,
+        action="TASK_DELETE",
+        target_resource=f"Task #{task_id_to_broadcast}",
+        details=f"Deleted task: {task_title}"
+    )
+    db.add(audit)
+    db.commit()
+    
+    # Real-time Audit Broadcast
+    await manager.broadcast_json({
+        "event": "audit_log_created",
+        "log": {
+            "id": audit.id,
+            "action": audit.action,
+            "target_resource": audit.target_resource,
+            "details": audit.details,
+            "timestamp": audit.timestamp.isoformat(),
+            "user_email": current_user.email
+        }
+    })
+
+    await manager.broadcast_json({
+        "event": "task_deleted",
+        "task_id": task_id_to_broadcast
+    })
+
+
+# ============================================================================
+# TASK LIFECYCLE OPERATIONS
+# ============================================================================
+
+@router.post("/{task_id}/start", response_model=TaskWithUsers)
+async def start_task(
+    task_id: int,
+    start_data: TaskStart,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    # Check if user already has an active task
+    active_task = db.query(Task).filter(
+        Task.assigned_to == current_user.id,
+        Task.status == TaskStatus.IN_PROGRESS
+    ).first()
+
+    if active_task:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You already have an active task. Complete it before starting a new one."
+        )
+
+    # Fetch the task to be started
+    task = db.query(Task).options(
+        joinedload(Task.assigned_user),
+        joinedload(Task.created_user)
+    ).filter(Task.id == task_id).first()
+
+    # Validation
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found"
+        )
+    if task.assigned_to != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only start tasks assigned to you"
+        )
+    if task.status not in [TaskStatus.PENDING, TaskStatus.QUEUED]:  # Allow starting from QUEUED
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Task can only be started from pending or queued status"
+        )
+
+    # Create location log if coordinates provided
+    if start_data.latitude is not None and start_data.longitude is not None:
+        location_log_data = LocationLogCreate(
+            latitude=start_data.latitude,
+            longitude=start_data.longitude,
+            task_id=task.id,
+            location_type="task_start"
+        )
+        db_location_log = LocationLog(**location_log_data.model_dump(), user_id=current_user.id)
+        db.add(db_location_log)
+
+    # Update task status and start time
+    task.status = TaskStatus.IN_PROGRESS
+    task.started_at = datetime.utcnow()
+
+    db.commit()
+    db.refresh(task)
+
+    # Audit Log: Task Started
+    audit = AuditLog(
+        user_id=current_user.id,
+        action="TASK_START",
+        target_resource=f"Task #{task.id}",
+        details=f"Started by user. Loc: {start_data.latitude},{start_data.longitude}"
+    )
+    db.add(audit)
+    db.commit()
+
+    # Real-time Audit Broadcast
+    await manager.broadcast_json({
+        "event": "audit_log_created",
+        "log": {
+            "id": audit.id,
+            "action": audit.action,
+            "target_resource": audit.target_resource,
+            "details": audit.details,
+            "timestamp": audit.timestamp.isoformat(),
+            "user_email": current_user.email
+        }
+    })
+
+    # Construct response
+    response_task = TaskWithUsers(
+        id=task.id,
+        title=task.title,
+        description=task.description,
+        priority=task.priority,
+        is_multi_destination=task.is_multi_destination,
+        destinations=task.destinations,
+        location_name=task.location_name,
+        latitude=task.latitude,
+        longitude=task.longitude,
+        address=task.address,
+        estimated_duration=task.estimated_duration,
+        due_date=task.due_date,
+        status=task.status,
+        assigned_to=task.assigned_to,
+        created_by=task.created_by,
+        actual_duration=task.actual_duration,
+        started_at=task.started_at,
+        completed_at=task.completed_at,
+        created_at=task.created_at,
+        updated_at=task.updated_at,
+        completion_notes=task.completion_notes,
+        quality_rating=task.quality_rating,
+        signature_url=task.signature_url,
+        assigned_user_name=task.assigned_user.full_name if task.assigned_user else None,
+        created_user_name=task.created_user.full_name if task.created_user else None,
+    )
+
+    # Broadcast task started
+    await manager.broadcast_json({
+        "event": "task_started",
+        "task": response_task.model_dump_json()
+    })
+
+    # Broadcast initial location
+    if start_data.latitude is not None and start_data.longitude is not None:
+        await manager.broadcast_json({
+            "event": "location_update",
+            "task_id": task.id,
+            "latitude": start_data.latitude,
+            "longitude": start_data.longitude,
+            "user_id": current_user.id,
+            "user_name": current_user.full_name,
+        })
+
+    return response_task
+
+
+@router.post("/{task_id}/complete", response_model=TaskWithUsers)
+async def complete_task(
+    task_id: int,
+    complete_data: TaskComplete,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    task = db.query(Task).options(
+        joinedload(Task.assigned_user),
+        joinedload(Task.created_user)
+    ).filter(Task.id == task_id).first()
+    
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+
+    if task.assigned_to != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only complete tasks assigned to you")
+    
+    if task.status != TaskStatus.IN_PROGRESS:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Task must be in progress to be completed")
+
+    # Calculate Duration
+    completion_time = datetime.utcnow()
+    if task.started_at:
+        duration_seconds = (completion_time - task.started_at).total_seconds()
+        task.actual_duration = int(duration_seconds / 60)
+
+    # Update Status
+    task.status = TaskStatus.COMPLETED
+    task.completed_at = completion_time
+    
+    # Update Completion Details
+    task.completion_notes = complete_data.completion_notes
+    task.quality_rating = complete_data.quality_rating
+    task.signature_url = complete_data.signature_url
+
+    # Location update on complete
+    if complete_data.latitude is not None:
+        task.latitude = complete_data.latitude
+    if complete_data.longitude is not None:
+        task.longitude = complete_data.longitude
+
+    db.commit()
+    db.refresh(task)
+
+    # Audit Log
+    audit = AuditLog(
+        user_id=current_user.id,
+        action="TASK_COMPLETE",
+        target_resource=f"Task #{task.id}",
+        details=f"Duration: {task.actual_duration}m, Rating: {task.quality_rating}"
+    )
+    db.add(audit)
+    db.commit()
+
+    # Broadcast
+    await manager.broadcast_json({
+        "event": "audit_log_created",
+        "log": {
+            "id": audit.id,
+            "action": audit.action,
+            "target_resource": audit.target_resource,
+            "details": audit.details,
+            "timestamp": audit.timestamp.isoformat(),
+            "user_email": current_user.email
+        }
+    })
+
+    # Construct response
+    response_task = TaskWithUsers(
+        id=task.id,
+        title=task.title,
+        description=task.description,
+        priority=task.priority,
+        is_multi_destination=task.is_multi_destination,
+        destinations=task.destinations,
+        location_name=task.location_name,
+        latitude=task.latitude,
+        longitude=task.longitude,
+        address=task.address,
+        estimated_duration=task.estimated_duration,
+        due_date=task.due_date,
+        status=task.status,
+        assigned_to=task.assigned_to,
+        created_by=task.created_by,
+        actual_duration=task.actual_duration,
+        started_at=task.started_at,
+        completed_at=task.completed_at,
+        created_at=task.created_at,
+        updated_at=task.updated_at,
+        completion_notes=task.completion_notes,
+        quality_rating=task.quality_rating,
+        signature_url=task.signature_url,
+        assigned_user_name=task.assigned_user.full_name if task.assigned_user else None,
+        created_user_name=task.created_user.full_name if task.created_user else None,
+    )
+
+    await manager.broadcast_json({
+        "event": "task_completed",
+        "task_id": task.id
+    })
+
+    # ✅ Auto-start next queued task
+    await auto_start_next_task(current_user.id, db)
+
+    return response_task
+
+
+@router.post("/{task_id}/cancel", response_model=TaskWithUsers)
+async def cancel_task(
+    task_id: int,
+    cancel_data: TaskCancel,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    task = db.query(Task).options(
+        joinedload(Task.assigned_user),
+        joinedload(Task.created_user)
+    ).filter(Task.id == task_id).first()
+
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found"
+        )
+
+    # Only assigned user, creator, or admin/supervisor can cancel
+    if (task.assigned_to != current_user.id and 
+        task.created_by != current_user.id and 
+        current_user.role not in [UserRole.ADMIN, UserRole.SUPERVISOR]):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to cancel this task"
+        )
+
+    # Update status
+    previous_status = task.status
+    task.status = TaskStatus.CANCELLED
+    task.completion_notes = f"CANCELLED: {cancel_data.cancellation_reason}"
+    task.completed_at = datetime.utcnow()
+
+    db.commit()
+    db.refresh(task)
+
+    # Audit Log
+    audit = AuditLog(
+        user_id=current_user.id,
+        action="TASK_CANCEL",
+        target_resource=f"Task #{task.id}",
+        details=f"Status: {previous_status} -> CANCELLED. Reason: {cancel_data.cancellation_reason}"
+    )
+    db.add(audit)
+    db.commit()
+
+    # Real-time Broadcast Audit Log
+    await manager.broadcast_json({
+        "event": "audit_log_created",
+        "log": {
+            "id": audit.id,
+            "action": audit.action,
+            "target_resource": audit.target_resource,
+            "details": audit.details,
+            "timestamp": audit.timestamp.isoformat(),
+            "user_email": current_user.email
+        }
+    })
+
+    # Construct response
+    response_task = TaskWithUsers(
+        id=task.id,
+        title=task.title,
+        description=task.description,
+        priority=task.priority,
+        is_multi_destination=task.is_multi_destination,
+        destinations=task.destinations,
+        location_name=task.location_name,
+        latitude=task.latitude,
+        longitude=task.longitude,
+        address=task.address,
+        estimated_duration=task.estimated_duration,
+        due_date=task.due_date,
+        status=task.status,
+        assigned_to=task.assigned_to,
+        created_by=task.created_by,
+        actual_duration=task.actual_duration,
+        started_at=task.started_at,
+        completed_at=task.completed_at,
+        created_at=task.created_at,
+        updated_at=task.updated_at,
+        completion_notes=task.completion_notes,
+        quality_rating=task.quality_rating,
+        signature_url=task.signature_url,
+        photo_urls=task.photo_urls,
+        assigned_user_name=task.assigned_user.full_name if task.assigned_user else None,
+        created_user_name=task.created_user.full_name if task.created_user else None,
+    )
+
+    # Real-time Broadcast Task Update
+    await manager.broadcast_json({
+        "event": "task_updated", 
+        "task": response_task.model_dump_json()
+    })
+
+    # ✅ Auto-start next queued task if this was in progress
+    if previous_status == TaskStatus.IN_PROGRESS:
+        await auto_start_next_task(current_user.id, db)
+
+    return response_task
+
+
+# ============================================================================
+# TASK STATUS CHANGE OPERATIONS
+# ============================================================================
+
+@router.post("/{task_id}/accept", response_model=TaskWithUsers)
+async def accept_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Accept a task and queue it (if user has active task) or start it immediately"""
+    task = db.query(Task).options(
+        joinedload(Task.assigned_user),
+        joinedload(Task.created_user)
+    ).filter(Task.id == task_id).first()
+
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    if task.assigned_to != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    # Check if user has an active task
+    active_task = db.query(Task).filter(
+        Task.assigned_to == current_user.id,
+        Task.status == TaskStatus.IN_PROGRESS
+    ).first()
+
+    if not active_task:
+        # No active task, can start immediately - but queue it and user must manually start
+        pass
+
+    task.status = TaskStatus.QUEUED
+    db.commit()
+    db.refresh(task)
+
+    # Audit & Broadcast
+    audit = AuditLog(
+        user_id=current_user.id, 
+        action="TASK_QUEUE", 
+        target_resource=f"Task #{task.id}", 
+        details="User accepted/queued task"
+    )
+    db.add(audit)
+    db.commit()
+
+    response_task = TaskWithUsers.model_validate(task)
+    await manager.broadcast_json({
+        "event": "task_updated", 
+        "task": response_task.model_dump_json()
+    })
+    
+    return response_task
+
+
+@router.post("/{task_id}/decline", response_model=TaskWithUsers)
+async def decline_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Decline a pending task"""
+    task = db.query(Task).options(
+        joinedload(Task.assigned_user),
+        joinedload(Task.created_user)
+    ).filter(Task.id == task_id).first()
+
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    if task.assigned_to != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+        
+    if task.status != TaskStatus.PENDING:
+        raise HTTPException(status_code=400, detail="Can only decline pending tasks")
+
+    task.status = TaskStatus.DECLINED
+    db.commit()
+    db.refresh(task)
+
+    # Audit & Broadcast
+    audit = AuditLog(
+        user_id=current_user.id, 
+        action="TASK_DECLINE", 
+        target_resource=f"Task #{task.id}", 
+        details="User declined task"
+    )
+    db.add(audit)
+    db.commit()
+    
+    response_task = TaskWithUsers.model_validate(task)
+    await manager.broadcast_json({
+        "event": "task_updated", 
+        "task": response_task.model_dump_json()
+    })
+    
+    return response_task
+
+
+# ============================================================================
+# FILE UPLOAD OPERATIONS
+# ============================================================================
+
+@router.post("/{task_id}/signature")
+async def upload_signature(
+    task_id: int,
+    signature: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Upload task completion signature"""
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    if task.assigned_to != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    # Generate unique filename
+    file_extension = signature.filename.split('.')[-1] if '.' in signature.filename else 'png'
+    unique_filename = f"signature_{task_id}_{uuid.uuid4().hex[:8]}.{file_extension}"
+    file_path = UPLOAD_DIR / unique_filename
+    
+    # Save file
+    with open(file_path, "wb") as buffer:
+        content = await signature.read()
+        buffer.write(content)
+    
+    # Update task with signature URL
+    task.signature_url = f"/static/signatures/{unique_filename}"
+    db.commit()
+    db.refresh(task)
+    
+    print(f"✅ Signature saved: {task.signature_url}")
+    
+    return {
+        "message": "Signature uploaded successfully",
+        "signature_url": task.signature_url
+    }
+
+
+@router.post("/{task_id}/photo")
+async def upload_photo(
+    task_id: int,
+    photo: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Upload task completion photo"""
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    if task.assigned_to != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    # Generate unique filename
+    file_extension = photo.filename.split('.')[-1] if '.' in photo.filename else 'jpg'
+    unique_filename = f"photo_{task_id}_{uuid.uuid4().hex[:8]}.{file_extension}"
+    file_path = PHOTO_DIR / unique_filename
+    
+    # Save file
+    with open(file_path, "wb") as buffer:
+        content = await photo.read()
+        buffer.write(content)
+    
+    photo_url = f"/static/photos/{unique_filename}"
+    
+    # Store photo URL in task
+    if task.photo_urls is None:
+        task.photo_urls = []
+    
+    # Append to existing photos
+    task.photo_urls = task.photo_urls + [photo_url]
+    
+    db.commit()
+    db.refresh(task)
+    
+    print(f"✅ Photo saved and added to task: {photo_url}")
+    
+    return {
+        "message": "Photo uploaded successfully",
+        "photo_url": photo_url,
+        "total_photos": len(task.photo_urls)
+    }
+
+
+#

@@ -1,3 +1,7 @@
+# ============================================================================
+# OPTION 2: Update models/task.py to use UPPERCASE values (match database)
+# ============================================================================
+
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Float, Enum, Text, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -5,10 +9,13 @@ from app.database import Base
 import enum
 
 class TaskStatus(str, enum.Enum):
-    PENDING = "pending"
-    IN_PROGRESS = "in_progress"
-    COMPLETED = "completed"
-    CANCELLED = "cancelled"
+    # ✅ FIX: Change all values to UPPERCASE to match database
+    PENDING = "PENDING"           # Was: "pending"
+    IN_PROGRESS = "IN_PROGRESS"   # Was: "in_progress"
+    COMPLETED = "COMPLETED"       # Was: "completed"
+    CANCELLED = "CANCELLED"       # Was: "cancelled"
+    QUEUED = "QUEUED"             # Was: "queued" - CHANGE THIS!
+    DECLINED = "DECLINED"         # Was: "declined" - CHANGE THIS!
 
 class TaskPriority(str, enum.Enum):
     LOW = "low"
@@ -31,17 +38,17 @@ class Task(Base):
     
     # Multi-destination support
     is_multi_destination = Column(Boolean, default=False)
-    destinations = Column(Text) # JSON string or specialized JSON type depending on DB
+    destinations = Column(Text) 
     
     # Location data
     location_name = Column(String(200))
     latitude = Column(Float)
     longitude = Column(Float)
-    address = Column(String, nullable=True) # Added for address string
+    address = Column(String, nullable=True)
     
-    # Time tracking & Forecasts
-    estimated_duration = Column(Integer)  # AI Predicted duration (minutes)
-    actual_duration = Column(Integer)     # Real duration (minutes)
+    # Time tracking
+    estimated_duration = Column(Integer)
+    actual_duration = Column(Integer)
     due_date = Column(DateTime)
     started_at = Column(DateTime)
     completed_at = Column(DateTime)
@@ -52,23 +59,21 @@ class Task(Base):
     
     # Completion Details
     completion_notes = Column(Text)
-    quality_rating = Column(Integer) # 1-5
-    # ✅ NEW: Signature Image Path
+    quality_rating = Column(Integer) 
     signature_url = Column(String(500), nullable=True)
-    photo_urls = Column(JSON, nullable=True)  # ✅ Add this - stores array of photo URLs
+    photo_urls = Column(JSON, nullable=True)
     
     # Relationships
     assigned_user = relationship("User", foreign_keys=[assigned_to], backref="assigned_tasks")
     created_user = relationship("User", foreign_keys=[created_by], backref="created_tasks")
 
-    # ✅ ADD THESE NEW FIELDS FOR ML TRAINING
-    city = Column(String(100), nullable=True)            # e.g., "Makati"
-    transport_method = Column(String(50), default="Drive") # e.g., "Bike", "Walk"
-    weather_conditions = Column(String(50), nullable=True) # e.g., "Rain", "Traffic"
-    
-    # We also need to know where they ACTUALLY started to calculate real distance
+    # ML Fields
+    city = Column(String(100), nullable=True)
+    transport_method = Column(String(50), default="Drive")
+    weather_conditions = Column(String(50), nullable=True)
     actual_start_lat = Column(Float, nullable=True) 
     actual_start_lng = Column(Float, nullable=True)
 
     def __repr__(self):
         return f"<Task(id={self.id}, title='{self.title}', status='{self.status.value}')>"
+

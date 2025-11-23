@@ -46,6 +46,10 @@ class TaskCreate(TaskBase):
     assigned_to: int
 
 
+class TaskCancel(BaseModel):
+    cancellation_reason: str = Field(..., min_length=1, description="Reason for cancelling the task")
+
+
 # Schema for task update
 class TaskUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=200)
