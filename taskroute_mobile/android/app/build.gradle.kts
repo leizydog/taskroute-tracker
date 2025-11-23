@@ -17,7 +17,8 @@ if (localPropertiesFile.exists()) {
 }
 
 // Get the key, falling back to an empty string if not found
-val mapsApiKey = localProperties.getProperty("GOOGLE_MAPS_API_KEY") ?: ""
+// NEW (Correct)
+val mapsApiKey = localProperties.getProperty("MAPS_API_KEY") ?: ""
 // END API KEY INJECTION LOGIC
 
 android {

@@ -4,7 +4,7 @@ import 'storage_service.dart';
 
 class ApiService {
   // ✅ Base URL with /api/v1
-  static const String baseUrl = 'http://192.168.102.8:8000/api/v1';
+  static const String baseUrl = 'http://192.168.102.41:8000/api/v1';
 
   // Singleton pattern
   static final ApiService _instance = ApiService._internal();

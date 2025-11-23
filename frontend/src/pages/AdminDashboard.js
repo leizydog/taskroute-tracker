@@ -10,7 +10,7 @@ import {
   FiGrid, FiUsers, FiCheckSquare, FiTrendingUp, FiLogOut, FiMenu, FiBell, FiMoon, FiSun, FiX,
   FiPlus, FiMapPin, FiShield, FiSettings, FiUserPlus, FiEdit2, FiTrash2, FiSearch, FiActivity, 
   FiArchive, FiRefreshCw, FiAlertTriangle, FiInfo, FiCheckCircle, FiDatabase, FiCpu, FiDownload,
-  FiList, FiTerminal
+  FiList, FiTerminal, FiChevronDown
 } from 'react-icons/fi';
 import { Button, Card, StatValue, Input, Select, Alert, Badge } from '../components/atoms';
 import CreateTaskModal from '../components/organisms/CreateTaskModal';
@@ -21,9 +21,8 @@ import FeatureImportanceChart from '../components/analytics/FeatureImportanceCha
 import { useNavigate } from 'react-router-dom';
 
 const MAP_LOADER_ID = 'google-map-script';
-const MAP_LIBRARIES = ['places'];
+const MAP_LIBRARIES = ['places', 'marker'];
 
-// --- Local Sub-Component: User List Item ---
 // --- Local Sub-Component: User List Item ---
 const UserListItem = ({ employee, isSelected, onClick }) => (
   <motion.div
@@ -36,7 +35,6 @@ const UserListItem = ({ employee, isSelected, onClick }) => (
     }`}
   >
     <div className="relative">
-      {/* ✅ FIX: Use 'employee' here, NOT 'user' */}
       <div className="w-8 h-8 flex-shrink-0 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center font-bold text-indigo-600 dark:text-indigo-300 overflow-hidden border border-slate-200 dark:border-slate-700">
       {employee?.avatar_url ? (
         <img 
@@ -339,7 +337,14 @@ const AdminDashboard = () => {
   const [userModalConfig, setUserModalConfig] = useState({ isOpen: false, mode: 'add', user: null });
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', message: '', type: 'info', onConfirm: null });
   
-  const [alerts, setAlerts] = useState([]);
+  // ---------------------------------------------------------------------------
+  // 🔔 NOTIFICATION STATE & LOGIC
+  // ---------------------------------------------------------------------------
+  
+  // ✅ Separate Alerts (Temporary Popups) from Notifications (Persistent History)
+  const [alerts, setAlerts] = useState([]); 
+  const [notifications, setNotifications] = useState([]);
+
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRole, setFilterRole] = useState('all');
 
@@ -360,10 +365,11 @@ const AdminDashboard = () => {
   const [teamKpiData, setTeamKpiData] = useState(null);
 
   const { isLoaded: isMapLoaded, loadError: mapLoadError } = useJsApiLoader({
-    id: MAP_LOADER_ID,
-    googleMapsApiKey: process.env.REACT_APP_GOOGLE_MAPS_API_KEY,
-    libraries: MAP_LIBRARIES,
-  });
+  id: MAP_LOADER_ID,
+  googleMapsApiKey: process.env.REACT_APP_GOOGLE_MAPS_API_KEY,
+  libraries: MAP_LIBRARIES,
+  version: 'beta', // Add this line
+});
 
   const navItems = [
     { id: 'overview', label: 'System Overview', icon: <FiGrid /> },
@@ -381,44 +387,51 @@ const AdminDashboard = () => {
     if (mapLoadError) toast.error("Map services could not be loaded.");
   }, [isMapLoaded, mapLoadError]);
 
-  // ✅ NEW: WebSocket Connection for Real-Time Audits
-  useEffect(() => {
-    if (user?.role !== 'admin') return;
+  // 1. Helper: Add Temporary Popup Alert (Auto-dismiss) - Wrapped in useCallback
+  const addAlert = useCallback((type, message) => {
+    const id = Date.now();
+    setAlerts(prev => [...prev, { id, type, message }]);
+    setTimeout(() => setAlerts(prev => prev.filter(a => a.id !== id)), 5000);
+  }, []);
 
-    const connectWebSocket = () => {
-        const apiUrl = process.env.REACT_APP_API_URL || "http://localhost:8000/api/v1";
-        const urlObj = new URL(apiUrl);
-        const protocol = urlObj.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${urlObj.host}/ws/location`;
-        
-        const ws = new WebSocket(wsUrl);
-
-        ws.onopen = () => {
-            console.log('Connected to Audit/Location Stream');
-        };
-
-        ws.onmessage = (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                // Listen for 'audit_log_created' event
-                if (data.event === 'audit_log_created' && data.log) {
-                    setAuditLogs(prev => [data.log, ...prev].slice(0, 50));
-                    // Optional: Toast notification for specific critical actions
-                    if (['SYSTEM_WIPE_USERS', 'SYSTEM_WIPE_TASKS'].includes(data.log.action)) {
-                         toast.error(`CRITICAL: ${data.log.action}`);
-                    }
-                }
-            } catch (e) {
-                console.error('WS Message Error', e);
-            }
-        };
-        
-        return ws;
+  // 2. Helper: Add Persistent Notification (History + Popup) - Wrapped in useCallback
+  const addNotification = useCallback((type, message, context = null) => {
+    const newNotification = {
+      id: Date.now(),
+      type,
+      message,
+      context,
+      timestamp: new Date(),
+      read: false
     };
+    
+    // Add to persistent history
+    setNotifications(prev => [newNotification, ...prev]);
+    
+    // Trigger temporary popup
+    addAlert(type, message);
+  }, [addAlert]);
 
-    const ws = connectWebSocket();
-    return () => ws?.close();
-  }, [user]);
+  // 3. Handle Notification Click (Navigate & Mark Read)
+  const handleNotificationClick = (notif) => {
+    if (!notif.context) return;
+
+    // Switch tab
+    setActiveTab(notif.context.tab);
+
+    // Optional navigation logic
+    if (notif.context.tab === 'tasks') {
+        toast('Navigated to Task #' + notif.context.itemId, { icon: '🔍' });
+    } else if (notif.context.tab === 'user_management') {
+        setSearchTerm(notif.context.itemName || '');
+        toast('Navigated to User: ' + notif.context.itemName, { icon: '👤' });
+    }
+
+    // Mark as read (optional UI enhancement)
+    setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, read: true } : n));
+
+    setShowNotifications(false);
+  };
 
   // ✅ FIX: Wrapped fetchData in useCallback to fix dependency warning
   const fetchData = useCallback(async () => {
@@ -496,6 +509,65 @@ const AdminDashboard = () => {
     }
   }, [user, logout]);
 
+  // 4. WebSocket Listener (Updated to use addNotification)
+  useEffect(() => {
+    if (user?.role !== 'admin') return;
+
+    const connectWebSocket = () => {
+        const apiUrl = process.env.REACT_APP_API_URL || "http://localhost:8000/api/v1";
+        const urlObj = new URL(apiUrl);
+        const protocol = urlObj.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${urlObj.host}/ws/location`;
+        
+        const ws = new WebSocket(wsUrl);
+
+        ws.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+
+                if (data.event === 'audit_log_created' && data.log) {
+                    setAuditLogs(prev => [data.log, ...prev].slice(0, 50));
+                }
+
+                // ✅ USE addNotification INSTEAD OF addAlert
+                if (data.event === 'task_started' && data.task) {
+                    const task = JSON.parse(data.task);
+                    addNotification('info', `🚀 ${task.assigned_user_name} started "${task.title}"`, { tab: 'tasks', itemId: task.id });
+                    setTasks(prev => prev.map(t => t.id === task.id ? task : t));
+                }
+
+                if (data.event === 'task_completed' && data.task_id) {
+                      addNotification('success', `✅ Task #${data.task_id} completed`, { tab: 'tasks', itemId: data.task_id });
+                      fetchData(); 
+                }
+
+                if (data.event === 'task_updated' && data.task) {
+                    const task = JSON.parse(data.task);
+                    if (task.status === 'DECLINED') {
+                        addNotification('danger', `⛔ ${task.assigned_user_name} declined task`, { tab: 'tasks', itemId: task.id });
+                    } else if (task.status === 'QUEUED') {
+                        addNotification('info', `📥 ${task.assigned_user_name} accepted task to queue`, { tab: 'tasks', itemId: task.id });
+                    }
+                    setTasks(prev => prev.map(t => t.id === task.id ? task : t));
+                }
+
+                if (data.event === 'user_profile_updated') {
+                    addNotification('warning', `👤 ${data.user_name} updated profile`, { tab: 'user_management', itemId: data.user_id, itemName: data.user_name });
+                    api.getUsers().then(res => setEmployees(res.data));
+                }
+
+                if (data.event === 'user_avatar_updated') {
+                    addNotification('info', `📸 ${data.user_name} changed photo`, { tab: 'user_management', itemId: data.user_id, itemName: data.user_name });
+                    api.getUsers().then(res => setEmployees(res.data));
+                }
+            } catch (e) { console.error('WS Error', e); }
+        };
+        return ws;
+    };
+    const ws = connectWebSocket();
+    return () => ws?.close();
+  }, [user, fetchData, addNotification]);
+
   useEffect(() => {
     if (user && user.role === 'admin') {
         fetchData();
@@ -518,12 +590,6 @@ const AdminDashboard = () => {
     }
     setLoadingKpi(false);
   }, [selectedEmployee, teamKpiData]);
-
-  const addAlert = (type, message) => {
-    const id = Date.now();
-    setAlerts(prev => [...prev, { id, type, message }]);
-    setTimeout(() => setAlerts(prev => prev.filter(a => a.id !== id)), 3000);
-  };
 
   const handleTaskCreated = (newTask) => {
     setIsCreateTaskModalOpen(false);
@@ -764,17 +830,13 @@ const AdminDashboard = () => {
     });
   };
 
-  const getRelativeTime = (dateString) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now - date;
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    return `${diffDays}d ago`;
+  // Helper for relative time in notifications
+  const getRelativeTime = (d) => {
+      if(!d) return '';
+      const diff = (new Date() - new Date(d)) / 1000; // seconds
+      if(diff < 60) return 'Just now';
+      if(diff < 3600) return `${Math.floor(diff/60)}m ago`;
+      return `${Math.floor(diff/3600)}h ago`;
   };
 
   const filteredManagementEmployees = useMemo(() => {
@@ -855,9 +917,27 @@ const AdminDashboard = () => {
           <button onClick={() => setMobileOpen(false)} className="md:hidden text-slate-400 hover:text-white"><FiX size={20} /></button>
         </div>
         
-        <div className="mb-6 px-2">
+        <nav className="flex-1 space-y-1.5 overflow-y-auto px-2">
+          {navItems.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => { setActiveTab(item.id); setMobileOpen(false); }}
+              className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg text-sm transition-all duration-200 group ${
+                activeTab === item.id
+                  ? 'bg-indigo-600 text-white font-medium shadow-lg shadow-indigo-900/20'
+                  : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+              }`}
+            >
+              <span className={`${activeTab === item.id ? 'text-white' : 'text-slate-500 group-hover:text-indigo-400'}`}>{item.icon}</span>
+              <span>{item.label}</span>
+            </button>
+          ))}
+        </nav>
+
+        {/* Profile Card moved to the bottom of the sidebar */}
+        <div className="mt-auto px-2 pt-4 border-t border-slate-800/50">
             <div className="bg-slate-800/50 rounded-lg p-3 border border-slate-700">
-                <div className="flex items-center gap-3 mb-2">
+                <div className="flex items-center gap-3">
                     <div className="w-8 h-8 flex-shrink-0 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center font-bold text-indigo-600 dark:text-indigo-300 overflow-hidden border border-slate-200 dark:border-slate-700">
                       {user?.avatar_url ? (
                         <img 
@@ -883,22 +963,6 @@ const AdminDashboard = () => {
             </div>
         </div>
 
-        <nav className="flex-1 space-y-1.5 overflow-y-auto px-2">
-          {navItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => { setActiveTab(item.id); setMobileOpen(false); }}
-              className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg text-sm transition-all duration-200 group ${
-                activeTab === item.id
-                  ? 'bg-indigo-600 text-white font-medium shadow-lg shadow-indigo-900/20'
-                  : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-              }`}
-            >
-              <span className={`${activeTab === item.id ? 'text-white' : 'text-slate-500 group-hover:text-indigo-400'}`}>{item.icon}</span>
-              <span>{item.label}</span>
-            </button>
-          ))}
-        </nav>
       </aside>
 
       {/* Main Content */}
@@ -926,7 +990,9 @@ const AdminDashboard = () => {
                 className="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full relative transition-colors"
               >
                 <FiBell size={18} />
-                {alerts.length > 0 && <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />}
+                {notifications.filter(n => !n.read).length > 0 && (
+                    <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
+                )}
               </button>
               
               <AnimatePresence>
@@ -941,14 +1007,25 @@ const AdminDashboard = () => {
                         >
                             <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
                                 <h3 className="font-semibold text-slate-900 dark:text-slate-100">Notifications</h3>
-                                {alerts.length > 0 && <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">{alerts.length}</span>}
+                                {notifications.length > 0 && <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">{notifications.filter(n => !n.read).length} New</span>}
                             </div>
                             <div className="overflow-y-auto flex-1">
-                                {alerts.length > 0 ? (
-                                    alerts.map((alert) => (
-                                        <div key={alert.id} className="px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-700 border-b border-slate-100 dark:border-slate-700 last:border-0">
-                                            <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{alert.message}</p>
-                                            <p className="text-xs text-slate-500 mt-1">Just now</p>
+                                {notifications.length > 0 ? (
+                                    notifications.map((notif) => (
+                                        <div 
+                                            key={notif.id} 
+                                            onClick={() => handleNotificationClick(notif)} 
+                                            className={`px-4 py-3 border-b border-slate-100 dark:border-slate-700 last:border-0 transition-colors 
+                                                ${notif.read ? 'bg-white dark:bg-slate-800' : 'bg-blue-50/50 dark:bg-blue-900/10'}
+                                                ${notif.context ? 'cursor-pointer hover:bg-indigo-50 dark:hover:bg-indigo-900/20' : ''}`}
+                                        >
+                                            <div className="flex justify-between items-start">
+                                                <p className={`text-sm ${notif.read ? 'text-slate-600 dark:text-slate-400' : 'font-medium text-slate-800 dark:text-slate-200'}`}>
+                                                    {notif.message}
+                                                </p>
+                                                {notif.context && <FiSearch className="text-slate-400 w-3 h-3 mt-1" />}
+                                            </div>
+                                            <p className="text-xs text-slate-500 mt-1">{getRelativeTime(notif.timestamp)}</p>
                                         </div>
                                     ))
                                 ) : (
@@ -967,7 +1044,7 @@ const AdminDashboard = () => {
             <div className="relative">
                 <button 
                   onClick={() => setShowUserMenu(!showUserMenu)}
-                  className="flex items-center gap-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors p-1 pr-3">
+                  className={`flex items-center gap-2 p-1 pl-3 pr-2 rounded-full transition-colors border ${showUserMenu ? 'bg-slate-100 dark:bg-slate-800 border-indigo-400 dark:border-indigo-600' : 'border-transparent hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
                   <div className="w-8 h-8 flex-shrink-0 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center font-bold text-indigo-600 dark:text-indigo-300 overflow-hidden border border-slate-200 dark:border-slate-700">
                     {user?.avatar_url ? (
                       <img 
@@ -986,6 +1063,7 @@ const AdminDashboard = () => {
                     )}
                   </div>
                   <span className="text-sm font-medium text-slate-700 dark:text-slate-300 hidden sm:inline">{user?.full_name}</span>
+                  <FiChevronDown size={14} className={`text-slate-500 dark:text-slate-400 transition-transform ${showUserMenu ? 'rotate-180' : 'rotate-0'}`} />
               </button>
 
                 <AnimatePresence>
@@ -1080,29 +1158,7 @@ const AdminDashboard = () => {
                           <Button variant="outline" fullWidth onClick={() => setActiveTab('analytics')} icon={FiTrendingUp}>Deep Analytics</Button>
                         </div>
                       </Card>
-                      <Card>
-                          <h3 className="font-semibold text-slate-800 dark:text-slate-100 mb-2">System Health</h3>
-                          <div className="space-y-3">
-                            <div>
-                                <div className="flex justify-between text-xs mb-1 text-slate-500">
-                                    <span>Model Accuracy</span>
-                                    <span>94%</span>
-                                </div>
-                                <div className="h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
-                                    <div className="h-full bg-green-500 w-[94%]"></div>
-                                </div>
-                            </div>
-                            <div>
-                                <div className="flex justify-between text-xs mb-1 text-slate-500">
-                                    <span>API Latency</span>
-                                    <span>45ms</span>
-                                </div>
-                                <div className="h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
-                                    <div className="h-full bg-blue-500 w-[80%]"></div>
-                                </div>
-                            </div>
-                          </div>
-                      </Card>
+                  
                   </div>
                 </div>
               </div>
@@ -1113,7 +1169,7 @@ const AdminDashboard = () => {
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-8rem)]">
                 <div className="lg:col-span-1 flex flex-col h-full">
                   <Card className="flex-1 flex flex-col p-0 overflow-hidden border-0 shadow-none bg-transparent">
-                    <div className="bg-white dark:bg-slate-800 p-4 rounded-t-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                    <div className="bg-white dark:bg-slate-800 p-4 rounded-t-xl border border-slate-200 dark:border-slate-700 shadow-sm z-10">
                         <h3 className="font-semibold text-slate-800 dark:text-slate-100 mb-3">KPI Selection</h3>
                         <div className="space-y-2">
                             <Input placeholder="Search employees..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
@@ -1124,18 +1180,21 @@ const AdminDashboard = () => {
                             />
                         </div>
                     </div>
+                   
+                    {/* Fixed List Rendering */}
                     <div className="flex-1 overflow-y-auto space-y-2 p-2 bg-slate-100 dark:bg-slate-900/50 border-x border-b border-slate-200 dark:border-slate-700 rounded-b-xl">
-                      {filteredKPIEmployees.length > 0
-                        ? filteredKPIEmployees.map((emp) => (
-                            <UserListItem
-                              key={emp.id}
-                              employee={emp}
-                              isSelected={selectedEmployee?.id === emp.id}
-                              onClick={() => setSelectedEmployee(emp)}
-                            />
-                          ))
-                        : (<div className="text-center py-8 text-slate-500">No matching users found</div>)
-                      }
+                      {filteredKPIEmployees.length > 0 ? (
+                        filteredKPIEmployees.map((emp) => (
+                          <UserListItem
+                            key={emp.id}
+                            employee={emp}
+                            isSelected={selectedEmployee?.id === emp.id}
+                            onClick={() => setSelectedEmployee(emp)}
+                          />
+                        ))
+                      ) : (
+                        <div className="text-center py-8 text-slate-500">No matching users found</div>
+                      )}
                     </div>
                   </Card>
                 </div>
@@ -1153,12 +1212,14 @@ const AdminDashboard = () => {
                                           className="w-full h-full object-cover"
                                           onError={(e) => {
                                             e.target.style.display = 'none';
+                                            e.target.parentElement.innerHTML = `<span class="text-2xl font-bold">${(selectedEmployee?.full_name || 'U').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}</span>`;
                                           }}
                                         />
-                                      ) : null}
-                                      <span className="text-2xl font-bold">
-                                        {(selectedEmployee?.full_name || 'U').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
-                                      </span>
+                                      ) : (
+                                        <span className="text-2xl font-bold">
+                                          {(selectedEmployee?.full_name || 'U').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                                        </span>
+                                      )}
                                     </div>
                                     <div>
                                         <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">{selectedEmployee.full_name}</h2>
@@ -1256,12 +1317,14 @@ const AdminDashboard = () => {
                                                   className="w-full h-full object-cover"
                                                   onError={(e) => {
                                                     e.target.style.display = 'none';
+                                                    e.target.parentElement.innerHTML = `<span class="text-xs font-bold">${(emp?.full_name || 'U').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}</span>`;
                                                   }}
                                                 />
-                                              ) : null}
-                                              <span className="text-xs font-bold">
-                                                {(emp?.full_name || 'U').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
-                                              </span>
+                                              ) : (
+                                                <span className="text-xs font-bold select-none">
+                                                  {(emp?.full_name || 'U').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                                                </span>
+                                              )}
                                             </div>
                                             <div>
                                                 <p className="font-medium text-slate-900 dark:text-slate-100">{emp.full_name}</p>

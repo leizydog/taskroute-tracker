@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
-import { CheckCircle, Eye, EyeOff, AlertCircle, Lock, ArrowLeft, Key } from 'lucide-react';
+import { CheckCircle, Eye, EyeOff, AlertCircle, Key, Smartphone } from 'lucide-react'; // Added Smartphone icon
 import { toast } from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 
 const ResetPassword = () => {
+  // --- EXISTING STATE ---
   const [formData, setFormData] = useState({
     password: '',
     confirmPassword: ''
@@ -13,24 +14,42 @@ const ResetPassword = () => {
   const [showConfirm, setShowConfirm] = useState(false);
   
   const [loading, setLoading] = useState(false);
-  const [validToken, setValidToken] = useState(null); // null=checking, true=valid, false=invalid
+  const [validToken, setValidToken] = useState(null); 
   const [success, setSuccess] = useState(false);
 
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  // ✅ Get the reset function from your Context
   const { resetPassword } = useAuth(); 
 
   const token = searchParams.get('token');
 
-  // 1. Check if token exists in URL on mount
+  // ---------------------------------------------------------
+  // ✅ NEW: MOBILE DEEP LINK LOGIC
+  // ---------------------------------------------------------
   useEffect(() => {
-    // If your backend has a specific endpoint to "Check Token Validity" (GET), call it here.
-    // For now, we strictly check if the token is present in the URL.
+    if (token) {
+      // 1. Detect if user is on Mobile (Android/iOS)
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      
+      // 2. If mobile, try to open the App automatically
+      if (isMobile) {
+        // Construct the custom scheme link
+        const appDeepLink = `taskroute://reset-password?token=${token}`;
+        
+        // Try to open it. 
+        // If the app is installed, the OS will prompt to open it.
+        // If not, the user stays here on the web form.
+        window.location.href = appDeepLink;
+      }
+    }
+  }, [token]);
+  // ---------------------------------------------------------
+
+  // --- EXISTING LOGIC (Unchanged) ---
+  useEffect(() => {
     if (!token) {
         setValidToken(false);
     } else {
-        // Simulating a quick check (or assume valid until submission)
         setValidToken(true); 
     }
   }, [token]);
@@ -56,23 +75,16 @@ const ResetPassword = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
     if (!validatePassword()) return;
 
     setLoading(true);
-    
     try {
-        // ✅ REAL API CALL
-        // We pass the token and the new password to the provider
         const result = await resetPassword(token, formData.password);
-        
         if (result.success) {
             setSuccess(true);
             toast.success("Password reset successfully!");
-            // Optional: Redirect after a few seconds
             setTimeout(() => navigate('/login'), 3000);
         } else {
-            // If the backend says the token is invalid/expired during submit
             if (result.message && result.message.toLowerCase().includes('token')) {
                 setValidToken(false);
             } else {
@@ -87,9 +99,8 @@ const ResetPassword = () => {
     }
   };
 
-  // ---------------------------------------------------------
-  // RENDER: 1. LOADING STATE (Checking Token)
-  // ---------------------------------------------------------
+  // --- RENDER STATES ---
+
   if (validToken === null) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center">
@@ -101,9 +112,6 @@ const ResetPassword = () => {
     );
   }
 
-  // ---------------------------------------------------------
-  // RENDER: 2. INVALID TOKEN STATE (Expired/Missing)
-  // ---------------------------------------------------------
   if (validToken === false) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center px-4">
@@ -115,12 +123,9 @@ const ResetPassword = () => {
             Link Expired
           </h2>
           <p className="text-gray-600 dark:text-gray-300 mb-8">
-            This password reset link is invalid or has expired. For security reasons, please request a new one.
+            This password reset link is invalid or has expired.
           </p>
-          <Link
-            to="/forgot-password"
-            className="inline-block w-full bg-indigo-600 dark:bg-blue-600 hover:bg-indigo-700 dark:hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg font-medium transition shadow-lg"
-          >
+          <Link to="/forgot-password" className="inline-block w-full bg-indigo-600 dark:bg-blue-600 hover:bg-indigo-700 dark:hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg font-medium transition shadow-lg">
             Request New Link
           </Link>
         </div>
@@ -128,9 +133,6 @@ const ResetPassword = () => {
     );
   }
 
-  // ---------------------------------------------------------
-  // RENDER: 3. SUCCESS STATE (Password Changed)
-  // ---------------------------------------------------------
   if (success) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center px-4 sm:px-6 lg:px-8">
@@ -142,12 +144,9 @@ const ResetPassword = () => {
             All Set!
           </h2>
           <p className="text-gray-600 dark:text-gray-300 mb-8">
-            Your password has been updated. You can now sign in with your new credentials.
+            Your password has been updated.
           </p>
-          <Link
-            to="/login"
-            className="w-full flex justify-center py-2.5 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-indigo-600 dark:bg-blue-600 hover:bg-indigo-700 dark:hover:bg-blue-700 shadow-md dark:shadow-lg transform transition hover:scale-[1.02]"
-          >
+          <Link to="/login" className="w-full flex justify-center py-2.5 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-indigo-600 dark:bg-blue-600 hover:bg-indigo-700 dark:hover:bg-blue-700 shadow-md dark:shadow-lg transform transition hover:scale-[1.02]">
             Go to Login
           </Link>
         </div>
@@ -155,13 +154,26 @@ const ResetPassword = () => {
     );
   }
 
-  // ---------------------------------------------------------
-  // RENDER: 4. MAIN FORM
-  // ---------------------------------------------------------
+  // --- MAIN FORM ---
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center px-4 sm:px-6 lg:px-8">
       <div className="bg-white dark:bg-white/10 dark:backdrop-blur-md shadow-xl dark:shadow-2xl rounded-2xl p-10 max-w-md w-full transform transition-all hover:shadow-2xl dark:border dark:border-white/20">
         
+        {/* ✅ NEW: Open App Button (Visible only if Mobile) */}
+        <div className="sm:hidden mb-6 text-center">
+           <a 
+             href={`taskroute://reset-password?token=${token}`}
+             className="inline-flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 rounded-full text-sm font-bold hover:bg-blue-200 transition"
+           >
+             <Smartphone size={16} /> Open in Mobile App
+           </a>
+           <div className="relative flex py-5 items-center">
+                <div className="flex-grow border-t border-gray-300 dark:border-gray-600"></div>
+                <span className="flex-shrink-0 mx-4 text-gray-400 text-xs">OR USE WEB FORM</span>
+                <div className="flex-grow border-t border-gray-300 dark:border-gray-600"></div>
+           </div>
+        </div>
+
         <div className="text-center">
           <div className="mx-auto flex items-center justify-center w-16 h-16 rounded-full bg-indigo-100 dark:bg-blue-500/20 text-indigo-600 dark:text-blue-400 dark:border dark:border-blue-400/30">
             <Key size={32} />
@@ -239,26 +251,11 @@ const ResetPassword = () => {
               disabled={loading}
               className="w-full flex justify-center py-2.5 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-indigo-600 dark:bg-blue-600 hover:bg-indigo-700 dark:hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 dark:focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed shadow-md dark:shadow-lg transform transition hover:scale-[1.02]"
             >
-              {loading ? (
-                <>
-                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Updating...
-                </>
-              ) : (
-                'Update Password'
-              )}
+              {loading ? 'Updating...' : 'Update Password'}
             </button>
           </div>
         </form>
 
-        <div className="mt-6 text-center">
-           <Link to="/login" className="text-sm font-medium text-indigo-600 dark:text-blue-400 hover:text-indigo-500 dark:hover:text-blue-300 inline-flex items-center gap-2 transition-colors">
-             <ArrowLeft size={16} /> Back to Login
-           </Link>
-        </div>
       </div>
     </div>
   );

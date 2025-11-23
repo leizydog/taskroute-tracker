@@ -377,7 +377,7 @@ const LiveLocationTracker = ({ isMapLoaded, mapLoadError }) => {
         zoom={15}
         onLoad={onMapLoad}
         onUnmount={onMapUnmount}
-        options={{ streetViewControl: false, mapTypeControl: false, fullscreenControl: false }}
+        options={{ streetViewControl: false, mapTypeControl: false, fullscreenControl: false, mapId: 'c70a2cab35a44cdebe219e9a' }}
       >
         {/* Employee marker */}
         {employeePosition && (

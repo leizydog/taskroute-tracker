@@ -352,7 +352,7 @@ const EditTaskModal = ({ task, onClose, onSuccess, isMapLoaded = false, mapLoadE
                   center={mapCenter}
                   zoom={13}
                   onClick={handleMapClick}
-                  options={{ streetViewControl: false, mapTypeControl: false }}
+                  options={{ streetViewControl: false, mapTypeControl: false, mapId: 'c70a2cab35a44cdebe219e9a' }}
                 >
                   {!formData.is_multi_destination && markerPosition && (
                     <AdvancedMarker

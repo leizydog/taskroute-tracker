@@ -41,6 +41,10 @@ class _TaskMapScreenState extends State<TaskMapScreen> {
   final Set<Marker> _markers = {};
   
   late final String _googleApiKey = dotenv.env['DIRECTIONS_API_KEY'] ?? '';
+  
+  // ✅ ADDED: Map ID configuration
+  final String _mapId = 'c70a2cab35a44cdebe219e9a';
+
   StreamSubscription<LocationData>? _locationSubscription;
   Timer? _routeUpdateTimer;
   double? _distanceToTarget;
@@ -281,12 +285,10 @@ class _TaskMapScreenState extends State<TaskMapScreen> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
-    // ✅ FIX: Calculate Safe Area Padding
     final bottomPadding = MediaQuery.of(context).padding.bottom;
     final panelMinHeight = 180.0 + bottomPadding;
     final panelMaxHeight = 400.0 + bottomPadding;
     
-    // Calculate FAB position dynamically based on padding and current slide position
     final initFabHeight = 170.0 + bottomPadding;
     final currentFabBottom = _currentPanelPos * (panelMaxHeight - panelMinHeight) + initFabHeight + 16;
 
@@ -299,12 +301,14 @@ class _TaskMapScreenState extends State<TaskMapScreen> {
               color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
               borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
               boxShadow: [BoxShadow(blurRadius: 15.0, color: Colors.black.withOpacity(isDark ? 0.5 : 0.1))],
-              // ✅ FIX: Track slide position
               onPanelSlide: (pos) => setState(() => _currentPanelPos = pos),
               panel: _buildPanel(isDark, bottomPadding),
               body: Stack(
                 children: [
                   GoogleMap(
+                    // ✅ ADDED: Map ID property
+                    cloudMapId: _mapId,
+                    
                     initialCameraPosition: CameraPosition(
                       target: LatLng(_currentLocation!.latitude!, _currentLocation!.longitude!),
                       zoom: 15,
@@ -323,7 +327,7 @@ class _TaskMapScreenState extends State<TaskMapScreen> {
                   // Custom Map Buttons
                   Positioned(
                     right: 16,
-                    bottom: currentFabBottom, // ✅ FIX: Use dynamic calculation
+                    bottom: currentFabBottom,
                     child: Column(
                       children: [
                          FloatingActionButton.small(
@@ -366,7 +370,6 @@ class _TaskMapScreenState extends State<TaskMapScreen> {
 
   Widget _buildPanel(bool isDark, double bottomPadding) {
     return Padding(
-      // ✅ FIX: Add bottomPadding to Edge Insets to push content up
       padding: EdgeInsets.fromLTRB(24, 12, 24, 24 + bottomPadding),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

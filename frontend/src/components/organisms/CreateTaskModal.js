@@ -1,12 +1,13 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import API from "../../services/api";
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { FiX, FiPlusCircle, FiMapPin, FiTrash2, FiClock, FiTrendingUp, FiAlertCircle, FiInfo } from 'react-icons/fi';
-import { GoogleMap, Polyline } from '@react-google-maps/api';
+import { GoogleMap, Polyline } from '@react-google-maps/api'; // Removed Circle from imports
 import AdvancedMarker from './AdvancedMarker';
 import { Spinner, Button } from '../atoms';
 import { motion, AnimatePresence } from 'framer-motion';
+import UserAvatar from '../atoms/UserAvatar'; 
 
 // 1. Defined Office Location Constant
 const OFFICE_LOCATION = {
@@ -15,6 +16,9 @@ const OFFICE_LOCATION = {
   address: "30/F 88 Corporate Center, Sedeño cor. Valero Streets, Salcedo, Makati City",
   city: "Makati"
 };
+
+const NEAREST_EMPLOYEE_RADIUS_KM = 7.5;
+const NEAREST_EMPLOYEE_RADIUS_METERS = NEAREST_EMPLOYEE_RADIUS_KM * 1000; // 7500 meters
 
 const FormInput = React.forwardRef(({ label, id, isRequired, ...props }, ref) => (
   <div>
@@ -76,7 +80,7 @@ const ForecastPanel = ({ forecast, loading, error }) => {
     );
   }
 
-  // ✅ Handle multi-destination impossible routes
+  // ✅ Handle multi-destination impossible routes (No Emojis)
   if (forecast?.error && forecast?.impossible_route && forecast?.impossible_legs) {
     return (
       <motion.div
@@ -90,7 +94,7 @@ const ForecastPanel = ({ forecast, loading, error }) => {
           </div>
           <div className="flex-1">
             <h4 className="text-sm font-bold text-red-800 dark:text-red-200 mb-1">
-              🚫 Multi-Stop Route Not Possible
+              Route Not Possible (Multi-Stop)
             </h4>
             <p className="text-sm text-red-700 dark:text-red-300 mb-3">
               {forecast.impossible_count} of {forecast.total_destinations} destinations cannot be reached by car
@@ -99,7 +103,7 @@ const ForecastPanel = ({ forecast, loading, error }) => {
             {/* Show which legs are impossible */}
             <div className="bg-white dark:bg-red-950/30 rounded-lg p-3 mb-3 border border-red-200 dark:border-red-800">
               <p className="text-xs font-semibold text-red-800 dark:text-red-200 mb-2">
-                ⚠️ Unreachable Legs:
+                Unreachable Legs:
               </p>
               <div className="space-y-2 max-h-40 overflow-y-auto">
                 {forecast.impossible_legs.map((leg, index) => (
@@ -122,7 +126,7 @@ const ForecastPanel = ({ forecast, loading, error }) => {
 
             <div className="bg-blue-50 dark:bg-blue-950/30 rounded-lg p-3 border border-blue-200 dark:border-blue-800">
               <p className="text-xs font-semibold text-blue-800 dark:text-blue-200 mb-1">
-                💡 Suggestions:
+                Suggestions:
               </p>
               <ul className="text-xs text-blue-700 dark:text-blue-300 space-y-1">
                 <li className="flex items-start gap-2">
@@ -155,7 +159,7 @@ const ForecastPanel = ({ forecast, loading, error }) => {
     );
   }
 
-  // ✅ Handle single-destination impossible routes
+  // ✅ Handle single-destination impossible routes (No Emojis)
   if (forecast?.error && forecast?.impossible_route) {
     return (
       <motion.div
@@ -169,7 +173,7 @@ const ForecastPanel = ({ forecast, loading, error }) => {
           </div>
           <div className="flex-1">
             <h4 className="text-sm font-bold text-red-800 dark:text-red-200 mb-1">
-              🚫 Route Not Possible
+              Route Not Possible
             </h4>
             <p className="text-sm text-red-700 dark:text-red-300 mb-2">
               {forecast.impossible_reason || 'Cannot calculate driving route to this destination'}
@@ -201,7 +205,7 @@ const ForecastPanel = ({ forecast, loading, error }) => {
 
             <div className="bg-blue-50 dark:bg-blue-950/30 rounded-lg p-3 border border-blue-200 dark:border-blue-800">
               <p className="text-xs font-semibold text-blue-800 dark:text-blue-200 mb-1">
-                💡 Suggestions:
+                Suggestions:
               </p>
               <ul className="text-xs text-blue-700 dark:text-blue-300 space-y-1">
                 <li className="flex items-start gap-2">
@@ -230,6 +234,29 @@ const ForecastPanel = ({ forecast, loading, error }) => {
                 <p>Task: {forecast.task_location.lat.toFixed(4)}, {forecast.task_location.lng.toFixed(4)}</p>
               </div>
             )}
+          </div>
+        </div>
+      </motion.div>
+    );
+  }
+
+  // ✅ Handle "No Employee Nearby" message
+  if (error === 'No nearby employees found' || forecast?.error === 'No nearby employees found') {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4"
+      >
+        <div className="flex items-start gap-3">
+          <FiInfo className="w-5 h-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
+              No Employee Nearby
+            </p>
+            <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-1">
+              No employee with recent GPS data found within the search radius. Using office location as fallback for forecast.
+            </p>
           </div>
         </div>
       </motion.div>
@@ -278,7 +305,8 @@ const ForecastPanel = ({ forecast, loading, error }) => {
         </div>
         <div className="flex-1">
           <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-1">
-            {isMultiDest ? '🗺️ Multi-Stop Route Forecast' : '🎯 AI-Powered Duration Forecast'}
+            {/* No Emojis */}
+            {isMultiDest ? 'Multi-Stop Route Forecast' : 'AI-Powered Duration Forecast'}
           </h4>
           <p className="text-xs text-slate-600 dark:text-slate-400">
             {isMultiDest 
@@ -334,7 +362,7 @@ const ForecastPanel = ({ forecast, loading, error }) => {
 
       {isMultiDest && (
         <div className="bg-white dark:bg-slate-800 rounded-lg p-3 border border-indigo-100 dark:border-indigo-800 mb-3">
-          <p className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-2">🚗 Route Summary</p>
+          <p className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-2">Route Summary</p>
           <div className="grid grid-cols-2 gap-2 text-xs">
             <div>
               <span className="text-slate-500 dark:text-slate-400">Total Distance:</span>
@@ -354,7 +382,7 @@ const ForecastPanel = ({ forecast, loading, error }) => {
 
       {isMultiDest && forecast.legs && (
         <div className="bg-white dark:bg-slate-800 rounded-lg p-3 border border-indigo-100 dark:border-indigo-800 mb-3">
-          <p className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-2">📍 Route Details</p>
+          <p className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-2">Route Details</p>
           <div className="space-y-2 max-h-40 overflow-y-auto">
             {forecast.legs.map((leg, index) => (
               <div key={index} className="flex items-start gap-2 text-xs">
@@ -377,7 +405,7 @@ const ForecastPanel = ({ forecast, loading, error }) => {
 
       {forecast.employee_kpi && (
         <div className="bg-white dark:bg-slate-800 rounded-lg p-3 border border-indigo-100 dark:border-indigo-800 mb-3">
-          <p className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-2">👤 Employee Performance</p>
+          <p className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-2">Employee Performance</p>
           <div className="grid grid-cols-2 gap-2 text-xs">
             <div>
               <span className="text-slate-500 dark:text-slate-400">Avg Duration:</span>
@@ -396,7 +424,7 @@ const ForecastPanel = ({ forecast, loading, error }) => {
       )}
 
       <div className="bg-white dark:bg-slate-800 rounded-lg p-3 border border-indigo-100 dark:border-indigo-800">
-        <p className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-2">🤖 Auto-Detected Context</p>
+        <p className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-2">Auto-Detected Context</p>
         <div className="grid grid-cols-2 gap-2 text-xs">
           <div>
             <span className="text-slate-500 dark:text-slate-400">City:</span>
@@ -428,6 +456,9 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
   const [nearestEmployees, setNearestEmployees] = useState(null);
   const [loadingNearest, setLoadingNearest] = useState(false);
   const [selectedEmployeeLocation, setSelectedEmployeeLocation] = useState(null);
+  const [nearestSearchCenter, setNearestSearchCenter] = useState(null);
+  // Add this near the top of your CreateTaskModal component, with your other useRefs
+  const circleRef = useRef(null);
 
   const [formData, setFormData] = useState({
     title: '',
@@ -489,34 +520,21 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
       const geocoder = new window.google.maps.Geocoder();
       const response = await geocoder.geocode({ location: { lat, lng } });
       if (response.results && response.results.length > 0) {
-        // Try multiple approaches to find the city
         for (const result of response.results) {
-          // First try: Look for locality (city)
           const cityComponent = result.address_components.find(
             comp => comp.types.includes('locality')
           );
-          if (cityComponent) {
-            console.log(`✅ Found city: ${cityComponent.long_name}`);
-            return cityComponent.long_name;
-          }
+          if (cityComponent) return cityComponent.long_name;
           
-          // Second try: Look for administrative_area_level_2 (often the city/municipality)
           const adminArea2 = result.address_components.find(
             comp => comp.types.includes('administrative_area_level_2')
           );
-          if (adminArea2) {
-            console.log(`✅ Found city (admin level 2): ${adminArea2.long_name}`);
-            return adminArea2.long_name;
-          }
+          if (adminArea2) return adminArea2.long_name;
           
-          // Third try: Look for administrative_area_level_3 (for smaller municipalities)
           const adminArea3 = result.address_components.find(
             comp => comp.types.includes('administrative_area_level_3')
           );
-          if (adminArea3) {
-            console.log(`✅ Found city (admin level 3): ${adminArea3.long_name}`);
-            return adminArea3.long_name;
-          }
+          if (adminArea3) return adminArea3.long_name;
         }
       }
       console.warn('⚠️ Could not find city in geocoding results, using Manila as fallback');
@@ -526,7 +544,7 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
     return "Manila";
   };
 
-  // 4. Updated Forecast Logic using new City Detection, Office Location, and Impossible Route Checks
+  // 4. Updated Forecast Logic
   useEffect(() => {
     const shouldFetchForecast = 
       formData.assigned_to && 
@@ -538,6 +556,7 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
 
     if (!shouldFetchForecast) {
       setForecast(null);
+      setForecastError(null);
       return;
     }
 
@@ -567,26 +586,18 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
         if (formData.is_multi_destination && destinations.length >= 2) {
           console.log('🗺️ Fetching MULTI-DESTINATION forecast...');
           
-          // For multi-destination, use office location as default
           let employeeLat = OFFICE_LOCATION.lat;
           let employeeLng = OFFICE_LOCATION.lng;
           let usedDefaultLocation = true;
 
-          // Check if we have selected employee location from nearest employees
           if (selectedEmployeeLocation && selectedEmployeeLocation.userId === parseInt(formData.assigned_to)) {
             employeeLat = selectedEmployeeLocation.latitude;
             employeeLng = selectedEmployeeLocation.longitude;
             usedDefaultLocation = false;
-            console.log(`✅ Using selected employee location: (${employeeLat}, ${employeeLng})`);
-          }
-          // Otherwise check user's last known location
-          else if (selectedUser?.last_location?.latitude && selectedUser?.last_location?.longitude) {
+          } else if (selectedUser?.last_location?.latitude && selectedUser?.last_location?.longitude) {
             employeeLat = selectedUser.last_location.latitude;
             employeeLng = selectedUser.last_location.longitude;
             usedDefaultLocation = false;
-            console.log(`✅ Using employee's last known location: (${employeeLat}, ${employeeLng})`);
-          } else {
-            console.log(`⚠️ Using default office location (Makati): (${employeeLat}, ${employeeLng})`);
           }
           
           const multiDestRequest = {
@@ -608,22 +619,14 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
             ParticipantID: participantId 
           };
 
-          console.log('📊 Sending multi-destination request:', multiDestRequest);
           const response = await API.predictMultiDestination(multiDestRequest);
           
-          // ✅ Check for impossible route in multi-destination
           if (response.data?.error && response.data?.impossible_route) {
-            console.log('🚫 Multi-destination route has impossible legs:', response.data.impossible_legs);
-            setForecast(response.data); // Set the error as forecast
-            
+            setForecast(response.data);
             const impossibleCount = response.data.impossible_count || 0;
             const totalCount = response.data.total_destinations || destinations.length;
-            
-            toast.error(
-              `${impossibleCount} of ${totalCount} destinations are unreachable by car`,
-              { duration: 6000, icon: '🚫' }
-            );
-            return; // Don't set estimated duration
+            toast.error(`${impossibleCount} of ${totalCount} destinations are unreachable by car`, { duration: 6000, icon: '🚫' });
+            return;
           }
 
           if (response.data) {
@@ -667,39 +670,27 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
         else {
           console.log('🎯 Fetching SINGLE-DESTINATION forecast...');
           
-          // Determine employee location
           let employeeLat = OFFICE_LOCATION.lat;
           let employeeLng = OFFICE_LOCATION.lng;
           let usedDefaultLocation = true;
           let locationSource = 'office_default';
           
-          // Priority 1: Selected employee from nearest employees list
           if (selectedEmployeeLocation && selectedEmployeeLocation.userId === parseInt(formData.assigned_to)) {
             employeeLat = selectedEmployeeLocation.latitude;
             employeeLng = selectedEmployeeLocation.longitude;
             usedDefaultLocation = false;
             locationSource = 'nearest_employee';
-            console.log(`✅ Using selected employee location from nearest list: (${employeeLat}, ${employeeLng})`);
-          } 
-          // Priority 2: User's last known location from profile
-          else if (selectedUser?.last_location?.latitude && selectedUser?.last_location?.longitude) {
+          } else if (selectedUser?.last_location?.latitude && selectedUser?.last_location?.longitude) {
             employeeLat = selectedUser.last_location.latitude;
             employeeLng = selectedUser.last_location.longitude;
             usedDefaultLocation = false;
             locationSource = 'last_known_gps';
-            console.log(`✅ Using employee's last known location: (${employeeLat}, ${employeeLng})`);
-          } else {
-            console.log(`⚠️ No employee location available, using office location (${OFFICE_LOCATION.address})`);
           }
           
-          // Get task location
           const taskLat = parseFloat(formData.latitude);
           const taskLng = parseFloat(formData.longitude);
           
-          // Detect city from TASK location (not employee location)
-          console.log(`🔍 Detecting city for task location: (${taskLat}, ${taskLng})`);
           const detectedTaskCity = await detectCity(taskLat, taskLng);
-          console.log(`🏙️ Task city detected: ${detectedTaskCity}`);
 
           const forecastData = {
             employee_lat: employeeLat,
@@ -707,7 +698,7 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
             task_lat: taskLat,
             task_lng: taskLng,
             ParticipantID: participantId,
-            city: detectedTaskCity, // City where the TASK is located
+            city: detectedTaskCity,
             conditions: autoConditions,
             method: "Drive",
             scheduled_hour: hour,
@@ -715,20 +706,12 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
             scheduled_date: dueDate.toISOString().split('T')[0]
           };
 
-          console.log('📊 Sending single-destination request:', forecastData);
           const response = await API.getTaskForecast(forecastData);
           
-          // ✅ Check for impossible route error in single destination
           if (response.data?.prediction?.error && response.data?.prediction?.impossible_route) {
-            console.log('🚫 Impossible route detected:', response.data.prediction.impossible_reason);
-            setForecast(response.data.prediction); // Set the error as forecast
-            
-            toast.error('Cannot calculate route - destination may be unreachable by car', {
-              duration: 5000,
-              icon: '🚫'
-            });
-            
-            return; // Don't set estimated duration
+            setForecast(response.data.prediction);
+            toast.error('Cannot calculate route - destination may be unreachable by car', { duration: 5000, icon: '🚫' });
+            return;
           }
           
           if (response.data && !response.data.error) {
@@ -736,7 +719,7 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
               ...response.data.prediction,
               used_default_location: usedDefaultLocation,
               employee_location_source: locationSource,
-              city: detectedTaskCity, // Ensure we use the detected city
+              city: detectedTaskCity,
               auto_detected: {
                 city: detectedTaskCity,
                 method: "Drive",
@@ -758,11 +741,7 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
           }
         }
       } catch (err) {
-        console.error('❌ Forecast error details:', {
-          message: err.message,
-          response: err.response?.data,
-          status: err.response?.status
-        });
+        console.error('❌ Forecast error details:', err);
         setForecastError(err.response?.data?.detail || 'Could not generate forecast');
       } finally {
         setForecastLoading(false);
@@ -783,7 +762,45 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
     selectedEmployeeLocation
   ]);
 
-  // ✅ IMPROVED: handleFindNearestEmployees with multi-destination support
+  // ✅ Add this useEffect AFTER all your other useEffects but BEFORE the return statement
+  useEffect(() => {
+    console.log('🟢 Circle effect triggered, nearestSearchCenter:', nearestSearchCenter);
+    
+    // Clean up old circle
+    if (circleRef.current) {
+      console.log('🗑️ Destroying old circle');
+      circleRef.current.setMap(null);
+      circleRef.current = null;
+    }
+    
+    // Create new circle if we have a center
+    if (nearestSearchCenter && window.google && window.google.maps) {
+      console.log('✨ Creating new circle at:', nearestSearchCenter);
+      circleRef.current = new window.google.maps.Circle({
+        center: nearestSearchCenter,
+        radius: NEAREST_EMPLOYEE_RADIUS_METERS,
+        strokeColor: '#34D399',
+        strokeOpacity: 0.8,
+        strokeWeight: 2,
+        fillColor: '#34D399',
+        fillOpacity: 0.15,
+        // ✅ Critical fix: allow map clicks to pass through the circle
+        clickable: false, 
+        map: window.__google_map__ || null,
+      });
+    }
+    
+    // Cleanup on unmount
+    return () => {
+      if (circleRef.current) {
+        console.log('🧹 Cleanup: destroying circle');
+        circleRef.current.setMap(null);
+        circleRef.current = null;
+      }
+    };
+  }, [nearestSearchCenter]);
+
+  // ✅ IMPROVED: handleFindNearestEmployees
   const handleFindNearestEmployees = async () => {
     let targetLat, targetLng;
 
@@ -792,8 +809,6 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
         toast.error('Please add at least one destination to find nearby employees');
         return;
       }
-      // Grab the first destination (assumed first stop)
-      // We create a copy and sort just in case they are out of order, assuming 'sequence' exists
       const sortedDestinations = [...destinations].sort((a, b) => (a.sequence || 0) - (b.sequence || 0));
       targetLat = parseFloat(sortedDestinations[0].latitude);
       targetLng = parseFloat(sortedDestinations[0].longitude);
@@ -806,20 +821,38 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
       targetLng = parseFloat(formData.longitude);
     }
 
+    // Reset states before searching
+    setSelectedEmployeeLocation(null); 
     setLoadingNearest(true);
+    setNearestSearchCenter(null); 
+    setForecastError(null);
+    setNearestEmployees(null); 
+    
     try {
       const response = await API.LocationAPI.getNearestEmployee({
         latitude: targetLat,
         longitude: targetLng,
         get_forecast: true,
       });
-
-      setNearestEmployees(response.data);
       
-      if (response.data.employees.length > 0) {
-        toast.success(`Found ${response.data.employees.length} nearby employees`);
+      const filteredEmployees = (response.data.employees || [])
+          .filter(emp => emp.distance_km && emp.distance_km <= NEAREST_EMPLOYEE_RADIUS_KM)
+          .sort((a, b) => a.distance_km - b.distance_km);
+
+      const filteredData = {
+          ...response.data,
+          employees: filteredEmployees,
+          total_employees_found: filteredEmployees.length 
+      };
+
+      if (filteredData.employees.length > 0) {
+        setNearestEmployees(filteredData);
+        setNearestSearchCenter({ lat: targetLat, lng: targetLng });
+        toast.success(`Found ${filteredData.employees.length} nearby employees within ${NEAREST_EMPLOYEE_RADIUS_KM}km`);
       } else {
-        toast.info('No employees with recent location data found');
+        toast.info(`No employees found within ${NEAREST_EMPLOYEE_RADIUS_KM}km radius, or no recent location data.`);
+        setForecastError('No nearby employees found'); 
+        setNearestEmployees(null); 
       }
     } catch (err) {
       console.error('Error finding nearest employees:', err);
@@ -829,8 +862,10 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
     }
   };
 
-  const handleSelectNearestEmployee = (emp) => {
+  const handleSelectNearestEmployee = useCallback((emp) => {
       setFormData(prev => ({ ...prev, assigned_to: emp.user_id }));
+      setNearestSearchCenter(null); // Hide the radius circle on selection
+      setForecastError(null);
       
       if (emp.current_latitude && emp.current_longitude) {
           setSelectedEmployeeLocation({
@@ -839,7 +874,7 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
               longitude: emp.current_longitude
           });
       }
-  };
+  }, [setFormData, setSelectedEmployeeLocation]);
 
   const handleClose = useCallback(() => {
     setIsClosing(true);
@@ -873,6 +908,12 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
     const lat = event.latLng.lat();
     const lng = event.latLng.lng();
 
+    // ✅ FIX: Clear previous nearest employee search results/center when clicking new location
+    setNearestEmployees(null);
+    setNearestSearchCenter(null);
+    setSelectedEmployeeLocation(null); 
+    setForecastError(null);
+
     if (formData.is_multi_destination) {
       const newDestination = {
         id: Date.now(),
@@ -893,6 +934,12 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
 
   const handleMarkerDragEnd = useCallback((coords, index) => {
     if (!coords) return;
+
+    // ✅ FIX: Clear previous nearest employee search results/center on drag
+    setNearestEmployees(null);
+    setNearestSearchCenter(null);
+    setSelectedEmployeeLocation(null);
+    setForecastError(null);
 
     if (formData.is_multi_destination) {
       setDestinations(prev => prev.map((dest, i) =>
@@ -942,6 +989,12 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
       (pos) => {
         const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
         
+        // ✅ FIX: Clear nearest employee search state
+        setNearestEmployees(null);
+        setNearestSearchCenter(null);
+        setSelectedEmployeeLocation(null);
+        setForecastError(null);
+
         if (formData.is_multi_destination) {
           const newDest = {
             id: Date.now(),
@@ -972,7 +1025,7 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    // ✅ Check for any impossible route (single or multi-destination) before submission
+    // Check for impossible route
     if (forecast?.error && forecast?.impossible_route) {
       const message = forecast.impossible_legs 
         ? `Cannot create task - ${forecast.impossible_count} destinations are unreachable by car`
@@ -1044,6 +1097,71 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
     return (!Number.isNaN(lat) && !Number.isNaN(lng)) ? { lat, lng } : null;
   }, [formData.latitude, formData.longitude, formData.is_multi_destination]);
 
+  const employeeMarkers = useMemo(() => {
+    if (!nearestEmployees?.employees) return [];
+    return nearestEmployees.employees.map(emp => {
+      const key = `emp-${emp.user_id}`; 
+      
+      const position = {
+        lat: emp.current_latitude,
+        lng: emp.current_longitude,
+      };
+      
+      const userDetails = users.find(u => u.id === emp.user_id) || {};
+      const isSelected = parseInt(formData.assigned_to) === emp.user_id;
+      
+      const borderColor = isSelected 
+        ? 'border-indigo-600 ring-4 ring-indigo-300 dark:border-indigo-400' 
+        : 'border-white dark:border-slate-700 hover:border-indigo-400';
+        
+      const API_URL = process.env.REACT_APP_API_URL?.replace('/api/v1', '') || 'http://localhost:8000';
+      const avatarUrl = userDetails.avatar_url 
+                        ? (userDetails.avatar_url.startsWith('http') ? userDetails.avatar_url : `${API_URL}${userDetails.avatar_url}`)
+                        : null;
+      
+      return (
+        <AdvancedMarker
+          key={key}
+          position={position}
+          zIndex={isSelected ? 100 : 20}
+        >
+          <div 
+              style={{ 
+                width: '40px', 
+                height: '40px',
+                position: 'absolute',
+                left: '50%',
+                top: '50%',
+                transform: 'translate(-50%, -50%)'
+              }}
+              className={`relative rounded-full border-4 transition-all duration-200 shadow-lg cursor-pointer ${borderColor} overflow-hidden bg-white`}
+              onClick={() => handleSelectNearestEmployee(emp)}
+              title={`Employee: ${emp.full_name}, Distance: ${emp.distance_text}`}
+            >
+            {avatarUrl ? (
+              <img 
+                src={avatarUrl}
+                alt={userDetails.full_name || userDetails.username || 'Employee'}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center bg-indigo-100 text-indigo-600 dark:bg-indigo-900 dark:text-indigo-300 text-sm font-bold">
+                {((userDetails.full_name || userDetails.username || 'E').trim().split(' ').filter(Boolean).slice(0, 2).map(p => p[0]).join('') || 'E').toUpperCase()}
+              </div>
+            )}
+            {isSelected && (
+              <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-indigo-600 flex items-center justify-center border-2 border-white dark:border-slate-800">
+                <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
+                </svg>
+              </div>
+            )}
+          </div>
+        </AdvancedMarker>
+      );
+    });
+  }, [nearestEmployees, formData.assigned_to, handleSelectNearestEmployee, users]);
+
   const showMapError = Boolean(mapLoadError && !isMapLoaded);
 
   return (
@@ -1055,7 +1173,6 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        // FIX: Added flex flex-col and overflow-hidden to manage layout safely
         className={`relative w-full max-w-3xl max-h-[90vh] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden transform transition-all duration-200 ${isClosing ? 'scale-95 opacity-0' : 'scale-100 opacity-100'}`}
       >
         {/* HEADER: Fixed, Not Sticky. Outside of Scroll Area */}
@@ -1226,7 +1343,7 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
                       center={mapCenter}
                       zoom={13}
                       onClick={handleMapClick}
-                      options={{ streetViewControl: false, mapTypeControl: false }}
+                      options={{ streetViewControl: false, mapTypeControl: false, mapId: 'c70a2cab35a44cdebe219e9a' }}
                       onLoad={(map) => { window.__google_map__ = map; }}
                       onUnmount={() => { window.__google_map__ = null; }}
                     >
@@ -1270,6 +1387,10 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
                           }}
                         />
                       )}
+                      
+                      {/* Manually managed Circle via useEffect, so no <Circle> component here */}
+
+                      {employeeMarkers}
                     </GoogleMap>
                   </div>
                 )}
@@ -1320,7 +1441,7 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
                 <FormInput label="Due Date" id="due_date" name="due_date" type="datetime-local" value={formData.due_date} onChange={handleChange} />
               </div>
 
-              {/* ✅ Nearest Employees Feature - Now Supports Multi-Destination */}
+              {/* ✅ Nearest Employees Feature - Now Supports Multi-Destination and Radius Check */}
               {((!formData.is_multi_destination && formData.latitude && formData.longitude) ||
                 (formData.is_multi_destination && destinations.length > 0)) && (
                 <div className="pt-4">
@@ -1331,7 +1452,7 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
                     className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition disabled:opacity-50"
                   >
                     <FiMapPin className="w-4 h-4" />
-                    {loadingNearest ? 'Finding nearest employees...' : 'Find Nearest Employees'}
+                    {loadingNearest ? 'Finding nearest employees...' : `Find Nearest Employees (within ${NEAREST_EMPLOYEE_RADIUS_KM}km)`}
                   </button>
                 </div>
               )}
@@ -1357,58 +1478,64 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
                   </div>
                   
                   <div className="max-h-64 overflow-y-auto space-y-2">
-                    {nearestEmployees.employees.slice(0, 5).map((emp, index) => (
-                      <div
-                        key={emp.user_id}
-                        onClick={() => handleSelectNearestEmployee(emp)}
-                        className={`p-3 rounded-lg border cursor-pointer transition ${
-                          formData.assigned_to === emp.user_id
-                            ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-300 dark:border-indigo-700'
-                            : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-indigo-200 dark:hover:border-indigo-800'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-                                {emp.full_name}
-                              </span>
-                              {index === 0 && (
-                                <span className="text-xs px-2 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-full font-medium">
-                                  Nearest
+                    {nearestEmployees.employees.slice(0, 5).map((emp, index) => {
+                       // Find the full user object to pass to UserAvatar
+                       const fullUser = users.find(u => u.id === emp.user_id) || {};
+
+                       return (
+                        <div
+                          key={emp.user_id}
+                          onClick={() => handleSelectNearestEmployee(emp)}
+                          className={`p-3 rounded-lg border cursor-pointer transition ${
+                            formData.assigned_to === emp.user_id
+                              ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-300 dark:border-indigo-700'
+                              : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-indigo-200 dark:hover:border-indigo-800'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <UserAvatar user={fullUser} size="sm" className="mr-2" /> {/* Use UserAvatar */}
+                                <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                                  {emp.full_name}
                                 </span>
-                              )}
-                              {!emp.is_available && (
-                                <span className="text-xs px-2 py-0.5 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 rounded-full font-medium">
-                                  Busy
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-3 mt-1 text-xs text-slate-600 dark:text-slate-400">
-                              <span className="flex items-center gap-1">
-                                <FiMapPin className="w-3 h-3" />
-                                {emp.distance_text} away
-                              </span>
-                              {emp.forecast && (
+                                {index === 0 && (
+                                  <span className="text-xs px-2 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-full font-medium">
+                                    Nearest
+                                  </span>
+                                )}
+                                {!emp.is_available && (
+                                  <span className="text-xs px-2 py-0.5 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 rounded-full font-medium">
+                                    Busy
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-3 mt-1 text-xs text-slate-600 dark:text-slate-400 ml-10"> {/* Adjusted margin for alignment */}
                                 <span className="flex items-center gap-1">
-                                  <FiClock className="w-3 h-3" />
-                                  ~{Math.round(emp.forecast.predicted_duration)} min
+                                  <FiMapPin className="w-3 h-3" />
+                                  {emp.distance_text} away
                                 </span>
-                              )}
-                            </div>
-                          </div>
-                          {formData.assigned_to === emp.user_id && (
-                            <div className="flex-shrink-0">
-                              <div className="w-5 h-5 rounded-full bg-indigo-600 flex items-center justify-center">
-                                <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
-                                </svg>
+                                {emp.forecast && (
+                                  <span className="flex items-center gap-1">
+                                    <FiClock className="w-3 h-3" />
+                                    ~{Math.round(emp.forecast.predicted_duration)} min
+                                  </span>
+                                )}
                               </div>
                             </div>
-                          )}
+                            {formData.assigned_to === emp.user_id && (
+                              <div className="flex-shrink-0">
+                                <div className="w-5 h-5 rounded-full bg-indigo-600 flex items-center justify-center">
+                                  <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
+                                  </svg>
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                       );
+                    })}
                   </div>
                 </motion.div>
               )}

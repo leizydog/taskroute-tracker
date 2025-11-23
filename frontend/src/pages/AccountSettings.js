@@ -9,7 +9,8 @@ import { toast } from 'react-hot-toast';
 import API from '../services/api';
 import { useAuth } from '../contexts/AuthContext'; // ✅ Import useAuth
 
-// --- Updated Confirmation Modal with Feedback States ---
+
+// --- Confirmation Modal component (Kept as is) ---
 const ConfirmationModal = ({ isOpen, title, message, type = 'info', status = 'idle', onConfirm, onClose }) => {
   if (!isOpen) return null;
 
@@ -122,12 +123,14 @@ const ConfirmationModal = ({ isOpen, title, message, type = 'info', status = 'id
   );
 };
 
+
 const AccountSettings = () => {
   const { refreshUser } = useAuth(); // ✅ Get refreshUser from context
   const [activeTab, setActiveTab] = useState('profile');
   const [initialLoading, setInitialLoading] = useState(true);
   
   const [previewImage, setPreviewImage] = useState(null);
+  const [pendingAvatarFile, setPendingAvatarFile] = useState(null); // ✅ NEW: Store pending file
   const [imgVersion, setImgVersion] = useState(Date.now());
 
   const [showPassword, setShowPassword] = useState({
@@ -196,7 +199,8 @@ const AccountSettings = () => {
     }
   };
 
-  const handleFileChange = async (e) => {
+  // ✅ UPDATED: Only preview the image, don't upload yet
+  const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
@@ -210,38 +214,49 @@ const AccountSettings = () => {
       return;
     }
 
+    // Show preview
     const reader = new FileReader();
-    reader.onloadend = () => setPreviewImage(reader.result);
+    reader.onloadend = () => {
+      setPreviewImage(reader.result);
+      setPendingAvatarFile(file); // Store file for later upload
+      toast.success('Image selected! Click "Save Changes" to upload.', { icon: '📸' });
+    };
     reader.readAsDataURL(file);
-
-    try {
-      const toastId = toast.loading('Uploading avatar...');
-      const formData = new FormData();
-      formData.append('avatar', file); 
-      
-      const res = await API.AuthAPI.uploadAvatar(formData);
-      
-      toast.dismiss(toastId);
-      toast.success('Avatar updated successfully!');
-      
-      setProfileData(prev => ({ ...prev, avatar_url: res.data.avatar_url }));
-      setImgVersion(Date.now());
-
-      await refreshUser();
-      
-    } catch (error) {
-      console.error('Error uploading avatar:', error);
-      toast.dismiss();
-      toast.error('Failed to upload. Please try again.');
-      setPreviewImage(null);
-    } finally {
-        if (fileInputRef.current) {
-            fileInputRef.current.value = '';
-        }
+    
+    // Clear the file input value immediately
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
   };
 
-  // --- 1. Profile Save Logic ---
+  // ✅ NEW: Phone number formatter for Philippines
+  const formatPhoneNumber = (value) => {
+    // Remove all non-digit characters
+    const cleaned = value.replace(/\D/g, '');
+    
+    // Max length check (e.g., PH standard 10 digits after 63)
+    let number = cleaned.startsWith('63') ? cleaned.slice(2) : (cleaned.startsWith('0') ? cleaned.slice(1) : cleaned);
+    number = number.slice(0, 10);
+    
+    let formatted = '+63';
+
+    if (number.length > 0) formatted += ' ';
+    
+    // Format: +63 XXX XXX XXXX
+    if (number.length > 0) formatted += number.slice(0, 3);
+    if (number.length > 3) formatted += ' ' + number.slice(3, 6);
+    if (number.length > 6) formatted += ' ' + number.slice(6, 10);
+    
+    return formatted;
+  };
+
+  const handlePhoneChange = (e) => {
+    const rawValue = e.target.value;
+    const formatted = formatPhoneNumber(rawValue);
+    setProfileData({...profileData, phone: formatted});
+  };
+
+  // ✅ UPDATED: Handle profile save (fields + avatar)
   const handleProfileSave = (e) => {
     e.preventDefault();
     
@@ -254,42 +269,76 @@ const AccountSettings = () => {
       }
     });
 
-    if (Object.keys(changedFields).length === 0) {
-      toast('No changes detected.', { icon: 'ℹ️' });
+    const hasFieldChanges = Object.keys(changedFields).length > 0;
+    const hasAvatarChange = pendingAvatarFile !== null;
+
+    if (!hasFieldChanges && !hasAvatarChange) {
+      toast.info('No changes detected.', { icon: 'ℹ️' });
       return;
     }
+
+    // Build message based on what's changing
+    let message = 'You are about to save changes. This includes:\n';
+    if (hasAvatarChange) message += '• Profile picture upload\n';
+    if (hasFieldChanges) message += '• Personal information updates\n';
+    message += 'Do you want to continue?';
 
     setConfirmModal({
       isOpen: true,
       title: 'Save Profile Changes?',
-      message: 'Are you sure you want to update your profile information?',
+      message: message,
       type: 'info',
       status: 'idle',
       onConfirm: () => executeProfileSave(changedFields)
     });
   };
 
+  // ✅ UPDATED: Execute both avatar upload and profile update
   const executeProfileSave = async (changedFields) => {
     setConfirmModal(prev => ({ ...prev, status: 'loading' }));
     
     try {
-      await API.updateProfile(changedFields);
-      setOriginalProfileData({ ...originalProfileData, ...changedFields });
+      // Step 1: Upload avatar if there's a pending file
+      if (pendingAvatarFile) {
+        console.log('📤 Uploading avatar...');
+        const formData = new FormData();
+        formData.append('avatar', pendingAvatarFile);
+        
+        const avatarRes = await API.AuthAPI.uploadAvatar(formData);
+        console.log('✅ Avatar uploaded:', avatarRes.data.avatar_url);
+        
+        // Update profile data with new avatar URL
+        setProfileData(prev => ({ ...prev, avatar_url: avatarRes.data.avatar_url }));
+        setOriginalProfileData(prev => ({ ...prev, avatar_url: avatarRes.data.avatar_url }));
+        
+        // Clear pending state
+        setPendingAvatarFile(null);
+        setPreviewImage(null);
+        setImgVersion(Date.now());
+      }
 
+      // Step 2: Update other profile fields if there are changes
+      if (Object.keys(changedFields).length > 0) {
+        console.log('💾 Updating profile fields...');
+        // Note: The /profile endpoint on the backend handles only a subset of fields
+        await API.updateProfile(changedFields);
+        setOriginalProfileData({ ...originalProfileData, ...changedFields });
+      }
+
+      // Step 3: Refresh user context
       await refreshUser();
       
-      // ✅ Success Feedback inside Modal
+      // Success feedback
       setConfirmModal(prev => ({ ...prev, status: 'success' }));
       
-      // Auto close after 1.5 seconds
       setTimeout(() => {
         setConfirmModal(prev => ({ ...prev, isOpen: false }));
-        toast.success('Profile updated successfully!');
+        toast.success('Profile successfully updated!');
       }, 1500);
       
     } catch (error) {
-      console.error('Update error:', error);
-      // ❌ Error Feedback inside Modal
+      console.error('❌ Update error:', error);
+      // Error Feedback inside Modal
       setConfirmModal(prev => ({ 
         ...prev, 
         status: 'error', 
@@ -298,7 +347,18 @@ const AccountSettings = () => {
     }
   };
 
-  // --- 2. Password Change Logic ---
+  // ✅ UPDATED: Discard changes including pending avatar
+  const handleDiscardChanges = () => {
+    setProfileData(originalProfileData);
+    setPreviewImage(null);
+    setPendingAvatarFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+    toast.info('Changes discarded', { icon: '👋' });
+  };
+
+  // --- Password Change Logic (Kept as is) ---
   const handlePasswordChange = (e) => {
     e.preventDefault();
     
@@ -328,7 +388,7 @@ const AccountSettings = () => {
       
       setPasswordData({ current_password: '', new_password: '', confirm_password: '' });
       
-      // ✅ Success Feedback inside Modal
+      // Success Feedback inside Modal
       setConfirmModal(prev => ({ ...prev, status: 'success' }));
       
       // Auto close after 1.5 seconds
@@ -339,7 +399,7 @@ const AccountSettings = () => {
 
     } catch (error) {
       console.error('Password Error:', error);
-      // ❌ Error Feedback inside Modal
+      // Error Feedback inside Modal
       setConfirmModal(prev => ({ 
         ...prev, 
         status: 'error', 
@@ -347,6 +407,7 @@ const AccountSettings = () => {
       }));
     }
   };
+  // ------------------------------------------
 
   const handleLogout = () => {
     if (window.confirm('Are you sure you want to logout?')) {
@@ -357,13 +418,19 @@ const AccountSettings = () => {
   };
 
   const getAvatarSrc = () => {
+    // Priority 1: Show preview if user selected a new image
     if (previewImage) return previewImage;
+    
+    // Priority 2: Show saved avatar from server
     if (profileData.avatar_url) {
         const src = profileData.avatar_url.startsWith('http') 
             ? profileData.avatar_url 
             : `${API_URL}${profileData.avatar_url}`;
+        // Add cache buster to force refresh after upload
         return `${src}?t=${imgVersion}`;
     }
+    
+    // Priority 3: No image available
     return null;
   };
 
@@ -460,7 +527,16 @@ const AccountSettings = () => {
                     </div>
                     <div className="text-center sm:text-left flex-1">
                         <h2 className="text-xl font-bold text-slate-900 dark:text-white">{profileData.full_name}</h2>
-                        <p className="text-slate-500 dark:text-slate-400 mb-3">{profileData.email}</p>
+                        <p className="text-slate-500 dark:text-slate-400 mb-1">{profileData.email}</p>
+                        
+                        {/* ✅ Show pending avatar indicator */}
+                        {pendingAvatarFile && (
+                          <p className="text-xs text-amber-600 dark:text-amber-400 mb-2 flex items-center justify-center sm:justify-start gap-1">
+                            <AlertTriangle className="w-3 h-3" />
+                            Pending upload - click **Save Changes**
+                          </p>
+                        )}
+
                         <div className="flex flex-wrap gap-2 justify-center sm:justify-start">
                             <span className="px-2.5 py-1 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-medium border border-slate-200 dark:border-slate-700 uppercase tracking-wide">
                                 {profileData.role}
@@ -504,19 +580,21 @@ const AccountSettings = () => {
                             />
                         </div>
                         <div className="space-y-2">
-                            <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Phone</label>
+                            <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Phone Number</label>
                             <input 
                                 className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
                                 value={profileData.phone || ''}
-                                onChange={e => setProfileData({...profileData, phone: e.target.value})}
-                                placeholder="+1 (555) 000-0000"
+                                onChange={handlePhoneChange} // ✅ Use phone formatter
+                                placeholder="+63 XXX XXX XXXX"
+                                maxLength={17} // Max length for "+63 XXX XXX XXXX"
                             />
+                            <p className="text-xs text-slate-400 mt-1">Format: +63 XXX XXX XXXX</p>
                         </div>
 
                         <div className="md:col-span-2 pt-4 flex justify-end gap-3 border-t border-slate-100 dark:border-slate-800 mt-2">
                             <button 
                                 type="button" 
-                                onClick={() => setProfileData(originalProfileData)}
+                                onClick={handleDiscardChanges} // ✅ Updated discard handler
                                 className="px-5 py-2.5 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 rounded-lg font-medium text-sm transition-colors"
                             >
                                 Discard
