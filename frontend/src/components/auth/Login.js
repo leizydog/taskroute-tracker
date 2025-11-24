@@ -36,7 +36,8 @@ const Login = () => {
     try {
       const result = await login(formData.email, formData.password);
 
-      if (result.success) {
+      // Check both result exists and success property
+      if (result && result.success) {
         toast.successAfterNav('Login successful! Welcome back.');
 
         const userInfo = result.data;
@@ -50,8 +51,9 @@ const Login = () => {
           navigate("/dashboard");
         }
       } else {
-        // Handle case where login returns false but doesn't throw
+        // ✅ FIX: Explicitly set error when success is false
         setError("Incorrect credentials. Please try again.");
+        // Optional: toast.error("Invalid email or password."); 
       }
     } catch (err) {
       console.error("Login error:", err);
@@ -91,7 +93,7 @@ const Login = () => {
           {error && (
             <div className="mb-4">
               <Alert 
-                type="error" 
+                type="danger"  // Using 'danger' to match your requested style
                 message={error} 
                 onClose={() => setError(null)}
               />
