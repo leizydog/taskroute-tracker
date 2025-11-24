@@ -261,7 +261,6 @@ const TaskDetailsModal = ({ task, onClose, onEdit, onArchive, isMapLoaded }) => 
                             >
                               <img
                                 src={fullPhotoUrl}
-                                // Fixed: Changed "Completion photo" to "Completion evidence" to avoid redundant alt text warning
                                 alt={`Completion evidence ${index + 1}`}
                                 className="w-full h-full object-cover"
                                 onError={(e) => {
@@ -308,7 +307,6 @@ const TaskDetailsModal = ({ task, onClose, onEdit, onArchive, isMapLoaded }) => 
                   Reason for Cancellation
                 </label>
                 <p className="text-sm text-slate-800 dark:text-slate-200 font-medium">
-                  {/* The backend saves it as "CANCELLED: <reason>", so we display it directly */}
                   "{task.completion_notes || 'No reason provided.'}"
                 </p>
                 
@@ -334,6 +332,7 @@ const TaskDetailsModal = ({ task, onClose, onEdit, onArchive, isMapLoaded }) => 
                   options={{
                     disableDefaultUI: true,
                     zoomControl: true,
+                    mapId: 'c70a2cab35a44cdebe219e9a', // ✅ Added mapId here to enable Advanced Markers
                     styles: [
                         {
                             featureType: "poi",
