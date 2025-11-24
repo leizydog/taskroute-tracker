@@ -296,6 +296,30 @@ const TaskDetailsModal = ({ task, onClose, onEdit, onArchive, isMapLoaded }) => 
             </div>
           )}
 
+          {/* 3a. Cancellation Report (NEW) */}
+          {task.status?.toLowerCase() === 'cancelled' && (
+            <div className="border-t border-slate-200 dark:border-slate-700 pt-6">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2 mb-4">
+                <FiAlertCircle className="text-red-500" /> Cancellation Report
+              </h3>
+
+              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-5">
+                <label className="text-xs font-semibold text-red-700 dark:text-red-300 uppercase tracking-wider mb-2 block">
+                  Reason for Cancellation
+                </label>
+                <p className="text-sm text-slate-800 dark:text-slate-200 font-medium">
+                  {/* The backend saves it as "CANCELLED: <reason>", so we display it directly */}
+                  "{task.completion_notes || 'No reason provided.'}"
+                </p>
+                
+                <div className="mt-4 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                  <FiClock />
+                  <span>Cancelled on {formatDate(task.completed_at)}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* 4. Map Section */}
           {isMapLoaded && (
             <div className="border-t border-slate-200 dark:border-slate-700 pt-6">
