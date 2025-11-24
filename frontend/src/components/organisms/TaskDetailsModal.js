@@ -342,6 +342,7 @@ const TaskDetailsModal = ({ task, onClose, onEdit, onArchive, isMapLoaded }) => 
                     ],
                   }}
                 >
+                  {/* ✅ FIX: Render AdvancedMarker using task coordinates */}
                   <AdvancedMarker
                     position={{ lat: Number(task.latitude), lng: Number(task.longitude) }}
                     type="destination"
