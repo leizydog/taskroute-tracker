@@ -1,8 +1,9 @@
 # ============================================================================
-# OPTION 2: Update models/task.py to use UPPERCASE values (match database)
+# OPTION 1: Updated models/task.py with JSONB for destinations
 # ============================================================================
 
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Float, Enum, Text, JSON
+from sqlalchemy.dialects.postgresql import JSONB  # ✅ Add this import
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database import Base
@@ -38,7 +39,7 @@ class Task(Base):
     
     # Multi-destination support
     is_multi_destination = Column(Boolean, default=False)
-    destinations = Column(Text) 
+    destinations = Column(JSONB, nullable=True, default=[])  # ✅ CHANGED: Text -> JSONB
     
     # Location data
     location_name = Column(String(200))
@@ -76,4 +77,3 @@ class Task(Base):
 
     def __repr__(self):
         return f"<Task(id={self.id}, title='{self.title}', status='{self.status.value}')>"
-
