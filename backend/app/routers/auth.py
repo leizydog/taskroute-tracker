@@ -377,7 +377,7 @@ async def forgot_password(request: PasswordResetRequest, db: Session = Depends(g
         expires_delta=expires
     )
     
-    reset_link = f"http://192.168.102.41:3000/reset-password?token={reset_token}"
+    reset_link = f"https://taskroute-tracker.vercel.app/reset-password?token={reset_token}"
 
     # ✅ SEND REAL EMAIL
     try:
