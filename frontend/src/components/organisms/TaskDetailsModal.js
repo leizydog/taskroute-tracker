@@ -332,10 +332,11 @@ const TaskDetailsModal = ({ task, onClose, onEdit, onArchive, isMapLoaded }) => 
                   options={{
                     disableDefaultUI: true,
                     zoomControl: true,
-                    mapId: 'c70a2cab35a44cdebe219e9a', // ✅ Keep mapId
-                    // ✅ REMOVED styles prop to fix the error
+                    mapId: 'c70a2cab35a44cdebe219e9a', // ✅ KEEP THIS: Required for AdvancedMarker
+                    // ✅ REMOVED: styles prop which conflicts with mapId
                   }}
                 >
+                  {/* ✅ FIX: Render AdvancedMarker unconditionally using task data */}
                   <AdvancedMarker
                     position={{ lat: Number(task.latitude), lng: Number(task.longitude) }}
                     type="destination"
