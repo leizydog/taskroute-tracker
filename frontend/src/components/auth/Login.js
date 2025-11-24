@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { Link, useNavigate } from 'react-router-dom';
-import { Eye, EyeOff } from 'lucide-react'; // ✅ Fixed: Consolidated import
+import { Eye, EyeOff } from 'lucide-react';
+import { Alert } from '../atoms'; // ✅ Import Alert component
 import logo from '../../assets/Logo.png'; 
 
 const Login = () => {
@@ -12,6 +13,7 @@ const Login = () => {
   });
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState(null); // ✅ Error state
   
   const toast = useToast();
   const { login } = useAuth();
@@ -22,11 +24,14 @@ const Login = () => {
       ...formData,
       [e.target.name]: e.target.value
     });
+    // Clear error when user starts typing again
+    if (error) setError(null);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
+    setError(null); // Clear previous errors
 
     try {
       const result = await login(formData.email, formData.password);
@@ -44,10 +49,14 @@ const Login = () => {
         } else {
           navigate("/dashboard");
         }
+      } else {
+        // Handle case where login returns false but doesn't throw
+        setError("Incorrect credentials. Please try again.");
       }
-    } catch (error) {
-      console.error("Login error:", error);
-      toast.error("Invalid email or password.");
+    } catch (err) {
+      console.error("Login error:", err);
+      // ✅ Set the specific error message requested
+      setError("Incorrect credentials. Please check your email and password.");
     } finally {
       setLoading(false);
     }
@@ -77,6 +86,18 @@ const Login = () => {
         </div>
 
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+          
+          {/* ✅ ERROR POPUP */}
+          {error && (
+            <div className="mb-4">
+              <Alert 
+                type="error" 
+                message={error} 
+                onClose={() => setError(null)}
+              />
+            </div>
+          )}
+
           <div className="space-y-4">
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-200">
