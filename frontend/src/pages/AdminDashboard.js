@@ -170,6 +170,7 @@ const ConfirmationModal = ({ isOpen, title, message, type = 'danger', onConfirm,
   );
 };
 
+// --- IMPROVED USER MODAL ---
 const UserModal = ({ mode = 'add', user = null, onClose, onSuccess }) => {
   const [formData, setFormData] = useState({
     full_name: '',
@@ -181,10 +182,15 @@ const UserModal = ({ mode = 'add', user = null, onClose, onSuccess }) => {
     ...user
   });
   const [loading, setLoading] = useState(false);
+  // ✅ NEW: States for inline feedback
+  const [error, setError] = useState(null);
+  const [showSuccess, setShowSuccess] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
+    setError(null); // Clear previous errors
+
     try {
       if (mode === 'add') {
         const payload = {
@@ -202,14 +208,14 @@ const UserModal = ({ mode = 'add', user = null, onClose, onSuccess }) => {
         } else {
             await api.register(payload);
         }
-
-        toast.success(`User ${formData.full_name} created successfully`);
       } else {
         await api.apiClient.put(`/users/${user.id}`, formData);
-        toast.success(`User ${formData.full_name} updated successfully`);
       }
+      
+      // ✅ Show success view instead of closing immediately
+      setShowSuccess(true);
       onSuccess(formData);
-      onClose();
+      
     } catch (error) {
       console.error(`${mode === 'add' ? 'Registration' : 'Update'} failed:`, error);
       
@@ -229,11 +235,40 @@ const UserModal = ({ mode = 'add', user = null, onClose, onSuccess }) => {
         errorMessage = error.message;
       }
 
-      toast.error(errorMessage);
+      // ✅ Set inline error instead of toast
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
   };
+
+  // ✅ SUCCESS VIEW
+  if (showSuccess) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-sm overflow-hidden p-8 text-center"
+        >
+          <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+            <FiCheckCircle className="w-8 h-8 text-green-600 dark:text-green-400" />
+          </div>
+          <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-2">
+            {mode === 'add' ? 'User Created!' : 'User Updated!'}
+          </h3>
+          <p className="text-slate-500 dark:text-slate-400 mb-6">
+            {mode === 'add' 
+              ? `${formData.full_name} has been successfully added to the system.` 
+              : `${formData.full_name}'s details have been updated.`}
+          </p>
+          <Button variant="primary" fullWidth onClick={onClose}>
+            Done
+          </Button>
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
@@ -252,6 +287,12 @@ const UserModal = ({ mode = 'add', user = null, onClose, onSuccess }) => {
           </button>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          
+          {/* ✅ INLINE ERROR ALERT */}
+          {error && (
+            <Alert type="danger" message={error} />
+          )}
+
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Full Name</label>
             <Input 
@@ -599,7 +640,7 @@ const AdminDashboard = () => {
 
   const handleUserSaved = (userData) => {
     fetchData();
-    addAlert('success', 'User saved successfully.');
+    // Removed duplicate toast/alert since UserModal handles success view
   };
 
   const handleWipeUsers = () => {
@@ -830,10 +871,13 @@ const AdminDashboard = () => {
     });
   };
 
-  // Helper for relative time in notifications
+  // ✅ UPDATED: Helper for relative time with UTC enforcement
   const getRelativeTime = (d) => {
       if(!d) return '';
-      const diff = (new Date() - new Date(d)) / 1000; // seconds
+      // Fix: Append 'Z' if missing to force UTC interpretation. 
+      // Browsers treat ISO strings without 'Z' as local time, creating offsets.
+      const dateStr = d.endsWith('Z') ? d : `${d}Z`; 
+      const diff = (new Date() - new Date(dateStr)) / 1000; // seconds
       if(diff < 60) return 'Just now';
       if(diff < 3600) return `${Math.floor(diff/60)}m ago`;
       return `${Math.floor(diff/3600)}h ago`;

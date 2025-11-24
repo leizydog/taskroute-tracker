@@ -695,7 +695,9 @@ async def complete_task(
     # Update Completion Details
     task.completion_notes = complete_data.completion_notes
     task.quality_rating = complete_data.quality_rating
-    task.signature_url = complete_data.signature_url
+    # New Code (Protects your signature)
+    if complete_data.signature_url:
+        task.signature_url = complete_data.signature_url
 
     # Location update on complete
     if complete_data.latitude is not None:
