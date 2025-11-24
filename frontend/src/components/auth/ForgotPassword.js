@@ -38,7 +38,7 @@ const ForgotPassword = () => {
           
           <p className="text-gray-600 dark:text-gray-300 mb-8">
             We've sent password reset instructions to <br/>
-            <span className="font-semibold text-white">{email}</span>.
+            <span className="font-semibold text-black">{email}</span>.
           </p>
           
           <Link
