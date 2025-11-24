@@ -93,7 +93,7 @@ const Login = () => {
           {error && (
             <div className="mb-4">
               <Alert 
-                type="danger"  // Using 'danger' to match your requested style
+                type="error"  // Using 'danger' to match your requested style
                 message={error} 
                 onClose={() => setError(null)}
               />
