@@ -13,6 +13,7 @@ import {
   FiList, FiTerminal, FiChevronDown
 } from 'react-icons/fi';
 import { Button, Card, StatValue, Input, Select, Alert, Badge } from '../components/atoms';
+import UserAvatar from '../components/atoms/UserAvatar'; // ✅ Import UserAvatar
 import CreateTaskModal from '../components/organisms/CreateTaskModal';
 import { EmployeeKPIPanel, LiveLocationTracker, TaskManagementPanel } from '../components/organisms';
 import { useAuth } from '../contexts/AuthContext';
@@ -35,25 +36,11 @@ const UserListItem = ({ employee, isSelected, onClick }) => (
     }`}
   >
     <div className="relative">
-      <div className="w-8 h-8 flex-shrink-0 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center font-bold text-indigo-600 dark:text-indigo-300 overflow-hidden border border-slate-200 dark:border-slate-700">
-      {employee?.avatar_url ? (
-        <img 
-          src={employee.avatar_url.startsWith('http') ? employee.avatar_url : `${process.env.REACT_APP_API_URL?.replace('/api/v1', '') || 'http://localhost:8000'}${employee.avatar_url}`}
-          alt={employee?.full_name || 'User'} 
-          className="w-full h-full object-cover"
-          onError={(e) => {
-            e.target.style.display = 'none';
-            e.target.parentElement.innerHTML = `<span class="text-xs font-bold">${(employee?.full_name || 'U').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}</span>`;
-          }}
-        />
-      ) : (
-        <span className="text-xs font-bold">
-          {(employee?.full_name || 'U').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
-        </span>
-      )}
-    </div>
+      {/* ✅ Use UserAvatar Component instead of manual img tag */}
+      <UserAvatar user={employee} size="md" />
+      
       {employee?.role === 'admin' && (
-        <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] p-0.5 rounded-full" title="Admin">
+        <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] p-0.5 rounded-full z-10" title="Admin">
           <FiShield size={10} />
         </span>
       )}
@@ -983,21 +970,8 @@ const AdminDashboard = () => {
             <div className="bg-slate-800/50 rounded-lg p-3 border border-slate-700">
                 <div className="flex items-center gap-3">
                     <div className="w-8 h-8 flex-shrink-0 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center font-bold text-indigo-600 dark:text-indigo-300 overflow-hidden border border-slate-200 dark:border-slate-700">
-                      {user?.avatar_url ? (
-                        <img 
-                          src={user.avatar_url.startsWith('http') ? user.avatar_url : `${process.env.REACT_APP_API_URL?.replace('/api/v1', '') || 'http://localhost:8000'}${user.avatar_url}`}
-                          alt={user?.full_name || 'User'} 
-                          className="w-full h-full object-cover"
-                          onError={(e) => {
-                            e.target.style.display = 'none';
-                            e.target.parentElement.innerHTML = `<span class="text-xs font-bold">${(user?.full_name || 'U').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}</span>`;
-                          }}
-                        />
-                      ) : (
-                        <span className="text-xs font-bold">
-                          {(user?.full_name || 'U').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
-                        </span>
-                      )}
+                      {/* ✅ Use UserAvatar Component instead of manual img tag */}
+                      <UserAvatar user={user} size="md" />
                     </div>
                     <div className="overflow-hidden">
                         <p className="text-sm font-medium text-white truncate">{user?.full_name}</p>
@@ -1090,21 +1064,8 @@ const AdminDashboard = () => {
                   onClick={() => setShowUserMenu(!showUserMenu)}
                   className={`flex items-center gap-2 p-1 pl-3 pr-2 rounded-full transition-colors border ${showUserMenu ? 'bg-slate-100 dark:bg-slate-800 border-indigo-400 dark:border-indigo-600' : 'border-transparent hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
                   <div className="w-8 h-8 flex-shrink-0 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center font-bold text-indigo-600 dark:text-indigo-300 overflow-hidden border border-slate-200 dark:border-slate-700">
-                    {user?.avatar_url ? (
-                      <img 
-                        src={user.avatar_url.startsWith('http') ? user.avatar_url : `${process.env.REACT_APP_API_URL?.replace('/api/v1', '') || 'http://localhost:8000'}${user.avatar_url}`}
-                        alt={user?.full_name || 'User'} 
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          e.target.style.display = 'none';
-                          e.target.parentElement.innerHTML = `<span class="text-xs font-bold">${(user?.full_name || 'U').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}</span>`;
-                        }}
-                      />
-                    ) : (
-                      <span className="text-xs font-bold">
-                        {(user?.full_name || 'U').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
-                      </span>
-                    )}
+                    {/* ✅ Use UserAvatar Component instead of manual img tag */}
+                    <UserAvatar user={user} size="md" />
                   </div>
                   <span className="text-sm font-medium text-slate-700 dark:text-slate-300 hidden sm:inline">{user?.full_name}</span>
                   <FiChevronDown size={14} className={`text-slate-500 dark:text-slate-400 transition-transform ${showUserMenu ? 'rotate-180' : 'rotate-0'}`} />
@@ -1249,21 +1210,8 @@ const AdminDashboard = () => {
                             <div className="flex items-start justify-between">
                                 <div className="flex gap-4">
                                     <div className="w-24 h-24 flex-shrink-0 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center font-bold text-indigo-600 dark:text-indigo-300 overflow-hidden border border-slate-200 dark:border-slate-700">
-                                      {selectedEmployee?.avatar_url ? (
-                                        <img 
-                                          src={selectedEmployee.avatar_url.startsWith('http') ? selectedEmployee.avatar_url : `${API_URL}${selectedEmployee.avatar_url}`}
-                                          alt={selectedEmployee?.full_name || 'User'} 
-                                          className="w-full h-full object-cover"
-                                          onError={(e) => {
-                                            e.target.style.display = 'none';
-                                            e.target.parentElement.innerHTML = `<span class="text-2xl font-bold">${(selectedEmployee?.full_name || 'U').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}</span>`;
-                                          }}
-                                        />
-                                      ) : (
-                                        <span className="text-2xl font-bold">
-                                          {(selectedEmployee?.full_name || 'U').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
-                                        </span>
-                                      )}
+                                      {/* ✅ Use UserAvatar Component instead of manual img tag */}
+                                      <UserAvatar user={selectedEmployee} size="lg" />
                                     </div>
                                     <div>
                                         <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">{selectedEmployee.full_name}</h2>
@@ -1354,21 +1302,8 @@ const AdminDashboard = () => {
                                          <td className="px-6 py-4">
                                              <div className="flex items-center gap-3">
                                             <div className="w-8 h-8 flex-shrink-0 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center font-bold text-indigo-600 dark:text-indigo-300 overflow-hidden border border-slate-200 dark:border-slate-700">
-                                              {emp?.avatar_url ? (
-                                                <img 
-                                                  src={emp.avatar_url.startsWith('http') ? emp.avatar_url : `${API_URL}${emp.avatar_url}`}
-                                                  alt={emp?.full_name || 'User'} 
-                                                  className="w-full h-full object-cover"
-                                                  onError={(e) => {
-                                                    e.target.style.display = 'none';
-                                                    e.target.parentElement.innerHTML = `<span class="text-xs font-bold">${(emp?.full_name || 'U').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}</span>`;
-                                                  }}
-                                                />
-                                              ) : (
-                                                <span className="text-xs font-bold select-none">
-                                                  {(emp?.full_name || 'U').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
-                                                </span>
-                                              )}
+                                              {/* ✅ Use UserAvatar Component instead of manual img tag */}
+                                              <UserAvatar user={emp} size="sm" />
                                             </div>
                                             <div>
                                                 <p className="font-medium text-slate-900 dark:text-slate-100">{emp.full_name}</p>
