@@ -332,17 +332,10 @@ const TaskDetailsModal = ({ task, onClose, onEdit, onArchive, isMapLoaded }) => 
                   options={{
                     disableDefaultUI: true,
                     zoomControl: true,
-                    mapId: 'c70a2cab35a44cdebe219e9a', // ✅ Added mapId here to enable Advanced Markers
-                    styles: [
-                        {
-                            featureType: "poi",
-                            elementType: "labels",
-                            stylers: [{ visibility: "off" }],
-                        },
-                    ],
+                    mapId: 'c70a2cab35a44cdebe219e9a', // ✅ Keep mapId
+                    // ✅ REMOVED styles prop to fix the error
                   }}
                 >
-                  {/* ✅ FIX: Render AdvancedMarker using task coordinates */}
                   <AdvancedMarker
                     position={{ lat: Number(task.latitude), lng: Number(task.longitude) }}
                     type="destination"
