@@ -177,7 +177,7 @@ const TaskDetailsModal = ({ task, onClose, onEdit, onArchive, isMapLoaded }) => 
           )}
 
           {/* 3. Completion Report */}
-          {task.status === 'completed' && (
+          {task.status?.toLowerCase() === 'completed' && (
             <div className="border-t border-slate-200 dark:border-slate-700 pt-6">
               <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2 mb-4">
                 <FiCheckCircle className="text-green-500" /> Completion Report
@@ -335,7 +335,7 @@ const TaskDetailsModal = ({ task, onClose, onEdit, onArchive, isMapLoaded }) => 
           <Button variant="secondary" onClick={handleClose}>
             Close
           </Button>
-          {task.status !== 'completed' && task.status !== 'cancelled' && (
+          {task.status?.toLowerCase() !== 'completed' && task.status !== 'cancelled' && (
             <>
                 <Button variant="primary" onClick={() => onEdit(task)}>
                     Edit Details
