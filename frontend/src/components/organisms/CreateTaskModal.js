@@ -3,7 +3,7 @@ import API from "../../services/api";
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { FiX, FiPlusCircle, FiMapPin, FiTrash2, FiClock, FiTrendingUp, FiAlertCircle, FiInfo } from 'react-icons/fi';
-import { GoogleMap, Polyline } from '@react-google-maps/api'; // Removed Circle from imports
+import { GoogleMap, Polyline } from '@react-google-maps/api';
 import AdvancedMarker from './AdvancedMarker';
 import { Spinner, Button } from '../atoms';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -80,7 +80,7 @@ const ForecastPanel = ({ forecast, loading, error }) => {
     );
   }
 
-  // ✅ Handle multi-destination impossible routes (No Emojis)
+  // ✅ Handle multi-destination impossible routes
   if (forecast?.error && forecast?.impossible_route && forecast?.impossible_legs) {
     return (
       <motion.div
@@ -159,7 +159,7 @@ const ForecastPanel = ({ forecast, loading, error }) => {
     );
   }
 
-  // ✅ Handle single-destination impossible routes (No Emojis)
+  // ✅ Handle single-destination impossible routes
   if (forecast?.error && forecast?.impossible_route) {
     return (
       <motion.div
@@ -305,7 +305,6 @@ const ForecastPanel = ({ forecast, loading, error }) => {
         </div>
         <div className="flex-1">
           <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-1">
-            {/* No Emojis */}
             {isMultiDest ? 'Multi-Stop Route Forecast' : 'AI-Powered Duration Forecast'}
           </h4>
           <p className="text-xs text-slate-600 dark:text-slate-400">
@@ -457,7 +456,6 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
   const [loadingNearest, setLoadingNearest] = useState(false);
   const [selectedEmployeeLocation, setSelectedEmployeeLocation] = useState(null);
   const [nearestSearchCenter, setNearestSearchCenter] = useState(null);
-  // Add this near the top of your CreateTaskModal component, with your other useRefs
   const circleRef = useRef(null);
 
   const [formData, setFormData] = useState({
@@ -486,6 +484,14 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
   const defaultCenter = useMemo(() => ({ lat: 14.8781, lng: 120.9750 }), []);
   const [mapCenter, setMapCenter] = useState(defaultCenter);
 
+  // ✅ NEW: Calculate minimum allowed date (Current local time)
+  const minDateTime = useMemo(() => {
+    const now = new Date();
+    // Shift to local time ISO string
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+    return now.toISOString().slice(0, 16);
+  }, []);
+
   useEffect(() => {
     const fetchUsers = async () => {
       try {
@@ -511,6 +517,7 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
     }
   }, [currentUser]);
 
+  // ... (Rest of the component: detectCity, forecast useEffect, map Circle useEffect)
   // 3. Improved City Detection
   const detectCity = async (lat, lng) => {
     if (!window.google || !window.google.maps || !window.google.maps.Geocoder) {
@@ -762,7 +769,6 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
     selectedEmployeeLocation
   ]);
 
-  // ✅ Add this useEffect AFTER all your other useEffects but BEFORE the return statement
   useEffect(() => {
     console.log('🟢 Circle effect triggered, nearestSearchCenter:', nearestSearchCenter);
     
@@ -784,7 +790,6 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
         strokeWeight: 2,
         fillColor: '#34D399',
         fillOpacity: 0.15,
-        // ✅ Critical fix: allow map clicks to pass through the circle
         clickable: false, 
         map: window.__google_map__ || null,
       });
@@ -908,7 +913,6 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
     const lat = event.latLng.lat();
     const lng = event.latLng.lng();
 
-    // ✅ FIX: Clear previous nearest employee search results/center when clicking new location
     setNearestEmployees(null);
     setNearestSearchCenter(null);
     setSelectedEmployeeLocation(null); 
@@ -935,7 +939,6 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
   const handleMarkerDragEnd = useCallback((coords, index) => {
     if (!coords) return;
 
-    // ✅ FIX: Clear previous nearest employee search results/center on drag
     setNearestEmployees(null);
     setNearestSearchCenter(null);
     setSelectedEmployeeLocation(null);
@@ -989,7 +992,6 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
       (pos) => {
         const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
         
-        // ✅ FIX: Clear nearest employee search state
         setNearestEmployees(null);
         setNearestSearchCenter(null);
         setSelectedEmployeeLocation(null);
@@ -1025,7 +1027,6 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    // Check for impossible route
     if (forecast?.error && forecast?.impossible_route) {
       const message = forecast.impossible_legs 
         ? `Cannot create task - ${forecast.impossible_count} destinations are unreachable by car`
@@ -1438,7 +1439,15 @@ const CreateTaskModal = ({ onClose, onSuccess, isMapLoaded = false, mapLoadError
                   onChange={handleChange} 
                   placeholder={forecast ? `AI suggests: ${Math.round(forecast.predicted_duration_minutes)}` : "60"}
                 />
-                <FormInput label="Due Date" id="due_date" name="due_date" type="datetime-local" value={formData.due_date} onChange={handleChange} />
+                <FormInput 
+                  label="Due Date" 
+                  id="due_date" 
+                  name="due_date" 
+                  type="datetime-local" 
+                  value={formData.due_date} 
+                  onChange={handleChange} 
+                  min={minDateTime} // ✅ RESTRICT PAST DATES
+                />
               </div>
 
               {/* ✅ Nearest Employees Feature - Now Supports Multi-Destination and Radius Check */}

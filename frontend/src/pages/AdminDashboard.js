@@ -290,7 +290,7 @@ const UserModal = ({ mode = 'add', user = null, onClose, onSuccess }) => {
           
           {/* ✅ INLINE ERROR ALERT */}
           {error && (
-            <Alert type="danger" message={error} />
+            <Alert type="error" message={error} />
           )}
 
           <div>
