@@ -1,5 +1,5 @@
 """
-TaskRoute: Task Duration Predictor with Google Directions API Integration (FIXED)
+TaskRoute: Task Duration Predictor with Google Directions API Integration (FIXED FOR SHORT DISTANCES)
 File: backend/app/services/task_duration_predictor.py
 """
 
@@ -433,25 +433,40 @@ class TaskDurationPredictor:
             
     def _should_trust_travel_time(self, distance_km: float, travel_time_min: float, predicted_duration: float) -> bool:
         """
-        Determine if we should trust travel time over ML prediction
+        Determine if we should trust Google Maps/Physics over the ML model
         
         Returns True if:
-        - Distance is extreme (>100km) 
-        - Travel time is much longer than prediction
-        - Prediction seems unrealistic given travel time
+        - Distance is very short (< 0.3 km)
+        - Distance is extreme (> 100 km)
+        - ML Prediction is significantly higher than Travel Time (Hallucination)
+        - Travel time is significantly higher than prediction
         """
         
+        # ✅ FIX 1: "At Location" Override
+        # If distance is less than 300 meters (0.3km), the ML model is useless.
+        # Trust the physical proximity.
+        if distance_km < 0.3:
+            print(f"   ⚠️ User is effectively at location ({distance_km*1000:.0f}m) - Ignoring ML model")
+            return True
+
         # Case 1: Extreme distance (inter-city or inter-province travel)
         if distance_km > 100:
             print(f"   ⚠️ Extreme distance detected ({distance_km:.1f} km) - prioritizing travel time")
             return True
         
-        # Case 2: Travel time is more than 3x the predicted duration
+        # ✅ FIX 2: "Hallucination Check"
+        # If the ML model predicts 36 mins, but Google says 1 min, the model is wrong.
+        # Logic: If Prediction is > 5x the Travel Time (and travel time is significant)
+        if travel_time_min > 1 and predicted_duration > (travel_time_min * 5):
+            print(f"   ⚠️ ML Prediction ({predicted_duration:.1f}m) is suspiciously high vs Travel ({travel_time_min:.1f}m) - Trusting Travel")
+            return True
+            
+        # Case 3: Travel time is more than 3x the predicted duration
         if travel_time_min > predicted_duration * 3:
             print(f"   ⚠️ Travel time ({travel_time_min:.1f} min) >> Predicted duration ({predicted_duration:.1f} min)")
             return True
         
-        # Case 3: Prediction is less than 80% of travel time (physically impossible)
+        # Case 4: Prediction is less than 80% of travel time (physically impossible)
         if predicted_duration < travel_time_min * 0.8:
             print(f"   ⚠️ Predicted duration ({predicted_duration:.1f} min) < 80% of travel time ({travel_time_min:.1f} min)")
             return True
@@ -503,7 +518,7 @@ class TaskDurationPredictor:
             date_str=date_str
         )
         
-        # ✅ NEW: Check if route is impossible
+        # Check if route is impossible
         if route_info.get('impossible_route'):
             print(f"   🚫 Cannot calculate: {route_info.get('impossible_reason')}")
             
@@ -655,23 +670,32 @@ class TaskDurationPredictor:
         X_pred = pd.DataFrame([features])[self.selected_features].fillna(0)
         predicted_duration_raw = self.xgb_model.predict(X_pred)[0]
         
-        # ✅ NEW: Check if we should trust travel time over ML prediction
-        if self._should_trust_travel_time(distance_km, travel_time_min, predicted_duration_raw):
-            # For extreme distances: Travel time + reasonable work time estimate
-            estimated_work_time = min(30, predicted_duration_raw * 0.3)  # Max 30 min work time
-            predicted_duration = travel_time_min + estimated_work_time
-            work_time = estimated_work_time
-            
-            print(f"   🔄 Adjusted prediction for extreme distance:")
-            print(f"      ML suggested: {predicted_duration_raw:.1f} min")
-            print(f"      Using: {travel_time_min:.1f} min (travel) + {estimated_work_time:.1f} min (work)")
-            
-            used_travel_based_prediction = True
+        # Apply the Logic Fix
+        should_trust_physics = self._should_trust_travel_time(distance_km, travel_time_min, predicted_duration_raw)
+        
+        if should_trust_physics:
+            # If they are basically at the location (<300m), prediction is effectively 0-2 mins
+            if distance_km < 0.3:
+                # Allow 2 minutes for "parking/finding door", but essentially it's just travel
+                predicted_duration = travel_time_min + 2 
+                used_travel_based_prediction = True
+                print(f"   🎯 Short distance override applied: {predicted_duration:.1f} min")
+            else:
+                # Trust Google Maps Travel Time directly
+                predicted_duration = travel_time_min
+                used_travel_based_prediction = True
+                print(f"   🔄 Trusting Google Maps duration: {predicted_duration:.1f} min")
         else:
-            # Normal case: Trust ML model
+            # Use ML prediction
             predicted_duration = predicted_duration_raw
-            work_time = max(0, predicted_duration - travel_time_min)
             used_travel_based_prediction = False
+
+        # Ensure we don't return negative numbers
+        predicted_duration = max(1.0, predicted_duration) # Minimum 1 minute
+        
+        # Since "Duration = Travel", Work Time should ideally be 0
+        # But for the breakdown, we can show the difference as "Buffer/Parking"
+        work_time = max(0, predicted_duration - travel_time_min)
         
         # Calculate confidence interval
         confidence_lower = predicted_duration - (1.96 * emp_std_duration)

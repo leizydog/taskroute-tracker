@@ -3,8 +3,10 @@ import {
   FiX, FiMapPin, FiClock, FiCalendar, FiCheckCircle, 
   FiTrendingUp, FiActivity, FiFileText, FiPenTool, FiStar, FiAlertCircle, FiImage
 } from 'react-icons/fi';
-import { GoogleMap } from '@react-google-maps/api';
-import AdvancedMarker from './AdvancedMarker';
+// ✅ FIX: Import MarkerF
+import { GoogleMap, MarkerF } from '@react-google-maps/api';
+// ✅ FIX: Remove or comment out AdvancedMarker
+// import AdvancedMarker from './AdvancedMarker'; 
 import { Button, Badge } from '../atoms';
 import { motion } from 'framer-motion';
 
@@ -332,14 +334,13 @@ const TaskDetailsModal = ({ task, onClose, onEdit, onArchive, isMapLoaded }) => 
                   options={{
                     disableDefaultUI: true,
                     zoomControl: true,
-                    mapId: 'c70a2cab35a44cdebe219e9a', // ✅ KEEP THIS: Required for AdvancedMarker
-                    // ✅ REMOVED: styles prop which conflicts with mapId
+                    // mapId is optional if not using Advanced Markers styling
+                    // mapId: 'c70a2cab35a44cdebe219e9a', 
                   }}
                 >
-                  {/* ✅ FIX: Render AdvancedMarker unconditionally using task data */}
-                  <AdvancedMarker
+                  {/* ✅ FIX: Use MarkerF instead of AdvancedMarker */}
+                  <MarkerF
                     position={{ lat: Number(task.latitude), lng: Number(task.longitude) }}
-                    type="destination"
                     title={task.address || task.location_name || task.title}
                   />
                 </GoogleMap>
