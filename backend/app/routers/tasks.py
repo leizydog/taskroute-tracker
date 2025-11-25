@@ -1025,6 +1025,7 @@ async def decline_task(
 async def upload_signature(
     task_id: int,
     signature: UploadFile = File(...),
+    stop_index: Optional[int] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
@@ -1063,6 +1064,7 @@ async def upload_signature(
 async def upload_photo(
     task_id: int,
     photo: UploadFile = File(...),
+    stop_index: Optional[int] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
