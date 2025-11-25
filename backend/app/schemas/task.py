@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field, validator
 from datetime import datetime
 from typing import Optional, List, Any
 from app.models.task import TaskStatus, TaskPriority
+import json  # ✅ Added import
 
 # ✅ NEW: Schema for task destinations
 class TaskDestination(BaseModel):
@@ -33,6 +34,16 @@ class TaskBase(BaseModel):
     estimated_duration: Optional[int] = Field(None, gt=0)
     due_date: Optional[datetime] = None
     
+    # ✅ FIX: Pre-validator to parse JSON string from DB into List
+    @validator('destinations', pre=True)
+    def parse_destinations_from_db(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except ValueError:
+                return []
+        return v
+
     @validator('destinations')
     def validate_destinations(cls, v, values):
         """Ensure destinations are provided if is_multi_destination is True"""
