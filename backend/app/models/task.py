@@ -1,22 +1,18 @@
-# ============================================================================
-# OPTION 1: Updated models/task.py with JSONB for destinations
-# ============================================================================
+# backend/app/models/task.py
 
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Float, Enum, Text, JSON
-from sqlalchemy.dialects.postgresql import JSONB  # ✅ Add this import
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database import Base
 import enum
 
 class TaskStatus(str, enum.Enum):
-    # ✅ FIX: Change all values to UPPERCASE to match database
-    PENDING = "PENDING"           # Was: "pending"
-    IN_PROGRESS = "IN_PROGRESS"   # Was: "in_progress"
-    COMPLETED = "COMPLETED"       # Was: "completed"
-    CANCELLED = "CANCELLED"       # Was: "cancelled"
-    QUEUED = "QUEUED"             # Was: "queued" - CHANGE THIS!
-    DECLINED = "DECLINED"         # Was: "declined" - CHANGE THIS!
+    PENDING = "PENDING"
+    IN_PROGRESS = "IN_PROGRESS"
+    COMPLETED = "COMPLETED"
+    CANCELLED = "CANCELLED"
+    QUEUED = "QUEUED"
+    DECLINED = "DECLINED"
 
 class TaskPriority(str, enum.Enum):
     LOW = "low"
@@ -39,7 +35,8 @@ class Task(Base):
     
     # Multi-destination support
     is_multi_destination = Column(Boolean, default=False)
-    destinations = Column(JSONB, nullable=True, default=[])  # ✅ CHANGED: Text -> JSONB
+    # Using Text for destinations is safer if JSONB isn't fully set up in DB migration
+    destinations = Column(Text) 
     
     # Location data
     location_name = Column(String(200))
@@ -63,6 +60,10 @@ class Task(Base):
     quality_rating = Column(Integer) 
     signature_url = Column(String(500), nullable=True)
     photo_urls = Column(JSON, nullable=True)
+    
+    # ✅ NEW: Store proofs for specific stops (JSON)
+    # Structure: [{"sequence": 1, "location": "A", "photo_url": "...", "signature_url": "..."}]
+    stop_proofs = Column(JSON, nullable=True)
     
     # Relationships
     assigned_user = relationship("User", foreign_keys=[assigned_to], backref="assigned_tasks")

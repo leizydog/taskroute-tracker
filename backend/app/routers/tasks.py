@@ -16,6 +16,7 @@ from app.schemas.task import (
 from app.core.auth import get_current_active_user
 from app.websocket_manager import manager
 import json
+import math  # ✅ Import math for rating calculation
 from pathlib import Path
 import uuid
 
@@ -226,6 +227,7 @@ async def get_ongoing_tasks_by_users(
         total_ongoing_tasks=len(ongoing_tasks),
         users=users_data
     )
+
 #============================================================================
 # HELPER FUNCTIONS
 # ============================================================================
@@ -682,11 +684,68 @@ async def complete_task(
     if task.status != TaskStatus.IN_PROGRESS:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Task must be in progress to be completed")
 
-    # Calculate Duration
+    # =========================================================
+    # ✅ 1. MULTI-DESTINATION PROOF VALIDATION
+    # =========================================================
+    if task.is_multi_destination:
+        try:
+            # Parse destinations safely
+            destinations = json.loads(task.destinations) if isinstance(task.destinations, str) else task.destinations
+            if not destinations:
+                destinations = []
+                
+            required_stops = len(destinations)
+            
+            # Check if user provided per-stop proofs
+            provided_stops = len(complete_data.stop_proofs) if complete_data.stop_proofs else 0
+            
+            if provided_stops < required_stops:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST, 
+                    detail=f"Incomplete proofs! This task has {required_stops} stops, but you only uploaded proofs for {provided_stops}."
+                )
+            
+            # Save the stop proofs to DB (store as JSON)
+            task.stop_proofs = [proof.dict() for proof in complete_data.stop_proofs]
+            
+        except Exception as e:
+            if isinstance(e, HTTPException):
+                raise e
+            print(f"⚠️ Validation Warning: {e}")
+            # Proceed if validation fails but don't crash
+
+    # =========================================================
+    # ✅ 2. CALCULATE DURATION & AUTO-RATING
+    # =========================================================
     completion_time = datetime.utcnow()
+    
+    # Calculate Actual Duration
     if task.started_at:
         duration_seconds = (completion_time - task.started_at).total_seconds()
         task.actual_duration = int(duration_seconds / 60)
+    else:
+        task.actual_duration = 0
+
+    # Auto-Calculate Star Rating based on Time
+    estimated = task.estimated_duration or 0
+    actual = task.actual_duration
+    
+    if estimated > 0:
+        delay_minutes = actual - estimated
+        
+        if delay_minutes <= 0:
+            # On time or early = 5 Stars
+            final_rating = 5
+        else:
+            # Late: Deduct 1 star per 10 mins
+            penalty = math.ceil(delay_minutes / 10)
+            final_rating = max(1, 5 - penalty)
+            
+        print(f"⭐ Auto-Rating: Est {estimated}m vs Act {actual}m (Delay {delay_minutes}m) -> {final_rating} Stars")
+        task.quality_rating = final_rating
+    else:
+        # Fallback if no estimate
+        task.quality_rating = complete_data.quality_rating or 5
 
     # Update Status
     task.status = TaskStatus.COMPLETED
@@ -694,11 +753,9 @@ async def complete_task(
     
     # Update Completion Details
     task.completion_notes = complete_data.completion_notes
-    task.quality_rating = complete_data.quality_rating
-    # New Code (Protects your signature)
     if complete_data.signature_url:
         task.signature_url = complete_data.signature_url
-
+    
     # Location update on complete
     if complete_data.latitude is not None:
         task.latitude = complete_data.latitude
@@ -713,25 +770,12 @@ async def complete_task(
         user_id=current_user.id,
         action="TASK_COMPLETE",
         target_resource=f"Task #{task.id}",
-        details=f"Duration: {task.actual_duration}m, Rating: {task.quality_rating}"
+        details=f"Duration: {task.actual_duration}m, Auto-Rating: {task.quality_rating}⭐"
     )
     db.add(audit)
     db.commit()
 
     # Broadcast
-    await manager.broadcast_json({
-        "event": "audit_log_created",
-        "log": {
-            "id": audit.id,
-            "action": audit.action,
-            "target_resource": audit.target_resource,
-            "details": audit.details,
-            "timestamp": audit.timestamp.isoformat(),
-            "user_email": current_user.email
-        }
-    })
-
-    # Construct response
     response_task = TaskWithUsers(
         id=task.id,
         title=task.title,
@@ -756,6 +800,7 @@ async def complete_task(
         completion_notes=task.completion_notes,
         quality_rating=task.quality_rating,
         signature_url=task.signature_url,
+        stop_proofs=task.stop_proofs, # ✅ Include in response
         assigned_user_name=task.assigned_user.full_name if task.assigned_user else None,
         created_user_name=task.created_user.full_name if task.created_user else None,
     )
@@ -1058,6 +1103,3 @@ async def upload_photo(
         "photo_url": photo_url,
         "total_photos": len(task.photo_urls)
     }
-
-
-#

@@ -1,8 +1,10 @@
+# backend/app/schemas/task.py
+
 from pydantic import BaseModel, Field, validator
 from datetime import datetime
 from typing import Optional, List, Any
 from app.models.task import TaskStatus, TaskPriority
-import json  # ✅ Added import
+import json
 
 # ✅ NEW: Schema for task destinations
 class TaskDestination(BaseModel):
@@ -14,6 +16,12 @@ class TaskDestination(BaseModel):
     class Config:
         from_attributes = True
 
+# ✅ NEW: Schema for per-stop proofs
+class StopProof(BaseModel):
+    sequence: int
+    location_name: str
+    photo_url: Optional[str] = None
+    signature_url: Optional[str] = None
 
 # Base Task schema
 class TaskBase(BaseModel):
@@ -34,7 +42,8 @@ class TaskBase(BaseModel):
     estimated_duration: Optional[int] = Field(None, gt=0)
     due_date: Optional[datetime] = None
     
-    # ✅ FIX: Pre-validator to parse JSON string from DB into List
+    # ✅ FIX: This PRE-validator fixes the crash you saw.
+    # It handles cases where DB returns a String instead of a List.
     @validator('destinations', pre=True)
     def parse_destinations_from_db(cls, v):
         if isinstance(v, str):
@@ -91,12 +100,18 @@ class TaskStart(BaseModel):
     longitude: Optional[float] = Field(None, ge=-180, le=180)
 
 
-# Schema for completing a task
+# ✅ UPDATED: Complete Task Schema
 class TaskComplete(BaseModel):
     completion_notes: Optional[str] = None
-    quality_rating: Optional[int] = Field(None, ge=1, le=5)
-    signature_url: Optional[str] = None  # ✅ Added signature_url
+    # quality_rating is now OPTIONAL because backend calculates it
+    quality_rating: Optional[int] = Field(None, ge=1, le=5) 
+    
+    signature_url: Optional[str] = None
     photo_urls: Optional[List[str]] = None
+    
+    # ✅ NEW: Proofs for multi-stop tasks (The list of evidence per stop)
+    stop_proofs: Optional[List[StopProof]] = None
+    
     latitude: Optional[float] = Field(None, ge=-90, le=90)
     longitude: Optional[float] = Field(None, ge=-180, le=180)
 
@@ -118,8 +133,11 @@ class TaskResponse(TaskBase):
     # Completion Details
     completion_notes: Optional[str] = None
     quality_rating: Optional[int] = None
-    signature_url: Optional[str] = None  # ✅ Added signature_url
+    signature_url: Optional[str] = None
     photo_urls: Optional[List[str]] = None
+    
+    # ✅ NEW: Return the stop proofs to the frontend
+    stop_proofs: Optional[List[StopProof]] = None
 
     class Config:
         from_attributes = True
@@ -131,7 +149,7 @@ class TaskWithUsers(TaskResponse):
     created_user_name: Optional[str] = None
 
     class Config:
-        from_attributes = True  # ✅ This is critical for Pydantic v2
+        from_attributes = True
 
 
 # Schema for task statistics
