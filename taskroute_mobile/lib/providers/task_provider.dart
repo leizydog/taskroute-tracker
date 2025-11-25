@@ -8,10 +8,23 @@ import '../services/storage_service.dart';
 import 'dart:math';
 import 'package:flutter/material.dart';
 
+// ✅ NEW: Helper class for proof handling
+class TaskProof {
+  final int sequence;
+  final String locationName;
+  final File photo;
+  final Uint8List signature;
 
+  TaskProof({
+    required this.sequence,
+    required this.locationName,
+    required this.photo,
+    required this.signature,
+  });
+}
 
 class TaskProvider with ChangeNotifier {
-  final ApiService _apiService = ApiService();
+  final ApiService _apiService = ApiService.instance; // ✅ Use singleton
   
   List<TaskModel> _tasks = [];
   TaskModel? _currentTask;
@@ -37,9 +50,12 @@ class TaskProvider with ChangeNotifier {
   List<TaskModel> get cancelledTasks => 
       _tasks.where((task) => task.status == TaskStatus.cancelled).toList();
 
-  // Filtered list getter update
   List<TaskModel> get queuedTasks => 
       _tasks.where((task) => task.status == TaskStatus.queued).toList();
+
+  // ==================================================================
+  // ACTION METHODS
+  // ==================================================================
 
   Future<bool> acceptTask(int taskId) async {
     _setLoading(true);
@@ -77,6 +93,152 @@ class TaskProvider with ChangeNotifier {
     return false;
   }
 
+  // ==================================================================
+  // COMPLETE TASK (UPDATED WITH MULTI-STOP SUPPORT)
+  // ==================================================================
+  
+  /// Complete a task
+  /// Handles both Single Stop and Multi Stop scenarios
+  Future<bool> completeTask(
+    int taskId, 
+    Map<String, dynamic> completionData, {
+    // For Single Stop (Legacy)
+    Uint8List? signatureBytes,
+    List<File>? photos,
+    // For Multi Stop (New)
+    List<TaskProof>? stopProofs, 
+  }) async {
+    _setLoading(true);
+    _setError(null);
+
+    try {
+      // Prepare additional data (proofs)
+      List<Map<String, dynamic>> uploadedStopProofs = [];
+
+      // A. Handle Multi-Stop Uploads (Sequential)
+      if (stopProofs != null && stopProofs.isNotEmpty) {
+        debugPrint('📦 Uploading proofs for ${stopProofs.length} stops...');
+        
+        for (var proof in stopProofs) {
+          try {
+            debugPrint('📍 Processing stop ${proof.sequence}: ${proof.locationName}');
+            
+            // 1. Upload Signature
+            // Note: The backend just returns the URL. We don't need to pass stopIndex to the API
+            // if the backend endpoint is generic. We track the sequence in our local list.
+            final sigResp = await _apiService.uploadSignature(
+              taskId, 
+              proof.signature.toList()
+            );
+            
+            if (sigResp.statusCode != 200) {
+              throw Exception("Signature upload failed for stop ${proof.sequence}");
+            }
+            
+            final sigUrl = json.decode(sigResp.body)['signature_url'];
+            debugPrint("✅ Uploaded signature for stop ${proof.sequence}: $sigUrl");
+
+            // 2. Upload Photo
+            final photoResp = await _apiService.uploadPhoto(
+              taskId, 
+              proof.photo.path
+            );
+            
+            if (photoResp.statusCode != 200) {
+              throw Exception("Photo upload failed for stop ${proof.sequence}");
+            }
+            
+            final photoUrl = json.decode(photoResp.body)['photo_url'];
+            debugPrint("✅ Uploaded photo for stop ${proof.sequence}: $photoUrl");
+
+            // 3. Track uploaded proofs
+            // We construct the object that the backend expects in the `stop_proofs` JSON column
+            uploadedStopProofs.add({
+              "sequence": proof.sequence,
+              "location_name": proof.locationName,
+              "photo_url": photoUrl,
+              "signature_url": sigUrl
+            });
+            
+          } catch (e) {
+            debugPrint("❌ Proof upload error for stop ${proof.sequence}: $e");
+            throw Exception("Failed to upload proofs for stop ${proof.sequence}. Please try again.");
+          }
+        }
+        
+        // Attach the collected URLs to the completion data
+        completionData['stop_proofs'] = uploadedStopProofs;
+        debugPrint('✅ All ${stopProofs.length} stop proofs uploaded and attached.');
+        
+      } else {
+        // B. Handle Single Stop Uploads (Legacy Logic)
+        if (signatureBytes != null) {
+          final sigResp = await _apiService.uploadSignature(
+            taskId, 
+            signatureBytes.toList()
+          );
+          if (sigResp.statusCode == 200) {
+            completionData['signature_url'] = json.decode(sigResp.body)['signature_url'];
+          }
+        }
+        
+        if (photos != null && photos.isNotEmpty) {
+          // For single stop, we typically just take one photo
+          final photoResp = await _apiService.uploadPhoto(taskId, photos.first.path);
+          if (photoResp.statusCode == 200) {
+             completionData['photo_urls'] = [json.decode(photoResp.body)['photo_url']];
+          }
+        }
+      }
+
+      // C. Submit Completion Request
+      debugPrint('📤 Submitting task completion payload...');
+      final response = await _apiService.completeTask(taskId, completionData);
+      
+      if (response.statusCode == 200) {
+        debugPrint('✅ Task completed successfully!');
+        
+        // Success: Update local state
+        final taskJson = json.decode(response.body);
+        final updatedTask = TaskModel.fromJson(taskJson);
+        
+        final index = _tasks.indexWhere((t) => t.id == taskId);
+        if (index != -1) {
+          _tasks[index] = updatedTask;
+          _updateCurrentTask();
+          await StorageService.instance.saveTasks(_tasks);
+        }
+
+        await StorageService.instance.setCurrentTaskId(null);
+        _setLoading(false);
+        return true;
+      } else {
+        final errorData = json.decode(response.body);
+        debugPrint("❌ Server returned error: $errorData");
+        _setError(errorData['detail'] ?? errorData['message'] ?? 'Failed to complete task');
+      }
+    } catch (e) {
+      debugPrint('❌ Task completion error: $e');
+      _setError('Network error: ${e.toString()}');
+      
+      // Save offline for later sync
+      await _saveTaskCompletionOffline(
+        taskId, 
+        completionData, 
+        signatureBytes: signatureBytes, 
+        photos: photos,
+      );
+    } finally {
+      _setLoading(false);
+    }
+    
+    return false;
+  }
+
+  // ==================================================================
+  // HELPER METHODS (Standard Logic)
+  // ==================================================================
+
   void _setLoading(bool loading) {
     _isLoading = loading;
     notifyListeners();
@@ -92,66 +254,64 @@ class TaskProvider with ChangeNotifier {
     notifyListeners();
   }
 
- /// Fetch tasks from API
-Future<void> fetchTasks({bool assignedToMe = true}) async {
-  _setLoading(true);
-  _setError(null);
+  /// Fetch tasks from API
+  Future<void> fetchTasks({bool assignedToMe = true}) async {
+    _setLoading(true);
+    _setError(null);
 
-  try {
-    print('=== FETCH TASKS DEBUG ===');
-    final token = await StorageService.instance.getToken();
-    print('Stored token exists: ${token != null}');
-    if (token != null) {
-      print('Token preview: ${token.substring(0, min(20, token.length))}...');
-    }
-    
-    final response = await _apiService.getTasks(assignedToMe: assignedToMe);
-    
-    print('Tasks Response Status: ${response.statusCode}');
-    print('Tasks Response Headers: ${response.headers}');
-    print('Tasks Response Body: ${response.body}');
-    
-    if (response.statusCode == 200) {
-      final List<dynamic> tasksJson = json.decode(response.body);
-      _tasks = tasksJson.map((json) => TaskModel.fromJson(json)).toList();
-      
-      print('Successfully loaded ${_tasks.length} tasks');
-      
-      // Update current task if exists
-      _updateCurrentTask();
-
-      if (_currentTask != null && _currentTask!.status == TaskStatus.inProgress) {
-        await StorageService.instance.setCurrentTaskId(_currentTask!.id);
-        print('✅ Restored current task ID for location tracking: ${_currentTask!.id}');
-      } else {
-        // No in-progress task, clear the saved ID
-        await StorageService.instance.setCurrentTaskId(null);
-        print('🧹 Cleared task ID (no in-progress task)');
+    try {
+      print('=== FETCH TASKS DEBUG ===');
+      final token = await StorageService.instance.getToken();
+      print('Stored token exists: ${token != null}');
+      if (token != null) {
+        print('Token preview: ${token.substring(0, min(20, token.length))}...');
       }
       
-      // Save to local storage
-      await StorageService.instance.saveTasks(_tasks);
-    } else if (response.statusCode == 401) {
-      print('Authentication failed - token expired or invalid');
-      _setError('Authentication expired. Please login again.');
+      final response = await _apiService.getTasks(assignedToMe: assignedToMe);
       
-      // Clear invalid token
-      await StorageService.instance.deleteToken();
-    } else {
-      print('Failed to fetch tasks with status: ${response.statusCode}');
-      _setError('Failed to fetch tasks');
+      print('Tasks Response Status: ${response.statusCode}');
+      
+      if (response.statusCode == 200) {
+        final List<dynamic> tasksJson = json.decode(response.body);
+        _tasks = tasksJson.map((json) => TaskModel.fromJson(json)).toList();
+        
+        print('Successfully loaded ${_tasks.length} tasks');
+        
+        // Update current task if exists
+        _updateCurrentTask();
+
+        if (_currentTask != null && _currentTask!.status == TaskStatus.inProgress) {
+          await StorageService.instance.setCurrentTaskId(_currentTask!.id);
+          print('✅ Restored current task ID for location tracking: ${_currentTask!.id}');
+        } else {
+          // No in-progress task, clear the saved ID
+          await StorageService.instance.setCurrentTaskId(null);
+          print('🧹 Cleared task ID (no in-progress task)');
+        }
+        
+        // Save to local storage
+        await StorageService.instance.saveTasks(_tasks);
+      } else if (response.statusCode == 401) {
+        print('Authentication failed - token expired or invalid');
+        _setError('Authentication expired. Please login again.');
+        
+        // Clear invalid token
+        await StorageService.instance.deleteToken();
+      } else {
+        print('Failed to fetch tasks with status: ${response.statusCode}');
+        _setError('Failed to fetch tasks');
+        // Load from cache on error
+        await _loadTasksFromCache();
+      }
+    } catch (e) {
+      print('Fetch tasks exception: $e');
+      _setError('Network error: ${e.toString()}');
       // Load from cache on error
       await _loadTasksFromCache();
+    } finally {
+      _setLoading(false);
     }
-  } catch (e) {
-    print('Fetch tasks exception: $e');
-    _setError('Network error: ${e.toString()}');
-    // Load from cache on error
-    await _loadTasksFromCache();
-  } finally {
-    _setLoading(false);
   }
-}
 
   /// Load tasks from local cache
   Future<void> _loadTasksFromCache() async {
@@ -199,48 +359,47 @@ Future<void> fetchTasks({bool assignedToMe = true}) async {
     return null;
   }
 
- Future<bool> startTask(int taskId, Map<String, dynamic> locationData) async {
-  _setLoading(true);
-  _setError(null);
+  Future<bool> startTask(int taskId, Map<String, dynamic> locationData) async {
+    _setLoading(true);
+    _setError(null);
 
-  try {
-    final response = await _apiService.startTask(taskId, locationData);
-    
-    if (response.statusCode == 200) {
-      final taskJson = json.decode(response.body);
-      final updatedTask = TaskModel.fromJson(taskJson);
+    try {
+      final response = await _apiService.startTask(taskId, locationData);
       
-      // Update task in list
-      final index = _tasks.indexWhere((t) => t.id == taskId);
-      if (index != -1) {
-        _tasks[index] = updatedTask;
-        _updateCurrentTask();
+      if (response.statusCode == 200) {
+        final taskJson = json.decode(response.body);
+        final updatedTask = TaskModel.fromJson(taskJson);
         
-        // ✅ Save the current task ID for location tracking
-        await StorageService.instance.setCurrentTaskId(taskId);
+        // Update task in list
+        final index = _tasks.indexWhere((t) => t.id == taskId);
+        if (index != -1) {
+          _tasks[index] = updatedTask;
+          _updateCurrentTask();
+          
+          // ✅ Save the current task ID for location tracking
+          await StorageService.instance.setCurrentTaskId(taskId);
+          
+          // Save to cache
+          await StorageService.instance.saveTasks(_tasks);
+        }
         
-        // Save to cache
-        await StorageService.instance.saveTasks(_tasks);
+        _setLoading(false);
+        return true;
+      } else {
+        final errorData = json.decode(response.body);
+        _setError(errorData['message'] ?? 'Failed to start task');
+        _setLoading(false);
       }
-      
-      _setLoading(false);
-      return true;
-    } else {
-      final errorData = json.decode(response.body);
-      _setError(errorData['message'] ?? 'Failed to start task');
+    } catch (e) {
+      print('StartTask parsing error: $e');
+      _setError('Network error: ${e.toString()}');
+      await _saveTaskStartOffline(taskId, locationData);
       _setLoading(false);
     }
-  } catch (e) {
-    print('StartTask parsing error: $e');
-    _setError('Network error: ${e.toString()}');
-    await _saveTaskStartOffline(taskId, locationData);
-    _setLoading(false);
+    
+    return false;
   }
-  
-  return false;
-}
 
-/// Cancel a task
   Future<bool> cancelTask(int taskId, String reason) async {
     _setLoading(true);
     _setError(null);
@@ -278,71 +437,6 @@ Future<void> fetchTasks({bool assignedToMe = true}) async {
     } catch (e) {
       print('Cancel task error: $e');
       _setError('Network error: ${e.toString()}');
-    } finally {
-      _setLoading(false);
-    }
-    
-    return false;
-  }
-
-  /// Complete a task
-  Future<bool> completeTask(
-    int taskId, 
-    Map<String, dynamic> completionData, {
-    Uint8List? signatureBytes,
-    List<File>? photos,
-  }) async {
-    _setLoading(true);
-    _setError(null);
-
-    try {
-      // First, complete the task
-      final response = await _apiService.completeTask(taskId, completionData);
-      
-      if (response.statusCode == 200) {
-        // Upload signature if provided
-        if (signatureBytes != null) {
-          await _apiService.uploadSignature(taskId, signatureBytes);
-        }
-        
-        // Upload photos if provided
-        if (photos != null) {
-          for (final photo in photos) {
-            await _apiService.uploadPhoto(taskId, photo.path);
-          }
-        }
-        
-        // Update local task
-        final taskJson = json.decode(response.body);
-        final updatedTask = TaskModel.fromJson(taskJson);
-        
-        final index = _tasks.indexWhere((t) => t.id == taskId);
-        if (index != -1) {
-          _tasks[index] = updatedTask;
-          _updateCurrentTask();
-          
-          // Save to cache
-          await StorageService.instance.saveTasks(_tasks);
-        }
-
-        await StorageService.instance.setCurrentTaskId(null);
-        
-        _setLoading(false);
-        return true;
-      } else {
-        final errorData = json.decode(response.body);
-        _setError(errorData['message'] ?? 'Failed to complete task');
-      }
-    } catch (e) {
-      _setError('Network error: ${e.toString()}');
-      
-      // Save offline for later sync
-      await _saveTaskCompletionOffline(
-        taskId, 
-        completionData, 
-        signatureBytes: signatureBytes, 
-        photos: photos,
-      );
     } finally {
       _setLoading(false);
     }
@@ -464,21 +558,6 @@ Future<void> fetchTasks({bool assignedToMe = true}) async {
     } catch (e) {
       debugPrint('Error during offline sync: $e');
     }
-  }
-
-  /// Filter tasks by status
-  List<TaskModel> getTasksByStatus(TaskStatus status) {
-    return _tasks.where((task) => task.status == status).toList();
-  }
-
-  /// Filter tasks by priority
-  List<TaskModel> getTasksByPriority(TaskPriority priority) {
-    return _tasks.where((task) => task.priority == priority).toList();
-  }
-
-  /// Get overdue tasks
-  List<TaskModel> get overdueTasks {
-    return _tasks.where((task) => task.isOverdue).toList();
   }
 
   /// Search tasks by title or description
