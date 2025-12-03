@@ -92,7 +92,7 @@ const TaskCard = ({
   return (
     <div
       onClick={onClick}
-      className="flex flex-col bg-white/90 dark:bg-slate-800/80 rounded-2xl shadow-md border border-slate-200 dark:border-slate-700 p-5
+      className="flex flex-col bg-white/90 dark:bg-slate-800/80 rounded-2xl shadow-md border-4 border-blue-500 p-5
                  transform transition duration-200 hover:shadow-xl hover:border-indigo-300 dark:hover:border-indigo-700 cursor-pointer h-full"
     >
       {/* Header */}

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
-import { FiMapPin, FiCalendar, FiClock, FiUser, FiPlay, FiCheckCircle, FiFlag } from 'react-icons/fi';
+import { FiMapPin, FiCalendar, FiClock, FiUser, FiPlay, FiCheckCircle, FiFlag, FiDownload, FiEye, FiEdit, FiArchive, FiRotateCcw, FiTrash2 } from 'react-icons/fi';
 
 const Badge = ({ children, className }) => (
   <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold shadow-sm ${className}`}>
@@ -44,7 +44,7 @@ const formatDuration = (minutes) => {
   return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
 };
 
-const TaskCard = ({ task, currentUser, onUpdate }) => {
+const TaskCard = ({ task, currentUser, onUpdate, onView, onEdit, onArchive, onRestore, onDelete, onDownload, isArchived }) => {
   const [loading, setLoading] = useState(false);
   const canStartTask = task.status === 'pending' && task.assigned_to === currentUser?.id;
   const canCompleteTask = task.status === 'in_progress' && task.assigned_to === currentUser?.id;
@@ -74,11 +74,14 @@ const TaskCard = ({ task, currentUser, onUpdate }) => {
   };
 
   return (
-    <div className="flex flex-col bg-white/90 dark:bg-slate-800/80 rounded-2xl shadow-md border border-slate-200 dark:border-slate-700 p-6
+    <div className="flex flex-col bg-white/90 dark:bg-slate-800/80 rounded-2xl shadow-md border-4 border-red-500 p-6
                     transform transition duration-300 hover:-translate-y-2 hover:shadow-2xl">
       {/* Header */}
       <div className="flex justify-between items-start mb-4">
-        <h3 className="font-semibold text-lg text-slate-800 dark:text-slate-200 pr-4">{task.title}</h3>
+        <div>
+          <span className="text-xs text-slate-400 font-mono">#{task.id}</span>
+          <h3 className="font-semibold text-lg text-slate-800 dark:text-slate-200 pr-4">{task.title}</h3>
+        </div>
         <PriorityBadge priority={task.priority} />
       </div>
 
@@ -107,14 +110,26 @@ const TaskCard = ({ task, currentUser, onUpdate }) => {
 
       {/* Footer */}
       <div className="mt-auto pt-4 border-t border-slate-200 dark:border-slate-700">
-        <div className="flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <div className="h-7 w-7 rounded-full bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-300 flex items-center justify-center font-bold text-xs">
-              {task.assigned_user_name?.[0] || "?"}
+        <div className="flex flex-col gap-2">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-2" title="Assigned To">
+              <div className="h-7 w-7 rounded-full bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-300 flex items-center justify-center font-bold text-xs border border-indigo-200 dark:border-indigo-700">
+                {task.assigned_user_name?.[0] || "?"}
+              </div>
+              <span className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate max-w-[100px]">{task.assigned_user_name}</span>
             </div>
-            <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{task.assigned_user_name}</span>
+            <StatusBadge status={task.status} />
           </div>
-          <StatusBadge status={task.status} />
+
+          {/* Assigner (Created By) */}
+          <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-700/50" title="Assigned By">
+            <div className="h-6 w-6 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 flex items-center justify-center font-bold text-[10px] border border-slate-200 dark:border-slate-600">
+              {task.created_user_name?.[0] || "A"}
+            </div>
+            <span className="text-xs text-slate-500 dark:text-slate-400">
+              by <span className="font-medium">{task.created_user_name || 'Admin'}</span>
+            </span>
+          </div>
         </div>
 
         {(canStartTask || canCompleteTask) && (
@@ -142,6 +157,42 @@ const TaskCard = ({ task, currentUser, onUpdate }) => {
           </div>
         )}
       </div>
+
+      {/* Admin Actions */}
+      {(onView || onEdit || onArchive || onRestore || onDelete || onDownload) && (
+        <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-700 flex flex-wrap gap-2 justify-end">
+          {onView && (
+            <button onClick={() => onView(task)} className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors" title="View Details">
+              <FiEye size={16} />
+            </button>
+          )}
+          {onEdit && !isArchived && (
+            <button onClick={() => onEdit(task)} className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors" title="Edit Task">
+              <FiEdit size={16} />
+            </button>
+          )}
+          {onDownload && (
+            <button onClick={() => onDownload(task)} className="p-1.5 text-slate-500 hover:text-green-600 hover:bg-green-50 rounded-full transition-colors" title="Download PDF">
+              <FiDownload size={16} />
+            </button>
+          )}
+          {onArchive && !isArchived && (
+            <button onClick={() => onArchive(task.id)} className="p-1.5 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-full transition-colors" title="Archive Task">
+              <FiArchive size={16} />
+            </button>
+          )}
+          {onRestore && isArchived && (
+            <button onClick={() => onRestore(task)} className="p-1.5 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-full transition-colors" title="Restore Task">
+              <FiRotateCcw size={16} />
+            </button>
+          )}
+          {onDelete && isArchived && (
+            <button onClick={() => onDelete(task.id)} className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors" title="Delete Permanently">
+              <FiTrash2 size={16} />
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 };
