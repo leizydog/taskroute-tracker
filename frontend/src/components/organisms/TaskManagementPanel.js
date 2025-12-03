@@ -12,7 +12,7 @@ import Button from '../atoms/Button';
 import Input from '../atoms/Input';
 import Select from '../atoms/Select';
 import Card from '../atoms/Card';
-import Spinner from '../atoms/Spinner';
+import { Spinner } from '../atoms/Spinner';
 import TaskCard from '../tasks/TaskCard';
 import CreateTaskModal from '../organisms/CreateTaskModal';
 import EditTaskModal from '../organisms/EditTaskModal';
