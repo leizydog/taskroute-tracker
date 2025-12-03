@@ -10,7 +10,6 @@ export { default as EmployeeKPIPanel } from './EmployeeKPIPanel';
 
 // EmployeeSelector
 export * from './EmployeeSelector';
-export { default as EmployeeSelector } from './EmployeeSelector';
 
 // LiveLocationTracker
 export * from './LiveLocationTracker';
@@ -18,11 +17,9 @@ export { default as LiveLocationTracker } from './LiveLocationTracker';
 
 // MLRecommendationPanel
 export * from './MLRecommendationPanel';
-export { default as MLRecommendationPanel } from './MLRecommendationPanel';
 
 // PerformanceComparisonPanel
 export * from './PerformanceComparisonPanel';
-export { default as PerformanceComparisonPanel } from './PerformanceComparisonPanel';
 
 // TaskManagementPanel
 export * from './TaskManagementPanel';
@@ -30,7 +27,6 @@ export { default as TaskManagementPanel } from './TaskManagementPanel';
 
 // TaskRoutePlanner
 export * from './TaskRoutePlanner';
-export { default as TaskRoutePlanner } from './TaskRoutePlanner';
 
 // AdvancedMarker
 export * from './AdvancedMarker';
