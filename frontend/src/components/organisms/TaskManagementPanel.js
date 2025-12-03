@@ -206,7 +206,7 @@ const TaskManagementPanel = ({
                     <thead className="bg-slate-50 dark:bg-slate-700/50 text-slate-500 dark:text-slate-400">
                         <tr>
                             <th className="px-6 py-4 font-medium">Task</th>
-                            <th className="px-6 py-4 font-medium">Assignee</th>
+                            <th className="px-6 py-4 font-medium">Assignee / Created By</th>
                             <th className="px-6 py-4 font-medium">Status</th>
                             <th className="px-6 py-4 font-medium">Priority</th>
                             <th className="px-6 py-4 font-medium">Due Date</th>
@@ -221,7 +221,14 @@ const TaskManagementPanel = ({
                                     <div className="text-xs text-slate-500 truncate max-w-[200px]">{task.description}</div>
                                 </td>
                                 <td className="px-6 py-4 text-slate-600 dark:text-slate-300">
-                                    {task.assigned_user_name || 'Unassigned'}
+                                    <div className="flex flex-col">
+                                        <span className="font-medium text-slate-700 dark:text-slate-200">
+                                            {task.assigned_user_name || 'Unassigned'}
+                                        </span>
+                                        <span className="text-[10px] text-slate-400">
+                                            by {task.created_user_name || 'System'}
+                                        </span>
+                                    </div>
                                 </td>
                                 <td className="px-6 py-4">
                                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
