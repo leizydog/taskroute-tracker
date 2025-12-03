@@ -74,7 +74,7 @@ const TaskCard = ({ task, currentUser, onUpdate, onView, onEdit, onArchive, onRe
   };
 
   return (
-    <div className="flex flex-col bg-white/90 dark:bg-slate-800/80 rounded-2xl shadow-md border-4 border-red-500 p-6
+    <div className="flex flex-col bg-white/90 dark:bg-slate-800/80 rounded-2xl shadow-md border border-slate-200 dark:border-slate-700 p-6
                     transform transition duration-300 hover:-translate-y-2 hover:shadow-2xl">
       {/* Header */}
       <div className="flex justify-between items-start mb-4">

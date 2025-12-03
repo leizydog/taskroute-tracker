@@ -62,7 +62,11 @@ const TaskManagementPanel = ({
             if (filterStatus !== 'all' && task.status !== filterStatus) return false;
 
             // Priority filter
-            if (filterPriority !== 'all' && task.priority !== filterPriority) return false;
+            if (filterPriority !== 'all') {
+                // Ensure case-insensitive comparison
+                const taskPriority = task.priority ? task.priority.toUpperCase() : '';
+                if (taskPriority !== filterPriority) return false;
+            }
 
             return true;
         });
@@ -363,15 +367,7 @@ const TaskManagementPanel = ({
                             ]}
                             className="w-40"
                         />
-                        {!showArchived && !searchTerm && filterStatus === 'all' && filterPriority === 'all' && (
-                            <Button
-                                icon={FiPlus}
-                                onClick={() => setShowCreateModal(true)}
-                                size="sm"
-                            >
-                                Create Task
-                            </Button>
-                        )}
+                        {/* Duplicate Create Task Button Removed */}
                     </div>
                 </div>
 
