@@ -97,9 +97,12 @@ const TaskCard = ({
     >
       {/* Header */}
       <div className="flex justify-between items-start mb-3">
-        <h3 className="font-semibold text-base text-slate-800 dark:text-slate-200 pr-2 line-clamp-1" title={task.title}>
-          {task.title}
-        </h3>
+        <div>
+          <span className="text-[10px] text-slate-400 font-mono block mb-0.5">#{task.id}</span>
+          <h3 className="font-semibold text-base text-slate-800 dark:text-slate-200 pr-2 line-clamp-1" title={task.title}>
+            {task.title}
+          </h3>
+        </div>
         <PriorityBadge priority={task.priority} />
       </div>
 
