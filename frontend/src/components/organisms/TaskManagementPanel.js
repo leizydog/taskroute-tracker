@@ -8,10 +8,10 @@ import { format } from 'date-fns';
 import jsPDF from 'jspdf';
 import { toast } from 'react-toastify';
 
-import Button from '../atoms/Button';
-import Input from '../atoms/Input';
-import Select from '../atoms/Select';
-import Card from '../atoms/Card';
+import { Button } from '../atoms/Button';
+import { Input } from '../atoms/Input';
+import { Select } from '../atoms/Select';
+import { Card } from '../atoms/Card';
 import { Spinner } from '../atoms/Spinner';
 import TaskCard from '../tasks/TaskCard';
 import CreateTaskModal from '../organisms/CreateTaskModal';
