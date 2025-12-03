@@ -92,9 +92,17 @@ const TaskManagementPanel = ({
         setShowDetailsModal(false);
     };
 
-    const handleViewTask = (task) => {
-        setSelectedTask(task);
-        setShowDetailsModal(true);
+    const handleViewTask = async (task) => {
+        try {
+            const response = await api.getTaskById(task.id);
+            setSelectedTask(response.data);
+            setShowDetailsModal(true);
+        } catch (error) {
+            console.error("Failed to fetch task details", error);
+            toast.error("Failed to load full task details");
+            setSelectedTask(task);
+            setShowDetailsModal(true);
+        }
     };
 
     const handleArchiveTask = async (task) => {
