@@ -10,7 +10,7 @@ import {
   FiGrid, FiUsers, FiCheckSquare, FiTrendingUp, FiLogOut, FiMenu, FiBell, FiMoon, FiSun, FiX,
   FiPlus, FiMapPin, FiShield, FiSettings, FiUserPlus, FiEdit2, FiTrash2, FiSearch, FiActivity,
   FiArchive, FiRefreshCw, FiAlertTriangle, FiInfo, FiCheckCircle, FiDatabase, FiCpu, FiDownload,
-  FiList, FiTerminal, FiChevronDown
+  FiList, FiTerminal, FiChevronDown, FiFileText
 } from 'react-icons/fi';
 import { Button, Card, StatValue, Input, Select, Alert, Badge } from '../components/atoms';
 import UserAvatar from '../components/atoms/UserAvatar'; // ✅ Import UserAvatar
@@ -60,8 +60,8 @@ const UserListItem = ({ employee, isSelected, onClick, stats }) => (
             Tasks: {stats.total}
           </span>
           <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${stats.rate >= 80 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-              stats.rate >= 50 ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
-                'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+            stats.rate >= 50 ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
+              'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
             }`}>
             {stats.rate}% Done
           </span>
@@ -357,12 +357,164 @@ const UserModal = ({ mode = 'add', user = null, onClose, onSuccess }) => {
   );
 };
 
+// --- REPORTS PANEL COMPONENT ---
+const ReportsPanel = ({ employees, tasks }) => {
+  const [selectedEmployeeForReport, setSelectedEmployeeForReport] = useState('');
+
+
+
+  const generatePDF = (type, data = null) => {
+    const doc = new jsPDF();
+    const timestamp = format(new Date(), 'MMM dd, yyyy HH:mm');
+
+    // Header
+    doc.setFillColor(37, 99, 235);
+    doc.rect(0, 0, 210, 20, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(16);
+    doc.text(type === 'employee' ? "Employee Performance Report" : "System Overview Report", 14, 13);
+
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(10);
+    doc.text(`Generated: ${timestamp}`, 14, 30);
+    if (type === 'system') {
+      doc.text(`Total Users: ${employees.length}`, 14, 35);
+      doc.text(`Total Tasks: ${tasks.length}`, 14, 40);
+
+      // Task Status Breakdown
+      const statusCounts = tasks.reduce((acc, t) => {
+        acc[t.status] = (acc[t.status] || 0) + 1;
+        return acc;
+      }, {});
+
+      doc.text("Task Status Breakdown:", 14, 50);
+      let y = 55;
+      Object.entries(statusCounts).forEach(([status, count]) => {
+        doc.text(`- ${status.charAt(0).toUpperCase() + status.slice(1)}: ${count}`, 20, y);
+        y += 5;
+      });
+
+      // Recent Tasks Table
+      autoTable(doc, {
+        head: [["ID", "Title", "Assignee", "Status", "Due Date"]],
+        body: tasks.slice(0, 20).map(t => [
+          t.id,
+          t.title,
+          t.assigned_user_name || 'Unassigned',
+          t.status,
+          t.due_date ? format(new Date(t.due_date), 'MMM dd, yyyy') : '-'
+        ]),
+        startY: y + 10,
+        theme: 'grid',
+        headStyles: { fillColor: [37, 99, 235] }
+      });
+
+      doc.save(`System_Report_${format(new Date(), 'yyyyMMdd')}.pdf`);
+      toast.success("System report downloaded");
+
+    } else if (type === 'employee') {
+      const emp = employees.find(e => e.id == selectedEmployeeForReport);
+      if (!emp) {
+        toast.error("Please select an employee");
+        return;
+      }
+
+      doc.text(`Employee: ${emp.full_name} (${emp.email})`, 14, 35);
+      doc.text(`Role: ${emp.role}`, 14, 40);
+
+      const empTasks = tasks.filter(t => t.assigned_to === emp.id);
+      const completed = empTasks.filter(t => ['COMPLETED', 'completed'].includes(t.status)).length;
+      const rate = empTasks.length > 0 ? Math.round((completed / empTasks.length) * 100) : 0;
+
+      doc.text(`Total Assigned Tasks: ${empTasks.length}`, 14, 50);
+      doc.text(`Tasks Completed: ${completed}`, 14, 55);
+      doc.text(`Completion Rate: ${rate}%`, 14, 60);
+
+      // Employee Tasks Table
+      autoTable(doc, {
+        head: [["ID", "Title", "Status", "Priority", "Due Date"]],
+        body: empTasks.map(t => [
+          t.id,
+          t.title,
+          t.status,
+          t.priority,
+          t.due_date ? format(new Date(t.due_date), 'MMM dd, yyyy') : '-'
+        ]),
+        startY: 70,
+        theme: 'grid',
+        headStyles: { fillColor: [37, 99, 235] }
+      });
+
+      doc.save(`Employee_Report_${emp.full_name.replace(/\s+/g, '_')}_${format(new Date(), 'yyyyMMdd')}.pdf`);
+      toast.success("Employee report downloaded");
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Reports Center</h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* System Report Card */}
+        <Card>
+          <div className="flex items-start gap-4">
+            <div className="p-3 bg-blue-100 text-blue-600 rounded-lg">
+              <FiGrid size={24} />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">System Overview</h3>
+              <p className="text-sm text-slate-500 mt-1 mb-4">
+                Generate a comprehensive report of all system activities, task distributions, and overall performance metrics.
+              </p>
+              <Button variant="primary" onClick={() => generatePDF('system')} icon={FiDownload}>
+                Download System Report
+              </Button>
+            </div>
+          </div>
+        </Card>
+
+        {/* Employee Report Card */}
+        <Card>
+          <div className="flex items-start gap-4">
+            <div className="p-3 bg-purple-100 text-purple-600 rounded-lg">
+              <FiUserPlus size={24} />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">Employee Performance</h3>
+              <p className="text-sm text-slate-500 mt-1 mb-4">
+                Generate detailed performance reports for specific employees, including task history and completion rates.
+              </p>
+              <div className="space-y-3">
+                <Select
+                  value={selectedEmployeeForReport}
+                  onChange={(e) => setSelectedEmployeeForReport(e.target.value)}
+                  options={[
+                    { value: '', label: 'Select Employee...' },
+                    ...employees.map(e => ({ value: e.id, label: e.full_name }))
+                  ]}
+                />
+                <Button
+                  variant="outline"
+                  onClick={() => generatePDF('employee')}
+                  disabled={!selectedEmployeeForReport}
+                  icon={FiDownload}
+                  fullWidth
+                >
+                  Download Employee Report
+                </Button>
+              </div>
+            </div>
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+};
+
 const AdminDashboard = () => {
   const { user, logout, isDarkMode, toggleDarkMode } = useAuth();
   const navigate = useNavigate();
 
   const API_URL = process.env.REACT_APP_API_URL ? process.env.REACT_APP_API_URL.replace('/api/v1', '') : 'http://localhost:8000';
-
 
   const [activeTab, setActiveTab] = useState('overview');
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -390,7 +542,6 @@ const AdminDashboard = () => {
 
   const [tasks, setTasks] = useState([]);
   const [employees, setEmployees] = useState([]);
-  // Removed kpiData state to fix unused variable warning
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -416,6 +567,7 @@ const AdminDashboard = () => {
     { id: 'employee_kpi', label: 'Employee KPI', icon: <FiActivity /> },
     { id: 'user_management', label: 'User Management', icon: <FiUsers /> },
     { id: 'tasks', label: 'All Tasks', icon: <FiCheckSquare /> },
+    { id: 'reports', label: 'Reports', icon: <FiFileText /> },
     { id: 'audit', label: 'Audit Trail', icon: <FiList /> },
     { id: 'tracking', label: 'Global Tracking', icon: <FiMapPin /> },
     { id: 'analytics', label: 'System Analytics', icon: <FiTrendingUp /> },
@@ -1457,6 +1609,11 @@ const AdminDashboard = () => {
                   tasks={tasks}
                 />
               </div>
+            )}
+
+            {/* REPORTS TAB */}
+            {activeTab === 'reports' && (
+              <ReportsPanel employees={employees} tasks={tasks} />
             )}
 
             {/* 5. AUDIT TRAIL TAB (NEW) */}
