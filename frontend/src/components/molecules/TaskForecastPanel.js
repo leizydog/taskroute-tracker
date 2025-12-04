@@ -27,11 +27,13 @@ const ForecastCard = ({ title, data, loading, error, icon: Icon, colorClass }) =
             </div>
             <div className="space-y-1">
                 <div className="text-2xl font-bold">
-                    {data.predicted_duration_minutes} <span className="text-sm font-normal text-slate-500">min</span>
+                    {data.predicted_duration_minutes || 'N/A'} <span className="text-sm font-normal text-slate-500">min</span>
                 </div>
-                <div className="text-xs text-slate-500">
-                    Range: {data.confidence_interval.lower_minutes} - {data.confidence_interval.upper_minutes} min
-                </div>
+                {data.confidence_interval && (
+                    <div className="text-xs text-slate-500">
+                        Range: {data.confidence_interval.lower_minutes || 'N/A'} - {data.confidence_interval.upper_minutes || 'N/A'} min
+                    </div>
+                )}
             </div>
         </div>
     );
