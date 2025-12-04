@@ -209,6 +209,7 @@ const TaskManagementPanel = ({
                 <table className="w-full text-left text-sm">
                     <thead className="bg-slate-50 dark:bg-slate-700/50 text-slate-500 dark:text-slate-400">
                         <tr>
+                            <th className="px-6 py-4 font-medium">ID</th>
                             <th className="px-6 py-4 font-medium">Task</th>
                             <th className="px-6 py-4 font-medium">Assignee / Created By</th>
                             <th className="px-6 py-4 font-medium">Status</th>
@@ -220,6 +221,9 @@ const TaskManagementPanel = ({
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                         {filteredTasks.map(task => (
                             <tr key={task.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
+                                <td className="px-6 py-4 text-slate-500 font-mono text-xs">
+                                    #{task.id}
+                                </td>
                                 <td className="px-6 py-4">
                                     <div className="font-medium text-slate-900 dark:text-slate-100">{task.title}</div>
                                     <div className="text-xs text-slate-500 truncate max-w-[200px]">{task.description}</div>
