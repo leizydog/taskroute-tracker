@@ -19,6 +19,8 @@ const ForecastCard = ({ title, data, loading, error, icon: Icon, colorClass }) =
 
     if (!data) return null;
 
+    const prediction = data.prediction || data; // Handle both nested and flat structures
+
     return (
         <div className={`p-4 rounded-lg border ${colorClass} bg-white dark:bg-slate-800 shadow-sm`}>
             <div className="flex items-center gap-2 mb-2">
@@ -27,11 +29,11 @@ const ForecastCard = ({ title, data, loading, error, icon: Icon, colorClass }) =
             </div>
             <div className="space-y-1">
                 <div className="text-2xl font-bold">
-                    {data.predicted_duration_minutes || 'N/A'} <span className="text-sm font-normal text-slate-500">min</span>
+                    {Math.round(prediction.predicted_duration_minutes || 0)} <span className="text-sm font-normal text-slate-500">min</span>
                 </div>
-                {data.confidence_interval && (
+                {(prediction.confidence_interval_lower !== undefined && prediction.confidence_interval_upper !== undefined) && (
                     <div className="text-xs text-slate-500">
-                        Range: {data.confidence_interval.lower_minutes || 'N/A'} - {data.confidence_interval.upper_minutes || 'N/A'} min
+                        Range: {Math.round(prediction.confidence_interval_lower)} - {Math.round(prediction.confidence_interval_upper)} min
                     </div>
                 )}
             </div>
@@ -174,13 +176,13 @@ const TaskForecastPanel = ({ task, currentLocation }) => {
 
             {initialForecast && currentForecast && (
                 <div className="text-xs text-center text-slate-500 dark:text-slate-400">
-                    {currentForecast.predicted_duration_minutes > initialForecast.predicted_duration_minutes ? (
+                    {(currentForecast.prediction?.predicted_duration_minutes || 0) > (initialForecast.prediction?.predicted_duration_minutes || 0) ? (
                         <span className="text-red-500 font-medium">
-                            Potential Delay: +{currentForecast.predicted_duration_minutes - initialForecast.predicted_duration_minutes} min
+                            Potential Delay: +{Math.round((currentForecast.prediction?.predicted_duration_minutes || 0) - (initialForecast.prediction?.predicted_duration_minutes || 0))} min
                         </span>
                     ) : (
                         <span className="text-green-500 font-medium">
-                            On Track ({(initialForecast.predicted_duration_minutes - currentForecast.predicted_duration_minutes).toFixed(0)} min faster)
+                            On Track ({Math.round((initialForecast.prediction?.predicted_duration_minutes || 0) - (currentForecast.prediction?.predicted_duration_minutes || 0))} min faster)
                         </span>
                     )}
                 </div>
