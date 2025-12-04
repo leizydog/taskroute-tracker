@@ -125,6 +125,9 @@ const TaskForecastPanel = ({ task, currentLocation }) => {
                     api.getTaskForecast(currentPayload)
                 ]);
 
+                console.log("📊 Initial forecast response:", initialRes.data);
+                console.log("📊 Current forecast response:", currentRes.data);
+
                 setInitialForecast(initialRes.data);
                 setCurrentForecast(currentRes.data);
 
