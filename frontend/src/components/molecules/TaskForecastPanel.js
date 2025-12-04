@@ -37,7 +37,7 @@ const ForecastCard = ({ title, data, loading, error, icon: Icon, colorClass }) =
     );
 };
 
-const TaskForecastPanel = ({ task }) => {
+const TaskForecastPanel = ({ task, currentLocation }) => {
     const [initialForecast, setInitialForecast] = useState(null);
     const [currentForecast, setCurrentForecast] = useState(null);
     const [loading, setLoading] = useState(false);
@@ -68,6 +68,16 @@ const TaskForecastPanel = ({ task }) => {
                 const method = 'Drive';
                 const reliability = 90.0;
 
+                // Coordinates
+                // Ensure we send numbers
+                const taskLat = Number(task.latitude || 0);
+                const taskLng = Number(task.longitude || 0);
+
+                // For employee location, use passed currentLocation or fallback to task location (distance 0)
+                // If we don't have location, we can't really predict travel time accurately.
+                const empLat = currentLocation ? Number(currentLocation.lat) : taskLat;
+                const empLng = currentLocation ? Number(currentLocation.lng) : taskLng;
+
                 // 1. Initial Forecast (based on Start Time)
                 // Use created_at if start_time is missing, or fallback to now
                 const startTime = task.start_time || task.created_at || new Date().toISOString();
@@ -80,7 +90,11 @@ const TaskForecastPanel = ({ task }) => {
                     City: city,
                     Conditions: conditions,
                     Method: method,
-                    Reliability_pct: reliability
+                    Reliability_pct: reliability,
+                    task_lat: taskLat,
+                    task_lng: taskLng,
+                    employee_lat: empLat, // Using current loc as proxy for initial if unknown, or maybe should use taskLat?
+                    employee_lng: empLng
                 };
 
                 // 2. Current Forecast (based on NOW)
@@ -94,7 +108,11 @@ const TaskForecastPanel = ({ task }) => {
                     City: city,
                     Conditions: conditions,
                     Method: method,
-                    Reliability_pct: reliability
+                    Reliability_pct: reliability,
+                    task_lat: taskLat,
+                    task_lng: taskLng,
+                    employee_lat: empLat,
+                    employee_lng: empLng
                 };
 
                 console.log("🔮 Fetching forecasts with payloads:", { initialPayload, currentPayload });
@@ -120,7 +138,7 @@ const TaskForecastPanel = ({ task }) => {
         };
 
         fetchForecasts();
-    }, [task]);
+    }, [task, currentLocation]); // Re-fetch if location updates? Maybe debounce this if it updates too often.
 
     if (!task) return null;
 

@@ -488,7 +488,10 @@ const LiveLocationTracker = ({ isMapLoaded, mapLoadError }) => {
               animate={{ opacity: 1, y: 0 }}
               className="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-4 border border-slate-200 dark:border-slate-700"
             >
-              <TaskForecastPanel task={selectedTask} />
+              <TaskForecastPanel
+                task={selectedTask}
+                currentLocation={liveLocations[selectedTask.id]}
+              />
             </motion.div>
           )}
         </div>
