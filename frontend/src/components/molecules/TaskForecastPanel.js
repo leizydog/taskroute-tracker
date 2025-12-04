@@ -89,7 +89,7 @@ const ForecastCard = ({ title, data, loading, error, icon: Icon, colorClass }) =
                     <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-1.5">
                         <div
                             className={`h-1.5 rounded-full transition-all ${confidenceScore > 70 ? 'bg-green-500' :
-                                    confidenceScore > 40 ? 'bg-yellow-500' : 'bg-red-500'
+                                confidenceScore > 40 ? 'bg-yellow-500' : 'bg-red-500'
                                 }`}
                             style={{ width: `${confidenceScore}%` }}
                         />
@@ -237,19 +237,75 @@ const TaskForecastPanel = ({ task, currentLocation }) => {
                 <div className="bg-slate-50 dark:bg-slate-900/50 rounded-lg p-3 border border-slate-200 dark:border-slate-700">
                     <div className="flex items-center justify-between">
                         <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Status:</span>
-                        {Math.abs(timeDiff) < 2 ? (
-                            <span className="text-sm font-semibold text-blue-600 dark:text-blue-400">
-                                ⚡ On Schedule
-                            </span>
-                        ) : timeDiff > 0 ? (
-                            <span className="text-sm font-semibold text-red-600 dark:text-red-400">
-                                ⚠️ Delayed +{Math.round(timeDiff)} min
-                            </span>
-                        ) : (
-                            <span className="text-sm font-semibold text-green-600 dark:text-green-400">
-                                ✓ Ahead by {Math.round(Math.abs(timeDiff))} min
-                            </span>
-                        )}
+                        {(() => {
+                            // Calculate ETA
+                            const now = new Date();
+                            const eta = new Date(now.getTime() + (currentPred?.predicted_duration_minutes || 0) * 60000);
+
+                            // Check if task has a due date
+                            if (task.due_date) {
+                                const dueDate = new Date(task.due_date);
+                                const timeDiffMs = eta - dueDate;
+                                const timeDiffMin = Math.round(timeDiffMs / 60000);
+
+                                // Already overdue
+                                if (now > dueDate) {
+                                    const overdueMin = Math.round((now - dueDate) / 60000);
+                                    return (
+                                        <span className="text-sm font-semibold text-red-600 dark:text-red-400">
+                                            🚨 Overdue by {Math.floor(overdueMin / 60)}h {overdueMin % 60}m
+                                        </span>
+                                    );
+                                }
+
+                                // Will miss deadline
+                                if (timeDiffMin > 5) {
+                                    return (
+                                        <span className="text-sm font-semibold text-red-600 dark:text-red-400">
+                                            ⚠️ Will be {timeDiffMin} min late
+                                        </span>
+                                    );
+                                }
+
+                                // Close to deadline (within 5 min buffer)
+                                if (timeDiffMin > -10 && timeDiffMin <= 5) {
+                                    return (
+                                        <span className="text-sm font-semibold text-yellow-600 dark:text-yellow-400">
+                                            ⏰ Tight Schedule
+                                        </span>
+                                    );
+                                }
+
+                                // Comfortably on time
+                                return (
+                                    <span className="text-sm font-semibold text-green-600 dark:text-green-400">
+                                        ✓ On Schedule ({Math.abs(timeDiffMin)} min early)
+                                    </span>
+                                );
+                            }
+
+                            // No due date - compare initial vs current
+                            const forecastDiff = (currentPred?.predicted_duration_minutes || 0) - (initialPred?.predicted_duration_minutes || 0);
+                            if (Math.abs(forecastDiff) < 2) {
+                                return (
+                                    <span className="text-sm font-semibold text-blue-600 dark:text-blue-400">
+                                        ⚡ On Track
+                                    </span>
+                                );
+                            } else if (forecastDiff > 0) {
+                                return (
+                                    <span className="text-sm font-semibold text-yellow-600 dark:text-yellow-400">
+                                        📈 Taking longer (+{Math.round(forecastDiff)} min)
+                                    </span>
+                                );
+                            } else {
+                                return (
+                                    <span className="text-sm font-semibold text-green-600 dark:text-green-400">
+                                        📉 Faster than expected ({Math.round(Math.abs(forecastDiff))} min)
+                                    </span>
+                                );
+                            }
+                        })()}
                     </div>
                 </div>
             )}
