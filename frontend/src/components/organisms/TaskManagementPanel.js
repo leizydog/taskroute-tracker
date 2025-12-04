@@ -337,10 +337,10 @@ const TaskManagementPanel = ({
 
                     <div className="flex items-center gap-3 flex-1 justify-end">
                         <div className="relative w-full max-w-xs">
-                            <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                            <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 z-10" />
                             <Input
                                 placeholder="Search tasks..."
-                                className="pl-10"
+                                className="pl-12"
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                             />
@@ -361,6 +361,7 @@ const TaskManagementPanel = ({
                             onChange={(e) => setFilterPriority(e.target.value)}
                             options={[
                                 { value: 'all', label: 'All Priority' },
+                                { value: 'URGENT', label: 'Urgent' },
                                 { value: 'HIGH', label: 'High' },
                                 { value: 'MEDIUM', label: 'Medium' },
                                 { value: 'LOW', label: 'Low' },
