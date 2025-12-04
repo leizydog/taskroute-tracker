@@ -50,19 +50,29 @@ const TaskForecastPanel = ({ task }) => {
             setLoading(true);
             setError(null);
             try {
-                // Prepare common data
-                // Default to Manila if city not specified (or extract from location_name if possible)
-                // For now, hardcoding 'Manila' or using task.city if it exists
-                const city = task.city || 'Manila';
-                const conditions = 'Normal'; // Could be dynamic based on weather API
+                // Validate City - ensure it matches one of the trained cities
+                const ALLOWED_CITIES = ['Makati', 'Mandaluyong', 'Manila', 'Quezon City', 'Taguig'];
+                let city = task.city || 'Manila';
+
+                // Simple normalization: Title Case
+                // If the task has a location_name, try to find a city in it
+                if (!ALLOWED_CITIES.includes(city) && task.location_name) {
+                    const foundCity = ALLOWED_CITIES.find(c => task.location_name.includes(c));
+                    if (foundCity) city = foundCity;
+                    else city = 'Manila'; // Fallback to default if no match
+                } else if (!ALLOWED_CITIES.includes(city)) {
+                    city = 'Manila';
+                }
+
+                const conditions = 'Normal';
                 const method = 'Drive';
                 const reliability = 90.0;
 
                 // 1. Initial Forecast (based on Start Time)
-                // If start_time is missing, use created_at
+                // Use created_at if start_time is missing, or fallback to now
                 const startTime = task.start_time || task.created_at || new Date().toISOString();
                 const startDate = startTime.split('T')[0];
-                const startDateTimeStr = startTime.slice(0, 16); // Format: YYYY-MM-DDTHH:mm
+                const startDateTimeStr = startTime.slice(0, 16);
 
                 const initialPayload = {
                     Date: startDate,
@@ -87,6 +97,8 @@ const TaskForecastPanel = ({ task }) => {
                     Reliability_pct: reliability
                 };
 
+                console.log("🔮 Fetching forecasts with payloads:", { initialPayload, currentPayload });
+
                 // Fetch both in parallel
                 const [initialRes, currentRes] = await Promise.all([
                     api.getTaskForecast(initialPayload),
@@ -98,7 +110,10 @@ const TaskForecastPanel = ({ task }) => {
 
             } catch (err) {
                 console.error("Failed to fetch forecasts:", err);
-                setError("Could not load forecast data.");
+                const msg = err.response?.data?.detail
+                    ? (typeof err.response.data.detail === 'string' ? err.response.data.detail : JSON.stringify(err.response.data.detail))
+                    : "Could not load forecast data.";
+                setError(msg);
             } finally {
                 setLoading(false);
             }
