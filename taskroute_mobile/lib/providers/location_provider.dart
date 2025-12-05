@@ -9,7 +9,7 @@ import '../services/storage_service.dart';
 class LocationProvider with ChangeNotifier {
   final LocationService _locationService = LocationService();
   final ApiService _apiService = ApiService();
-  
+
   Position? _currentPosition;
   bool _isLocationEnabled = false;
   bool _isTracking = false;
@@ -36,11 +36,12 @@ class LocationProvider with ChangeNotifier {
   /// Initialize location provider
   Future<void> init() async {
     await _apiService.initializeAuthToken();
-    
-    await _checkLocationStatus();
-    
+
+    await requestPermission();
+
     // Start tracking if enabled in settings
-    final isTrackingEnabled = await StorageService.instance.isLocationTrackingEnabled();
+    final isTrackingEnabled = await StorageService.instance
+        .isLocationTrackingEnabled();
     if (isTrackingEnabled && _isLocationEnabled) {
       await startLocationTracking();
     }
@@ -51,11 +52,12 @@ class LocationProvider with ChangeNotifier {
     try {
       final serviceEnabled = await _locationService.isLocationServiceEnabled();
       final permission = await _locationService.checkPermission();
-      
-      _isLocationEnabled = serviceEnabled && 
-          (permission == LocationPermission.always || 
-           permission == LocationPermission.whileInUse);
-      
+
+      _isLocationEnabled =
+          serviceEnabled &&
+          (permission == LocationPermission.always ||
+              permission == LocationPermission.whileInUse);
+
       if (_isLocationEnabled) {
         // Get initial position
         await getCurrentPosition();
@@ -63,7 +65,7 @@ class LocationProvider with ChangeNotifier {
     } catch (e) {
       _setError('Failed to check location status: ${e.toString()}');
     }
-    
+
     notifyListeners();
   }
 
@@ -73,13 +75,15 @@ class LocationProvider with ChangeNotifier {
       // First check if location services are enabled
       bool serviceEnabled = await _locationService.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        _setError('Location services are disabled. Please enable location services.');
+        _setError(
+          'Location services are disabled. Please enable location services.',
+        );
         return false;
       }
 
       // Request permission
       LocationPermission permission = await Geolocator.checkPermission();
-      
+
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
@@ -89,7 +93,9 @@ class LocationProvider with ChangeNotifier {
       }
 
       if (permission == LocationPermission.deniedForever) {
-        _setError('Location permissions are permanently denied. Please enable in settings.');
+        _setError(
+          'Location permissions are permanently denied. Please enable in settings.',
+        );
         return false;
       }
 
@@ -110,15 +116,15 @@ class LocationProvider with ChangeNotifier {
 
     try {
       Position? position;
-      
+
       if (forceUpdate) {
         position = await _locationService.getCurrentPosition();
       } else {
         // Try to get cached position first
         position = await _locationService.getLastKnownPosition();
-        
+
         // If no cached position or it's too old, get fresh position
-        if (position == null || 
+        if (position == null ||
             DateTime.now().difference(position.timestamp).inMinutes > 5) {
           position = await _locationService.getCurrentPosition();
         }
@@ -129,7 +135,7 @@ class LocationProvider with ChangeNotifier {
         _setError(null);
         notifyListeners();
       }
-      
+
       return position;
     } catch (e) {
       _setError('Failed to get current position: ${e.toString()}');
@@ -158,7 +164,7 @@ class LocationProvider with ChangeNotifier {
         (Position position) {
           _currentPosition = position;
           notifyListeners();
-          
+
           // Log location to API
           _logLocationToAPI(position);
         },
@@ -168,7 +174,9 @@ class LocationProvider with ChangeNotifier {
       );
 
       // Also set up a timer for periodic location logging (backup)
-      _locationTimer = Timer.periodic(const Duration(minutes: 5), (timer) async {
+      _locationTimer = Timer.periodic(const Duration(minutes: 5), (
+        timer,
+      ) async {
         if (_isTracking) {
           final position = await getCurrentPosition(forceUpdate: true);
           if (position != null) {
@@ -179,7 +187,6 @@ class LocationProvider with ChangeNotifier {
 
       // Save tracking state
       await StorageService.instance.setLocationTrackingEnabled(true);
-      
     } catch (e) {
       _isTracking = false;
       _setError('Failed to start location tracking: ${e.toString()}');
@@ -193,7 +200,7 @@ class LocationProvider with ChangeNotifier {
 
     _positionStreamSubscription?.cancel();
     _locationTimer?.cancel();
-    
+
     _isTracking = false;
     notifyListeners();
 
@@ -206,16 +213,16 @@ class LocationProvider with ChangeNotifier {
     try {
       // Get the current active task ID (optional - can be null)
       final currentTaskId = await StorageService.instance.getCurrentTaskId();
-      
+
       if (currentTaskId == null) {
         print('📍 No active task - logging location for employee tracking');
       } else {
         print('📍 Logging location for active task $currentTaskId');
       }
-      
+
       // ✅ Send task_id as null if no active task (for general employee tracking)
       final locationData = {
-        'task_id': currentTaskId,  // ✅ Can be null - backend will handle it
+        'task_id': currentTaskId, // ✅ Can be null - backend will handle it
         'latitude': position.latitude,
         'longitude': position.longitude,
         'altitude': position.altitude,
@@ -226,9 +233,9 @@ class LocationProvider with ChangeNotifier {
       };
 
       print('   Coordinates: (${position.latitude}, ${position.longitude})');
-      
+
       final response = await _apiService.logLocation(locationData);
-      
+
       if (response.statusCode == 201) {
         print('✅ Location logged successfully to backend');
       } else {
@@ -241,7 +248,7 @@ class LocationProvider with ChangeNotifier {
       print('❌ Location log error: $e');
       // Save for offline sync on network error
       final currentTaskId = await StorageService.instance.getCurrentTaskId();
-      
+
       final locationData = {
         'task_id': currentTaskId,
         'latitude': position.latitude,
@@ -252,7 +259,7 @@ class LocationProvider with ChangeNotifier {
         'speed': position.speed,
         'timestamp': position.timestamp.toIso8601String(),
       };
-      
+
       await StorageService.instance.saveLocationLog(locationData);
     }
   }
@@ -278,7 +285,10 @@ class LocationProvider with ChangeNotifier {
   }
 
   /// Get distance to a specific location
-  Future<double?> getDistanceToLocation(double latitude, double longitude) async {
+  Future<double?> getDistanceToLocation(
+    double latitude,
+    double longitude,
+  ) async {
     if (_currentPosition == null) {
       await getCurrentPosition();
       if (_currentPosition == null) return null;
@@ -303,16 +313,19 @@ class LocationProvider with ChangeNotifier {
     double targetLongitude,
     double radiusInMeters,
   ) async {
-    final distance = await getDistanceToLocation(targetLatitude, targetLongitude);
+    final distance = await getDistanceToLocation(
+      targetLatitude,
+      targetLongitude,
+    );
     if (distance == null) return false;
-    
+
     return distance <= radiusInMeters;
   }
 
   /// Get location accuracy status
   String getAccuracyStatus() {
     if (_currentPosition == null) return 'No location';
-    
+
     final accuracy = _currentPosition!.accuracy;
     if (accuracy <= 5) return 'Excellent';
     if (accuracy <= 10) return 'Good';
@@ -323,17 +336,17 @@ class LocationProvider with ChangeNotifier {
   /// Get formatted location string
   String getFormattedLocation() {
     if (_currentPosition == null) return 'Location not available';
-    
+
     return '${_currentPosition!.latitude.toStringAsFixed(6)}, '
-           '${_currentPosition!.longitude.toStringAsFixed(6)}';
+        '${_currentPosition!.longitude.toStringAsFixed(6)}';
   }
 
   /// Get location age
   String getLocationAge() {
     if (_currentPosition == null) return 'Unknown';
-    
+
     final age = DateTime.now().difference(_currentPosition!.timestamp);
-    
+
     if (age.inSeconds < 60) return 'Just now';
     if (age.inMinutes < 60) return '${age.inMinutes}m ago';
     if (age.inHours < 24) return '${age.inHours}h ago';
@@ -343,12 +356,13 @@ class LocationProvider with ChangeNotifier {
   /// Sync offline location logs
   Future<void> syncOfflineLocationLogs() async {
     try {
-      final unsyncedLogs = await StorageService.instance.getUnsyncedLocationLogs();
-      
+      final unsyncedLogs = await StorageService.instance
+          .getUnsyncedLocationLogs();
+
       for (final log in unsyncedLogs) {
         try {
           final response = await _apiService.logLocation(log);
-          
+
           if (response.statusCode == 200) {
             await StorageService.instance.markLocationLogSynced(log['id']);
           }
@@ -380,7 +394,7 @@ class LocationProvider with ChangeNotifier {
         taskId: taskId,
         limit: limit,
       );
-      
+
       if (response.statusCode == 200) {
         final List<dynamic> historyJson = json.decode(response.body);
         return historyJson.cast<Map<String, dynamic>>();
@@ -388,16 +402,16 @@ class LocationProvider with ChangeNotifier {
     } catch (e) {
       _setError('Failed to get location history: ${e.toString()}');
     }
-    
+
     return [];
   }
 
   /// Check if location is stale (older than threshold)
   bool isLocationStale({Duration threshold = const Duration(minutes: 10)}) {
     if (_currentPosition == null) return true;
-    
+
     final age = DateTime.now().difference(_currentPosition!.timestamp);
-    
+
     return age > threshold;
   }
 

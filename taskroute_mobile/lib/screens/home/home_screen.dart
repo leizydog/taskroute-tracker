@@ -7,7 +7,7 @@ import '../auth/tasks/task_list_screen.dart';
 import '../profile/profile_screen.dart';
 import '../../models/task_model.dart';
 import '../../services/notification_service.dart';
-import 'widgets/dashboard_tab.dart';
+import 'widgets/dashboard_tab_simple.dart';
 
 /// Main home screen with bottom navigation
 /// Provides navigation context for child widgets via HomeScreenState
@@ -81,7 +81,7 @@ class HomeScreenState extends State<HomeScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     final pages = [
-      const DashboardTab(),
+      const DashboardTabSimple(),
       const TaskListScreen(),
       const ProfileScreen(),
     ];
