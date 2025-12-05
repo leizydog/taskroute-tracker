@@ -18,13 +18,32 @@ class DashboardTabSimple extends StatefulWidget {
 }
 
 class _DashboardTabSimpleState extends State<DashboardTabSimple> {
+  VoidCallback? _taskListener;
+
   @override
   void initState() {
     super.initState();
+
+    // Manual listener to ensure updates
+    final taskProvider = Provider.of<TaskProvider>(context, listen: false);
+    _taskListener = () {
+      if (mounted) setState(() {});
+    };
+    taskProvider.addListener(_taskListener!);
+
     // Force fetch on init to ensure data is fresh
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _refreshData();
     });
+  }
+
+  @override
+  void dispose() {
+    if (_taskListener != null) {
+      final taskProvider = Provider.of<TaskProvider>(context, listen: false);
+      taskProvider.removeListener(_taskListener!);
+    }
+    super.dispose();
   }
 
   Future<void> _refreshData() async {
@@ -52,8 +71,6 @@ class _DashboardTabSimpleState extends State<DashboardTabSimple> {
         color: const Color(0xFF2196F3),
         child: Consumer<TaskProvider>(
           builder: (context, taskProvider, _) {
-            // Check if we have data
-            final hasTasks = taskProvider.tasks.isNotEmpty;
             final isLoading = taskProvider.isLoading;
 
             return ListView(

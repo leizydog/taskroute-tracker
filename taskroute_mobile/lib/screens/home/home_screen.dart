@@ -58,11 +58,27 @@ class HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  VoidCallback? _taskListener;
+
+  @override
+  void dispose() {
+    if (_taskListener != null) {
+      final taskProvider = Provider.of<TaskProvider>(context, listen: false);
+      taskProvider.removeListener(_taskListener!);
+    }
+    super.dispose();
+  }
+
   void _listenToNotifications() {
     final taskProvider = Provider.of<TaskProvider>(context, listen: false);
-    taskProvider.addListener(() {
-      _checkForNewTasks(taskProvider.tasks);
-    });
+    _taskListener = () {
+      try {
+        _checkForNewTasks(taskProvider.tasks);
+      } catch (e) {
+        debugPrint('Error checking for new tasks: $e');
+      }
+    };
+    taskProvider.addListener(_taskListener!);
   }
 
   void _checkForNewTasks(List<TaskModel> tasks) {
