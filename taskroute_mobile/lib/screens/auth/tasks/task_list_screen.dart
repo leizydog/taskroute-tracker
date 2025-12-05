@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:intl/intl.dart';
 import '../../../providers/task_provider.dart';
 import '../../../models/task_model.dart';
 import 'task_detail_screen.dart';
@@ -14,22 +13,22 @@ class TaskListScreen extends StatefulWidget {
 
 class _TaskListScreenState extends State<TaskListScreen>
     with SingleTickerProviderStateMixin {
-  late TabController _tabController;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
-  
+
   String _sortBy = 'due_date';
   bool _sortAscending = true;
 
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 4, vsync: this);
-  }
+  // NEW: Multi-select status filters
+  Set<TaskStatus> _selectedStatuses = {
+    TaskStatus.pending,
+    TaskStatus.inProgress,
+    TaskStatus.completed,
+    TaskStatus.cancelled,
+  };
 
   @override
   void dispose() {
-    _tabController.dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -39,9 +38,12 @@ class _TaskListScreenState extends State<TaskListScreen>
       int cmp = 0;
       switch (_sortBy) {
         case 'due_date':
-          if (a.dueDate == null) cmp = 1;
-          else if (b.dueDate == null) cmp = -1;
-          else cmp = a.dueDate!.compareTo(b.dueDate!);
+          if (a.dueDate == null)
+            cmp = 1;
+          else if (b.dueDate == null)
+            cmp = -1;
+          else
+            cmp = a.dueDate!.compareTo(b.dueDate!);
           break;
         case 'priority':
           cmp = b.priority.index.compareTo(a.priority.index);
@@ -59,29 +61,49 @@ class _TaskListScreenState extends State<TaskListScreen>
     });
   }
 
+  void _toggleStatusFilter(TaskStatus status) {
+    setState(() {
+      if (_selectedStatuses.contains(status)) {
+        // Don't allow deselecting the last status
+        if (_selectedStatuses.length > 1) {
+          _selectedStatuses.remove(status);
+        }
+      } else {
+        _selectedStatuses.add(status);
+      }
+    });
+  }
+
+  void _toggleAll() {
+    setState(() {
+      if (_selectedStatuses.length == 4) {
+        // If all selected, show only pending
+        _selectedStatuses = {TaskStatus.pending};
+      } else {
+        // Select all
+        _selectedStatuses = {
+          TaskStatus.pending,
+          TaskStatus.inProgress,
+          TaskStatus.completed,
+          TaskStatus.cancelled,
+        };
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final taskProvider = Provider.of<TaskProvider>(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
         child: Column(
           children: [
             _buildHeader(isDark),
-            _buildTabBar(isDark),
-            Expanded(
-              child: TabBarView(
-                controller: _tabController,
-                children: [
-                  _buildTaskListView(taskProvider, TaskStatus.pending),
-                  _buildTaskListView(taskProvider, TaskStatus.inProgress),
-                  _buildTaskListView(taskProvider, TaskStatus.completed),
-                  _buildTaskListView(taskProvider, TaskStatus.cancelled),
-                ],
-              ),
-            ),
+            _buildStatusFilters(taskProvider, isDark),
+            Expanded(child: _buildTaskListView(taskProvider, isDark)),
           ],
         ),
       ),
@@ -100,13 +122,16 @@ class _TaskListScreenState extends State<TaskListScreen>
               Text(
                 "My Tasks",
                 style: TextStyle(
-                  fontSize: 28, 
-                  fontWeight: FontWeight.bold, 
-                  color: isDark ? Colors.white : Colors.black87
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black87,
                 ),
               ),
               PopupMenuButton<String>(
-                icon: Icon(Icons.sort, color: isDark ? Colors.white70 : Colors.black87),
+                icon: Icon(
+                  Icons.sort,
+                  color: isDark ? Colors.white70 : Colors.black87,
+                ),
                 color: isDark ? Colors.grey[800] : Colors.white,
                 onSelected: (value) {
                   setState(() {
@@ -119,9 +144,18 @@ class _TaskListScreenState extends State<TaskListScreen>
                   });
                 },
                 itemBuilder: (context) => [
-                  const PopupMenuItem(value: 'due_date', child: Text('Sort by Due Date')),
-                  const PopupMenuItem(value: 'priority', child: Text('Sort by Priority')),
-                  const PopupMenuItem(value: 'created_at', child: Text('Sort by Date Created')),
+                  const PopupMenuItem(
+                    value: 'due_date',
+                    child: Text('Sort by Due Date'),
+                  ),
+                  const PopupMenuItem(
+                    value: 'priority',
+                    child: Text('Sort by Priority'),
+                  ),
+                  const PopupMenuItem(
+                    value: 'created_at',
+                    child: Text('Sort by Date Created'),
+                  ),
                 ],
               ),
             ],
@@ -145,13 +179,24 @@ class _TaskListScreenState extends State<TaskListScreen>
               onChanged: (value) => setState(() => _searchQuery = value),
               decoration: InputDecoration(
                 hintText: 'Search tasks...',
-                hintStyle: TextStyle(color: isDark ? Colors.grey[400] : Colors.grey[400]),
-                prefixIcon: Icon(Icons.search, color: isDark ? Colors.grey[400] : Colors.grey[400]),
+                hintStyle: TextStyle(
+                  color: isDark ? Colors.grey[400] : Colors.grey[400],
+                ),
+                prefixIcon: Icon(
+                  Icons.search,
+                  color: isDark ? Colors.grey[400] : Colors.grey[400],
+                ),
                 border: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
                 suffixIcon: _searchQuery.isNotEmpty
                     ? IconButton(
-                        icon: Icon(Icons.clear, color: isDark ? Colors.white70 : Colors.grey),
+                        icon: Icon(
+                          Icons.clear,
+                          color: isDark ? Colors.white70 : Colors.grey,
+                        ),
                         onPressed: () {
                           _searchController.clear();
                           setState(() => _searchQuery = '');
@@ -166,52 +211,196 @@ class _TaskListScreenState extends State<TaskListScreen>
     );
   }
 
-  Widget _buildTabBar(bool isDark) {
+  Widget _buildStatusFilters(TaskProvider provider, bool isDark) {
+    final filterConfigs = [
+      {
+        'status': null, // "All" filter
+        'label': 'All',
+        'icon': Icons.dashboard_rounded,
+        'color': const Color(0xFF2196F3),
+        'count': provider.tasks.length,
+      },
+      {
+        'status': TaskStatus.pending,
+        'label': 'Pending',
+        'icon': Icons.schedule_rounded,
+        'color': Colors.orange,
+        'count': provider.pendingTasks.length,
+      },
+      {
+        'status': TaskStatus.inProgress,
+        'label': 'In Progress',
+        'icon': Icons.play_arrow_rounded,
+        'color': const Color(0xFF2196F3),
+        'count': provider.inProgressTasks.length,
+      },
+      {
+        'status': TaskStatus.completed,
+        'label': 'Completed',
+        'icon': Icons.check_circle_rounded,
+        'color': Colors.green,
+        'count': provider.completedTasks.length,
+      },
+      {
+        'status': TaskStatus.cancelled,
+        'label': 'Cancelled',
+        'icon': Icons.cancel_rounded,
+        'color': Colors.red,
+        'count': provider.tasks
+            .where((t) => t.status == TaskStatus.cancelled)
+            .length,
+      },
+    ];
+
     return Container(
-      margin: const EdgeInsets.only(top: 8, bottom: 8),
-      child: TabBar(
-        controller: _tabController,
-        isScrollable: true,
-        labelColor: Colors.blue[400],
-        unselectedLabelColor: isDark ? Colors.grey[400] : Colors.grey[600],
-        labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-        unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500, fontSize: 15),
-        indicatorColor: Colors.blue[400],
-        indicatorSize: TabBarIndicatorSize.label,
-        dividerColor: Colors.transparent,
-        tabs: const [
-          Tab(text: 'Pending'),
-          Tab(text: 'In Progress'),
-          Tab(text: 'Completed'),
-          Tab(text: 'Cancelled'),
-        ],
+      height: 65,
+      margin: const EdgeInsets.only(top: 12, bottom: 8),
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: filterConfigs.length,
+        separatorBuilder: (context, index) => const SizedBox(width: 10),
+        itemBuilder: (context, index) {
+          final config = filterConfigs[index];
+          final status = config['status'] as TaskStatus?;
+          final isAll = status == null;
+          final isSelected = isAll
+              ? _selectedStatuses.length == 4
+              : _selectedStatuses.contains(status);
+
+          final color = config['color'] as Color;
+          final icon = config['icon'] as IconData;
+          final label = config['label'] as String;
+          final count = config['count'] as int;
+
+          return AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () =>
+                    isAll ? _toggleAll() : _toggleStatusFilter(status!),
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? color.withOpacity(0.15)
+                        : (isDark ? Colors.grey[850] : Colors.grey[100]),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: isSelected ? color : Colors.transparent,
+                      width: 2,
+                    ),
+                    boxShadow: isSelected
+                        ? [
+                            BoxShadow(
+                              color: color.withOpacity(0.3),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ]
+                        : [],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        icon,
+                        color: isSelected
+                            ? color
+                            : (isDark ? Colors.grey[400] : Colors.grey[600]),
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        label,
+                        style: TextStyle(
+                          color: isSelected
+                              ? color
+                              : (isDark ? Colors.grey[300] : Colors.grey[700]),
+                          fontWeight: isSelected
+                              ? FontWeight.bold
+                              : FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? color
+                              : (isDark ? Colors.grey[700] : Colors.grey[300]),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          '$count',
+                          style: TextStyle(
+                            color: isSelected
+                                ? Colors.white
+                                : (isDark
+                                      ? Colors.grey[300]
+                                      : Colors.grey[700]),
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }
 
-  Widget _buildTaskListView(TaskProvider provider, TaskStatus status) {
-    var tasks = provider.tasks.where((t) => t.status == status).toList();
+  Widget _buildTaskListView(TaskProvider provider, bool isDark) {
+    var tasks = provider.tasks
+        .where((t) => _selectedStatuses.contains(t.status))
+        .toList();
 
     if (_searchQuery.isNotEmpty) {
-      tasks = tasks.where((t) => 
-        t.title.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-        (t.description?.toLowerCase().contains(_searchQuery.toLowerCase()) ?? false)
-      ).toList();
+      tasks = tasks
+          .where(
+            (t) =>
+                t.title.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+                (t.description?.toLowerCase().contains(
+                      _searchQuery.toLowerCase(),
+                    ) ??
+                    false),
+          )
+          .toList();
     }
 
     _sortTasks(tasks);
 
     if (tasks.isEmpty) {
-      final isDark = Theme.of(context).brightness == Brightness.dark;
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.assignment_outlined, size: 64, color: isDark ? Colors.grey[700] : Colors.grey[300]),
+            Icon(
+              Icons.assignment_outlined,
+              size: 64,
+              color: isDark ? Colors.grey[700] : Colors.grey[300],
+            ),
             const SizedBox(height: 16),
             Text(
-              "No ${status.displayName} tasks",
-              style: TextStyle(color: isDark ? Colors.grey[500] : Colors.grey[500], fontSize: 16),
+              _searchQuery.isNotEmpty ? "No tasks found" : "No tasks",
+              style: TextStyle(
+                color: isDark ? Colors.grey[500] : Colors.grey[500],
+                fontSize: 16,
+              ),
             ),
           ],
         ),
@@ -234,7 +423,7 @@ class _TaskListScreenState extends State<TaskListScreen>
   Widget _buildTaskCard(TaskModel task) {
     final isOverdue = task.isOverdue;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return GestureDetector(
       onTap: () {
         Navigator.push(
@@ -253,7 +442,9 @@ class _TaskListScreenState extends State<TaskListScreen>
               offset: const Offset(0, 2),
             ),
           ],
-          border: Border.all(color: isDark ? Colors.grey[800]! : Colors.grey[100]!),
+          border: Border.all(
+            color: isDark ? Colors.grey[800]! : Colors.grey[100]!,
+          ),
         ),
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -264,7 +455,10 @@ class _TaskListScreenState extends State<TaskListScreen>
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: _getPriorityColor(task.priority).withOpacity(0.15),
                       borderRadius: BorderRadius.circular(6),
@@ -282,8 +476,12 @@ class _TaskListScreenState extends State<TaskListScreen>
                     Text(
                       task.formattedDueDate,
                       style: TextStyle(
-                        color: isOverdue ? Colors.red[300] : (isDark ? Colors.grey[400] : Colors.grey[500]),
-                        fontWeight: isOverdue ? FontWeight.bold : FontWeight.normal,
+                        color: isOverdue
+                            ? Colors.red[300]
+                            : (isDark ? Colors.grey[400] : Colors.grey[500]),
+                        fontWeight: isOverdue
+                            ? FontWeight.bold
+                            : FontWeight.normal,
                         fontSize: 12,
                       ),
                     ),
@@ -303,14 +501,18 @@ class _TaskListScreenState extends State<TaskListScreen>
               const SizedBox(height: 8),
               Row(
                 children: [
-                  Icon(Icons.location_on_outlined, size: 16, color: isDark ? Colors.grey[400] : Colors.grey),
+                  Icon(
+                    Icons.location_on_outlined,
+                    size: 16,
+                    color: isDark ? Colors.grey[400] : Colors.grey,
+                  ),
                   const SizedBox(width: 4),
                   Expanded(
                     child: Text(
                       task.effectiveLocationName ?? "No location",
                       style: TextStyle(
-                        color: isDark ? Colors.grey[400] : Colors.grey[600], 
-                        fontSize: 13
+                        color: isDark ? Colors.grey[400] : Colors.grey[600],
+                        fontSize: 13,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -327,10 +529,14 @@ class _TaskListScreenState extends State<TaskListScreen>
 
   Color _getPriorityColor(TaskPriority priority) {
     switch (priority) {
-      case TaskPriority.low: return Colors.green[600]!;
-      case TaskPriority.medium: return Colors.orange[700]!;
-      case TaskPriority.high: return Colors.red[600]!;
-      case TaskPriority.urgent: return Colors.purple[600]!;
+      case TaskPriority.low:
+        return Colors.green[600]!;
+      case TaskPriority.medium:
+        return Colors.orange[700]!;
+      case TaskPriority.high:
+        return Colors.red[600]!;
+      case TaskPriority.urgent:
+        return Colors.purple[600]!;
     }
   }
 }
