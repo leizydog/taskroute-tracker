@@ -42,11 +42,20 @@ class HomeScreenState extends State<HomeScreen> {
       listen: false,
     );
 
-    if (authProvider.user != null) {
-      await taskProvider.fetchTasks();
-      _knownTaskIds = taskProvider.tasks.map((t) => t.id).toSet();
+    try {
+      if (authProvider.user != null) {
+        await taskProvider.fetchTasks();
+        _knownTaskIds = taskProvider.tasks.map((t) => t.id).toSet();
+      }
+    } catch (e) {
+      debugPrint('Error fetching tasks: $e');
     }
-    await locationProvider.init();
+
+    try {
+      await locationProvider.init();
+    } catch (e) {
+      debugPrint('Error initializing location: $e');
+    }
   }
 
   void _listenToNotifications() {

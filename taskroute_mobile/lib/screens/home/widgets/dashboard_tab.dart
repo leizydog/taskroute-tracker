@@ -88,6 +88,11 @@ class _DashboardTabState extends State<DashboardTab>
         color: const Color(0xFF2196F3),
         child: Consumer<TaskProvider>(
           builder: (context, taskProvider, _) {
+            debugPrint(
+              'DashboardTab: isLoading=${taskProvider.isLoading}, tasks.length=${taskProvider.tasks.length}',
+            );
+
+            // Only show loading on initial load (no cached tasks)
             if (taskProvider.isLoading && taskProvider.tasks.isEmpty) {
               return const Center(
                 child: CircularProgressIndicator(color: Color(0xFF2196F3)),
