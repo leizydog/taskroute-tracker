@@ -19,16 +19,26 @@ class _TaskListScreenState extends State<TaskListScreen>
   String _sortBy = 'due_date';
   bool _sortAscending = true;
 
-  // NEW: Multi-select status filters
-  Set<TaskStatus> _selectedStatuses = {
-    TaskStatus.pending,
-    TaskStatus.inProgress,
-    TaskStatus.completed,
-    TaskStatus.cancelled,
-  };
+  // Removed local _selectedStatuses in favor of TaskProvider state
+
+  VoidCallback? _taskListener;
+
+  @override
+  void initState() {
+    super.initState();
+    final taskProvider = Provider.of<TaskProvider>(context, listen: false);
+    _taskListener = () {
+      if (mounted) setState(() {});
+    };
+    taskProvider.addListener(_taskListener!);
+  }
 
   @override
   void dispose() {
+    if (_taskListener != null) {
+      final taskProvider = Provider.of<TaskProvider>(context, listen: false);
+      taskProvider.removeListener(_taskListener!);
+    }
     _searchController.dispose();
     super.dispose();
   }
@@ -58,36 +68,6 @@ class _TaskListScreenState extends State<TaskListScreen>
           cmp = 0;
       }
       return _sortAscending ? cmp : -cmp;
-    });
-  }
-
-  void _toggleStatusFilter(TaskStatus status) {
-    setState(() {
-      if (_selectedStatuses.contains(status)) {
-        // Don't allow deselecting the last status
-        if (_selectedStatuses.length > 1) {
-          _selectedStatuses.remove(status);
-        }
-      } else {
-        _selectedStatuses.add(status);
-      }
-    });
-  }
-
-  void _toggleAll() {
-    setState(() {
-      if (_selectedStatuses.length == 4) {
-        // If all selected, show only pending
-        _selectedStatuses = {TaskStatus.pending};
-      } else {
-        // Select all
-        _selectedStatuses = {
-          TaskStatus.pending,
-          TaskStatus.inProgress,
-          TaskStatus.completed,
-          TaskStatus.cancelled,
-        };
-      }
     });
   }
 
@@ -265,8 +245,8 @@ class _TaskListScreenState extends State<TaskListScreen>
           final status = config['status'] as TaskStatus?;
           final isAll = status == null;
           final isSelected = isAll
-              ? _selectedStatuses.length == 4
-              : _selectedStatuses.contains(status);
+              ? provider.filterStatuses.length == 4
+              : provider.filterStatuses.contains(status);
 
           final color = config['color'] as Color;
           final icon = config['icon'] as IconData;
@@ -278,8 +258,9 @@ class _TaskListScreenState extends State<TaskListScreen>
             child: Material(
               color: Colors.transparent,
               child: InkWell(
-                onTap: () =>
-                    isAll ? _toggleAll() : _toggleStatusFilter(status!),
+                onTap: () => isAll
+                    ? provider.resetFilter()
+                    : provider.toggleFilter(status!),
                 borderRadius: BorderRadius.circular(16),
                 child: Container(
                   padding: const EdgeInsets.symmetric(
@@ -366,7 +347,7 @@ class _TaskListScreenState extends State<TaskListScreen>
 
   Widget _buildTaskListView(TaskProvider provider, bool isDark) {
     var tasks = provider.tasks
-        .where((t) => _selectedStatuses.contains(t.status))
+        .where((t) => provider.filterStatuses.contains(t.status))
         .toList();
 
     if (_searchQuery.isNotEmpty) {

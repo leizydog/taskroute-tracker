@@ -17,24 +17,28 @@ class TaskSummaryGrid extends StatelessWidget {
       builder: (context, taskProvider, _) {
         final summaryItems = [
           {
+            'status': TaskStatus.pending,
             'count': taskProvider.pendingTasks.length,
             'label': 'Pending',
             'icon': Icons.schedule_rounded,
             'color': Colors.orange,
           },
           {
+            'status': TaskStatus.inProgress,
             'count': taskProvider.inProgressTasks.length,
             'label': 'Active',
             'icon': Icons.play_arrow_rounded,
             'color': const Color(0xFF2196F3),
           },
           {
+            'status': TaskStatus.completed,
             'count': taskProvider.completedTasks.length,
             'label': 'Done',
             'icon': Icons.check_circle_rounded,
             'color': Colors.green,
           },
           {
+            'status': TaskStatus.cancelled,
             'count': taskProvider.tasks
                 .where((t) => t.status == TaskStatus.cancelled)
                 .length,
@@ -85,6 +89,11 @@ class TaskSummaryGrid extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: () {
+            final taskProvider = Provider.of<TaskProvider>(
+              context,
+              listen: false,
+            );
+            taskProvider.setFilter(item['status'] as TaskStatus);
             final homeState = context
                 .findAncestorStateOfType<HomeScreenState>();
             homeState?.navigateToTab(1);

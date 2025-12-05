@@ -50,6 +50,52 @@ class TaskProvider with ChangeNotifier {
   List<TaskModel> get cancelledTasks =>
       _tasks.where((task) => task.status == TaskStatus.cancelled).toList();
 
+  // Filter state
+  Set<TaskStatus> _filterStatuses = {
+    TaskStatus.pending,
+    TaskStatus.inProgress,
+    TaskStatus.completed,
+    TaskStatus.cancelled,
+  };
+
+  Set<TaskStatus> get filterStatuses => _filterStatuses;
+
+  void setFilter(TaskStatus? status) {
+    if (status == null) {
+      // All
+      _filterStatuses = {
+        TaskStatus.pending,
+        TaskStatus.inProgress,
+        TaskStatus.completed,
+        TaskStatus.cancelled,
+      };
+    } else {
+      _filterStatuses = {status};
+    }
+    notifyListeners();
+  }
+
+  void toggleFilter(TaskStatus status) {
+    if (_filterStatuses.contains(status)) {
+      if (_filterStatuses.length > 1) {
+        _filterStatuses.remove(status);
+      }
+    } else {
+      _filterStatuses.add(status);
+    }
+    notifyListeners();
+  }
+
+  void resetFilter() {
+    _filterStatuses = {
+      TaskStatus.pending,
+      TaskStatus.inProgress,
+      TaskStatus.completed,
+      TaskStatus.cancelled,
+    };
+    notifyListeners();
+  }
+
   List<TaskModel> get queuedTasks =>
       _tasks.where((task) => task.status == TaskStatus.queued).toList();
 

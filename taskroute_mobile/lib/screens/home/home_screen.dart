@@ -83,10 +83,18 @@ class HomeScreenState extends State<HomeScreen> {
 
   void _checkForNewTasks(List<TaskModel> tasks) {
     final notificationService = NotificationService();
+    final now = DateTime.now();
+
     for (var task in tasks) {
       if (!_knownTaskIds.contains(task.id) &&
           task.status == TaskStatus.pending) {
-        notificationService.addNotification(task);
+        // Only notify for tasks created in the last 7 days
+        // This prevents spamming old notifications on reinstall
+        final difference = now.difference(task.createdAt);
+        if (difference.inDays <= 7) {
+          notificationService.addNotification(task);
+        }
+
         _knownTaskIds.add(task.id);
       }
     }

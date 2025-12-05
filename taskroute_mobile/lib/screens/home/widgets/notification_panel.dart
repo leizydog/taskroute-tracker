@@ -337,16 +337,20 @@ class _NotificationPanelState extends State<NotificationPanel>
                                     : Colors.grey[500],
                               ),
                               const SizedBox(width: 4),
-                              Text(
-                                'From ${task.createdUserName}',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: widget.isDark
-                                      ? Colors.grey[500]
-                                      : Colors.grey[500],
+                              Expanded(
+                                child: Text(
+                                  'From ${task.createdUserName}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: widget.isDark
+                                        ? Colors.grey[500]
+                                        : Colors.grey[500],
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
-                              const Spacer(),
+                              const SizedBox(width: 8),
                               Icon(
                                 Icons.access_time,
                                 size: 14,
