@@ -95,13 +95,6 @@ class _DashboardTabState extends State<DashboardTab>
         color: const Color(0xFF2196F3),
         child: Consumer<TaskProvider>(
           builder: (context, taskProvider, _) {
-            // Only show loading on initial load (no cached tasks)
-            if (taskProvider.isLoading && taskProvider.tasks.isEmpty) {
-              return const Center(
-                child: CircularProgressIndicator(color: Color(0xFF2196F3)),
-              );
-            }
-
             return FadeTransition(
               opacity: _fadeAnimation,
               child: SingleChildScrollView(
@@ -110,6 +103,16 @@ class _DashboardTabState extends State<DashboardTab>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    if (taskProvider.isLoading)
+                      const Padding(
+                        padding: EdgeInsets.only(bottom: 16.0),
+                        child: LinearProgressIndicator(
+                          backgroundColor: Color(0xFFE0E0E0),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Color(0xFF2196F3),
+                          ),
+                        ),
+                      ),
                     if (taskProvider.error != null)
                       _buildErrorCard(taskProvider, isDark),
                     if (taskProvider.currentTask != null)
