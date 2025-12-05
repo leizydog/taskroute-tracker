@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../providers/auth_provider.dart';
-import '../../providers/task_provider.dart';
-import '../../providers/location_provider.dart';
-import 'widgets/task_summary_grid.dart';
-import 'widgets/task_card.dart';
-import 'widgets/current_task_card.dart';
-import 'widgets/notification_bell.dart';
-import 'widgets/notification_panel.dart';
+import '../../../providers/auth_provider.dart';
+import '../../../providers/task_provider.dart';
+import '../../../providers/location_provider.dart';
+import 'task_summary_grid.dart';
+import 'task_card.dart';
+import 'current_task_card.dart';
+import 'notification_bell.dart';
+import 'notification_panel.dart';
+import '../home_screen.dart';
 
 /// Dashboard tab displaying task summary, current task, and recent tasks
 /// Uses modular widget imports for clean separation of concerns
@@ -300,10 +301,9 @@ class _DashboardTabState extends State<DashboardTab>
             if (taskProvider.tasks.length > 5)
               TextButton(
                 onPressed: () {
-                  final homeState = context.findAncestorStateOfType<dynamic>();
-                  if (homeState != null && homeState is State) {
-                    (homeState as dynamic).navigateToTab?.call(1);
-                  }
+                  final homeState = context
+                      .findAncestorStateOfType<HomeScreenState>();
+                  homeState?.navigateToTab(1);
                 },
                 child: const Text(
                   'View All',

@@ -46,7 +46,7 @@ class HomeScreenState extends State<HomeScreen> {
       await taskProvider.fetchTasks();
       _knownTaskIds = taskProvider.tasks.map((t) => t.id).toSet();
     }
-    await locationProvider.checkLocationPermission();
+    await locationProvider.init();
   }
 
   void _listenToNotifications() {
