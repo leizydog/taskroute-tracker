@@ -25,6 +25,7 @@ const TaskManagementPanel = ({
     onTaskCreated,
     onTaskUpdated,
     users,
+    currentUser,
     isMapLoaded,
     mapLoadError
 }) => {
@@ -32,6 +33,8 @@ const TaskManagementPanel = ({
     const [searchTerm, setSearchTerm] = useState('');
     const [filterStatus, setFilterStatus] = useState('all');
     const [filterPriority, setFilterPriority] = useState('all');
+    const [filterCreatedBy, setFilterCreatedBy] = useState('all'); // 'all' or 'me'
+    const [filterAssignee, setFilterAssignee] = useState('all'); // 'all' or userId
     const [showArchived, setShowArchived] = useState(false);
 
     const [showCreateModal, setShowCreateModal] = useState(false);
@@ -63,14 +66,23 @@ const TaskManagementPanel = ({
 
             // Priority filter
             if (filterPriority !== 'all') {
-                // Ensure case-insensitive comparison
                 const taskPriority = task.priority ? task.priority.toUpperCase() : '';
                 if (taskPriority !== filterPriority) return false;
             }
 
+            // Created By Filter (Tasks I've Given)
+            if (filterCreatedBy === 'me' && currentUser) {
+                if (String(task.created_by) !== String(currentUser.id)) return false;
+            }
+
+            // Assignee Filter
+            if (filterAssignee !== 'all') {
+                if (String(task.assigned_to) !== String(filterAssignee)) return false;
+            }
+
             return true;
         });
-    }, [tasks, searchTerm, filterStatus, filterPriority, showArchived]);
+    }, [tasks, searchTerm, filterStatus, filterPriority, showArchived, filterCreatedBy, filterAssignee, currentUser]);
 
     const archivedTasks = useMemo(() => {
         return tasks ? tasks.filter(t => t.status === 'ARCHIVED' || t.is_archived) : [];
@@ -124,7 +136,7 @@ const TaskManagementPanel = ({
 
     const handleRestoreTask = async (task) => {
         try {
-            await api.updateTask(task.id, { status: 'PENDING' }); // Default to pending on restore
+            await api.updateTask(task.id, { status: 'PENDING' });
             onTaskUpdated({ ...task, status: 'PENDING' });
             toast.success('Task restored');
         } catch (err) {
@@ -136,13 +148,7 @@ const TaskManagementPanel = ({
         if (window.confirm(`Are you sure you want to PERMANENTLY delete "${task.title}"? This cannot be undone.`)) {
             try {
                 await api.deleteTask(task.id);
-                // We need a way to remove it from the list, usually onTaskUpdated handles updates, 
-                // but for delete we might need a different callback or just refresh.
-                // Assuming onTaskUpdated can handle it or we trigger a refresh.
-                // For now, let's assume parent handles refresh or we just hide it.
-                // Actually, onTaskUpdated might not be enough for delete.
-                // But let's stick to existing pattern.
-                onTaskUpdated({ ...task, _deleted: true }); // Signal deletion
+                onTaskUpdated({ ...task, _deleted: true });
                 toast.success('Task deleted');
             } catch (err) {
                 toast.error('Failed to delete task');
@@ -184,7 +190,7 @@ const TaskManagementPanel = ({
                     >
                         <TaskCard
                             task={task}
-                            currentUser={{ role: 'admin' }} // Admin view
+                            currentUser={{ role: 'admin' }}
                             onView={handleViewTask}
                             onEdit={handleEditTask}
                             onArchive={!showArchived ? handleArchiveTask : undefined}
@@ -349,6 +355,36 @@ const TaskManagementPanel = ({
                                 onChange={(e) => setSearchTerm(e.target.value)}
                             />
                         </div>
+
+                        {/* Tasks Given Toggle */}
+                        <div className="flex bg-slate-100 dark:bg-slate-800 rounded-lg p-1 border border-slate-200 dark:border-slate-700">
+                            <button
+                                onClick={() => setFilterCreatedBy('all')}
+                                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${filterCreatedBy === 'all' ? 'bg-white dark:bg-slate-900 text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+                            >
+                                All Tasks
+                            </button>
+                            <button
+                                onClick={() => setFilterCreatedBy('me')}
+                                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${filterCreatedBy === 'me' ? 'bg-white dark:bg-slate-900 text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+                            >
+                                Tasks I've Given
+                            </button>
+                        </div>
+
+                        {/* Assignee Filter */}
+                        {filterCreatedBy === 'me' && (
+                            <Select
+                                value={filterAssignee}
+                                onChange={(e) => setFilterAssignee(e.target.value)}
+                                options={[
+                                    { value: 'all', label: 'All Assignees' },
+                                    ...(users || []).map(u => ({ value: u.id, label: u.full_name }))
+                                ]}
+                                className="w-40"
+                            />
+                        )}
+
                         <Select
                             value={filterStatus}
                             onChange={(e) => setFilterStatus(e.target.value)}
@@ -358,7 +394,7 @@ const TaskManagementPanel = ({
                                 { value: 'IN_PROGRESS', label: 'In Progress' },
                                 { value: 'COMPLETED', label: 'Completed' },
                             ]}
-                            className="w-40"
+                            className="w-32"
                         />
                         <Select
                             value={filterPriority}
@@ -370,9 +406,8 @@ const TaskManagementPanel = ({
                                 { value: 'MEDIUM', label: 'Medium' },
                                 { value: 'LOW', label: 'Low' },
                             ]}
-                            className="w-40"
+                            className="w-32"
                         />
-                        {/* Duplicate Create Task Button Removed */}
                     </div>
                 </div>
 
