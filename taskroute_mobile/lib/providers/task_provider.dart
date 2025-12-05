@@ -25,7 +25,7 @@ class TaskProof {
 
 class TaskProvider with ChangeNotifier {
   final ApiService _apiService = ApiService.instance; // ✅ Use singleton
-  
+
   List<TaskModel> _tasks = [];
   TaskModel? _currentTask;
   bool _isLoading = false;
@@ -38,19 +38,19 @@ class TaskProvider with ChangeNotifier {
   String? get error => _error;
 
   // Filtered task lists
-  List<TaskModel> get pendingTasks => 
+  List<TaskModel> get pendingTasks =>
       _tasks.where((task) => task.status == TaskStatus.pending).toList();
-  
-  List<TaskModel> get inProgressTasks => 
+
+  List<TaskModel> get inProgressTasks =>
       _tasks.where((task) => task.status == TaskStatus.inProgress).toList();
-  
-  List<TaskModel> get completedTasks => 
+
+  List<TaskModel> get completedTasks =>
       _tasks.where((task) => task.status == TaskStatus.completed).toList();
-  
-  List<TaskModel> get cancelledTasks => 
+
+  List<TaskModel> get cancelledTasks =>
       _tasks.where((task) => task.status == TaskStatus.cancelled).toList();
 
-  List<TaskModel> get queuedTasks => 
+  List<TaskModel> get queuedTasks =>
       _tasks.where((task) => task.status == TaskStatus.queued).toList();
 
   // ==================================================================
@@ -96,17 +96,17 @@ class TaskProvider with ChangeNotifier {
   // ==================================================================
   // COMPLETE TASK (UPDATED WITH MULTI-STOP SUPPORT)
   // ==================================================================
-  
+
   /// Complete a task
   /// Handles both Single Stop and Multi Stop scenarios
   Future<bool> completeTask(
-    int taskId, 
+    int taskId,
     Map<String, dynamic> completionData, {
     // For Single Stop (Legacy)
     Uint8List? signatureBytes,
     List<File>? photos,
     // For Multi Stop (New)
-    List<TaskProof>? stopProofs, 
+    List<TaskProof>? stopProofs,
   }) async {
     _setLoading(true);
     _setError(null);
@@ -118,38 +118,46 @@ class TaskProvider with ChangeNotifier {
       // A. Handle Multi-Stop Uploads (Sequential)
       if (stopProofs != null && stopProofs.isNotEmpty) {
         debugPrint('📦 Uploading proofs for ${stopProofs.length} stops...');
-        
+
         for (var proof in stopProofs) {
           try {
-            debugPrint('📍 Processing stop ${proof.sequence}: ${proof.locationName}');
-            
+            debugPrint(
+              '📍 Processing stop ${proof.sequence}: ${proof.locationName}',
+            );
+
             // 1. Upload Signature
             // Note: The backend just returns the URL. We don't need to pass stopIndex to the API
             // if the backend endpoint is generic. We track the sequence in our local list.
             final sigResp = await _apiService.uploadSignature(
-              taskId, 
-              proof.signature.toList()
+              taskId,
+              proof.signature.toList(),
             );
-            
+
             if (sigResp.statusCode != 200) {
-              throw Exception("Signature upload failed for stop ${proof.sequence}");
+              throw Exception(
+                "Signature upload failed for stop ${proof.sequence}",
+              );
             }
-            
+
             final sigUrl = json.decode(sigResp.body)['signature_url'];
-            debugPrint("✅ Uploaded signature for stop ${proof.sequence}: $sigUrl");
+            debugPrint(
+              "✅ Uploaded signature for stop ${proof.sequence}: $sigUrl",
+            );
 
             // 2. Upload Photo
             final photoResp = await _apiService.uploadPhoto(
-              taskId, 
-              proof.photo.path
+              taskId,
+              proof.photo.path,
             );
-            
+
             if (photoResp.statusCode != 200) {
               throw Exception("Photo upload failed for stop ${proof.sequence}");
             }
-            
+
             final photoUrl = json.decode(photoResp.body)['photo_url'];
-            debugPrint("✅ Uploaded photo for stop ${proof.sequence}: $photoUrl");
+            debugPrint(
+              "✅ Uploaded photo for stop ${proof.sequence}: $photoUrl",
+            );
 
             // 3. Track uploaded proofs
             // We construct the object that the backend expects in the `stop_proofs` JSON column
@@ -157,36 +165,45 @@ class TaskProvider with ChangeNotifier {
               "sequence": proof.sequence,
               "location_name": proof.locationName,
               "photo_url": photoUrl,
-              "signature_url": sigUrl
+              "signature_url": sigUrl,
             });
-            
           } catch (e) {
             debugPrint("❌ Proof upload error for stop ${proof.sequence}: $e");
-            throw Exception("Failed to upload proofs for stop ${proof.sequence}. Please try again.");
+            throw Exception(
+              "Failed to upload proofs for stop ${proof.sequence}. Please try again.",
+            );
           }
         }
-        
+
         // Attach the collected URLs to the completion data
         completionData['stop_proofs'] = uploadedStopProofs;
-        debugPrint('✅ All ${stopProofs.length} stop proofs uploaded and attached.');
-        
+        debugPrint(
+          '✅ All ${stopProofs.length} stop proofs uploaded and attached.',
+        );
       } else {
         // B. Handle Single Stop Uploads (Legacy Logic)
         if (signatureBytes != null) {
           final sigResp = await _apiService.uploadSignature(
-            taskId, 
-            signatureBytes.toList()
+            taskId,
+            signatureBytes.toList(),
           );
           if (sigResp.statusCode == 200) {
-            completionData['signature_url'] = json.decode(sigResp.body)['signature_url'];
+            completionData['signature_url'] = json.decode(
+              sigResp.body,
+            )['signature_url'];
           }
         }
-        
+
         if (photos != null && photos.isNotEmpty) {
           // For single stop, we typically just take one photo
-          final photoResp = await _apiService.uploadPhoto(taskId, photos.first.path);
+          final photoResp = await _apiService.uploadPhoto(
+            taskId,
+            photos.first.path,
+          );
           if (photoResp.statusCode == 200) {
-             completionData['photo_urls'] = [json.decode(photoResp.body)['photo_url']];
+            completionData['photo_urls'] = [
+              json.decode(photoResp.body)['photo_url'],
+            ];
           }
         }
       }
@@ -194,14 +211,14 @@ class TaskProvider with ChangeNotifier {
       // C. Submit Completion Request
       debugPrint('📤 Submitting task completion payload...');
       final response = await _apiService.completeTask(taskId, completionData);
-      
+
       if (response.statusCode == 200) {
         debugPrint('✅ Task completed successfully!');
-        
+
         // Success: Update local state
         final taskJson = json.decode(response.body);
         final updatedTask = TaskModel.fromJson(taskJson);
-        
+
         final index = _tasks.indexWhere((t) => t.id == taskId);
         if (index != -1) {
           _tasks[index] = updatedTask;
@@ -215,23 +232,27 @@ class TaskProvider with ChangeNotifier {
       } else {
         final errorData = json.decode(response.body);
         debugPrint("❌ Server returned error: $errorData");
-        _setError(errorData['detail'] ?? errorData['message'] ?? 'Failed to complete task');
+        _setError(
+          errorData['detail'] ??
+              errorData['message'] ??
+              'Failed to complete task',
+        );
       }
     } catch (e) {
       debugPrint('❌ Task completion error: $e');
       _setError('Network error: ${e.toString()}');
-      
+
       // Save offline for later sync
       await _saveTaskCompletionOffline(
-        taskId, 
-        completionData, 
-        signatureBytes: signatureBytes, 
+        taskId,
+        completionData,
+        signatureBytes: signatureBytes,
         photos: photos,
       );
     } finally {
       _setLoading(false);
     }
-    
+
     return false;
   }
 
@@ -266,35 +287,39 @@ class TaskProvider with ChangeNotifier {
       if (token != null) {
         print('Token preview: ${token.substring(0, min(20, token.length))}...');
       }
-      
+
       final response = await _apiService.getTasks(assignedToMe: assignedToMe);
-      
+
       print('Tasks Response Status: ${response.statusCode}');
-      
+
       if (response.statusCode == 200) {
         final List<dynamic> tasksJson = json.decode(response.body);
         _tasks = tasksJson.map((json) => TaskModel.fromJson(json)).toList();
-        
+        notifyListeners();
+
         print('Successfully loaded ${_tasks.length} tasks');
-        
+
         // Update current task if exists
         _updateCurrentTask();
 
-        if (_currentTask != null && _currentTask!.status == TaskStatus.inProgress) {
+        if (_currentTask != null &&
+            _currentTask!.status == TaskStatus.inProgress) {
           await StorageService.instance.setCurrentTaskId(_currentTask!.id);
-          print('✅ Restored current task ID for location tracking: ${_currentTask!.id}');
+          print(
+            '✅ Restored current task ID for location tracking: ${_currentTask!.id}',
+          );
         } else {
           // No in-progress task, clear the saved ID
           await StorageService.instance.setCurrentTaskId(null);
           print('🧹 Cleared task ID (no in-progress task)');
         }
-        
+
         // Save to local storage
         await StorageService.instance.saveTasks(_tasks);
       } else if (response.statusCode == 401) {
         print('Authentication failed - token expired or invalid');
         _setError('Authentication expired. Please login again.');
-        
+
         // Clear invalid token
         await StorageService.instance.deleteToken();
       } else {
@@ -318,6 +343,7 @@ class TaskProvider with ChangeNotifier {
     try {
       _tasks = await StorageService.instance.getTasks();
       _updateCurrentTask();
+      notifyListeners();
     } catch (e) {
       debugPrint('Error loading tasks from cache: $e');
     }
@@ -338,24 +364,24 @@ class TaskProvider with ChangeNotifier {
   Future<TaskModel?> getTask(int taskId) async {
     try {
       final response = await _apiService.getTask(taskId);
-      
+
       if (response.statusCode == 200) {
         final taskJson = json.decode(response.body);
         final task = TaskModel.fromJson(taskJson);
-        
+
         // Update in local list if exists
         final index = _tasks.indexWhere((t) => t.id == taskId);
         if (index != -1) {
           _tasks[index] = task;
           notifyListeners();
         }
-        
+
         return task;
       }
     } catch (e) {
       _setError('Failed to fetch task details: ${e.toString()}');
     }
-    
+
     return null;
   }
 
@@ -365,24 +391,24 @@ class TaskProvider with ChangeNotifier {
 
     try {
       final response = await _apiService.startTask(taskId, locationData);
-      
+
       if (response.statusCode == 200) {
         final taskJson = json.decode(response.body);
         final updatedTask = TaskModel.fromJson(taskJson);
-        
+
         // Update task in list
         final index = _tasks.indexWhere((t) => t.id == taskId);
         if (index != -1) {
           _tasks[index] = updatedTask;
           _updateCurrentTask();
-          
+
           // ✅ Save the current task ID for location tracking
           await StorageService.instance.setCurrentTaskId(taskId);
-          
+
           // Save to cache
           await StorageService.instance.saveTasks(_tasks);
         }
-        
+
         _setLoading(false);
         return true;
       } else {
@@ -396,7 +422,7 @@ class TaskProvider with ChangeNotifier {
       await _saveTaskStartOffline(taskId, locationData);
       _setLoading(false);
     }
-    
+
     return false;
   }
 
@@ -406,26 +432,26 @@ class TaskProvider with ChangeNotifier {
 
     try {
       final response = await _apiService.cancelTask(taskId, reason);
-      
+
       if (response.statusCode == 200) {
         // Parse the updated task from response
         final taskJson = json.decode(response.body);
         final updatedTask = TaskModel.fromJson(taskJson);
-        
+
         // Update local list
         final index = _tasks.indexWhere((t) => t.id == taskId);
         if (index != -1) {
           _tasks[index] = updatedTask;
           _updateCurrentTask();
           notifyListeners();
-          
+
           // Save to cache
           await StorageService.instance.saveTasks(_tasks);
         }
-        
+
         // If this was the current active task, clear the tracking ID
         if (_currentTask?.id == taskId) {
-           await StorageService.instance.setCurrentTaskId(null);
+          await StorageService.instance.setCurrentTaskId(null);
         }
 
         _setLoading(false);
@@ -440,12 +466,15 @@ class TaskProvider with ChangeNotifier {
     } finally {
       _setLoading(false);
     }
-    
+
     return false;
   }
 
   /// Save task start for offline sync
-  Future<void> _saveTaskStartOffline(int taskId, Map<String, dynamic> locationData) async {
+  Future<void> _saveTaskStartOffline(
+    int taskId,
+    Map<String, dynamic> locationData,
+  ) async {
     try {
       // Update local task status
       final index = _tasks.indexWhere((t) => t.id == taskId);
@@ -457,7 +486,7 @@ class TaskProvider with ChangeNotifier {
         _updateCurrentTask();
         notifyListeners();
       }
-      
+
       // Save for later sync
       final offlineData = {
         'action': 'start_task',
@@ -465,7 +494,7 @@ class TaskProvider with ChangeNotifier {
         'location_data': locationData,
         'timestamp': DateTime.now().toIso8601String(),
       };
-      
+
       await StorageService.instance.saveLocationLog(offlineData);
     } catch (e) {
       debugPrint('Error saving offline task start: $e');
@@ -474,7 +503,7 @@ class TaskProvider with ChangeNotifier {
 
   /// Save task completion for offline sync
   Future<void> _saveTaskCompletionOffline(
-    int taskId, 
+    int taskId,
     Map<String, dynamic> completionData, {
     Uint8List? signatureBytes,
     List<File>? photos,
@@ -492,16 +521,15 @@ class TaskProvider with ChangeNotifier {
         _updateCurrentTask();
         notifyListeners();
       }
-      
+
       // Save completion data for later sync
       await StorageService.instance.saveTaskCompletionData(taskId, {
         ...completionData,
         'has_signature': signatureBytes != null,
         'photos_count': photos?.length ?? 0,
       });
-      
+
       // TODO: Save signature and photos to local storage for later upload
-      
     } catch (e) {
       debugPrint('Error saving offline task completion: $e');
     }
@@ -511,12 +539,13 @@ class TaskProvider with ChangeNotifier {
   Future<void> syncOfflineData() async {
     try {
       // Sync location logs
-      final unsyncedLogs = await StorageService.instance.getUnsyncedLocationLogs();
+      final unsyncedLogs = await StorageService.instance
+          .getUnsyncedLocationLogs();
       for (final log in unsyncedLogs) {
         try {
           if (log['action'] == 'start_task') {
             final response = await _apiService.startTask(
-              log['task_id'], 
+              log['task_id'],
               log['location_data'],
             );
             if (response.statusCode == 200) {
@@ -533,13 +562,14 @@ class TaskProvider with ChangeNotifier {
           debugPrint('Error syncing log ${log['id']}: $e');
         }
       }
-      
+
       // Sync completion data
-      final unsyncedCompletions = await StorageService.instance.getUnsyncedCompletionData();
+      final unsyncedCompletions = await StorageService.instance
+          .getUnsyncedCompletionData();
       for (final completion in unsyncedCompletions) {
         try {
           final response = await _apiService.completeTask(
-            completion['task_id'], 
+            completion['task_id'],
             completion,
           );
           if (response.statusCode == 200) {
@@ -551,10 +581,9 @@ class TaskProvider with ChangeNotifier {
           debugPrint('Error syncing completion ${completion['task_id']}: $e');
         }
       }
-      
+
       // Refresh tasks after sync
       await fetchTasks();
-      
     } catch (e) {
       debugPrint('Error during offline sync: $e');
     }
@@ -563,12 +592,12 @@ class TaskProvider with ChangeNotifier {
   /// Search tasks by title or description
   List<TaskModel> searchTasks(String query) {
     if (query.isEmpty) return _tasks;
-    
+
     final lowercaseQuery = query.toLowerCase();
     return _tasks.where((task) {
       return task.title.toLowerCase().contains(lowercaseQuery) ||
-             (task.description?.toLowerCase().contains(lowercaseQuery) ?? false) ||
-             task.locationName?.toLowerCase().contains(lowercaseQuery) == true;
+          (task.description?.toLowerCase().contains(lowercaseQuery) ?? false) ||
+          task.locationName?.toLowerCase().contains(lowercaseQuery) == true;
     }).toList();
   }
 
@@ -576,34 +605,42 @@ class TaskProvider with ChangeNotifier {
   void sortTasks(String sortBy, {bool ascending = true}) {
     switch (sortBy) {
       case 'title':
-        _tasks.sort((a, b) => ascending 
-            ? a.title.compareTo(b.title)
-            : b.title.compareTo(a.title));
+        _tasks.sort(
+          (a, b) => ascending
+              ? a.title.compareTo(b.title)
+              : b.title.compareTo(a.title),
+        );
         break;
       case 'due_date':
         _tasks.sort((a, b) {
           if (a.dueDate == null && b.dueDate == null) return 0;
           if (a.dueDate == null) return ascending ? 1 : -1;
           if (b.dueDate == null) return ascending ? -1 : 1;
-          return ascending 
+          return ascending
               ? a.dueDate!.compareTo(b.dueDate!)
               : b.dueDate!.compareTo(a.dueDate!);
         });
         break;
       case 'priority':
-        _tasks.sort((a, b) => ascending 
-            ? a.priority.index.compareTo(b.priority.index)
-            : b.priority.index.compareTo(a.priority.index));
+        _tasks.sort(
+          (a, b) => ascending
+              ? a.priority.index.compareTo(b.priority.index)
+              : b.priority.index.compareTo(a.priority.index),
+        );
         break;
       case 'status':
-        _tasks.sort((a, b) => ascending 
-            ? a.status.index.compareTo(b.status.index)
-            : b.status.index.compareTo(a.status.index));
+        _tasks.sort(
+          (a, b) => ascending
+              ? a.status.index.compareTo(b.status.index)
+              : b.status.index.compareTo(a.status.index),
+        );
         break;
       case 'created_at':
-        _tasks.sort((a, b) => ascending 
-            ? a.createdAt.compareTo(b.createdAt)
-            : b.createdAt.compareTo(a.createdAt));
+        _tasks.sort(
+          (a, b) => ascending
+              ? a.createdAt.compareTo(b.createdAt)
+              : b.createdAt.compareTo(a.createdAt),
+        );
         break;
     }
     notifyListeners();
