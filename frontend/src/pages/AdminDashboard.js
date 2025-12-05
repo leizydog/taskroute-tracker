@@ -1,4 +1,4 @@
-// src/pages/AdminDashboard.js
+﻿// src/pages/AdminDashboard.js
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../services/api';
@@ -13,7 +13,7 @@ import {
   FiList, FiTerminal, FiChevronDown, FiFileText
 } from 'react-icons/fi';
 import { Button, Card, StatValue, Input, Select, Alert, Badge } from '../components/atoms';
-import UserAvatar from '../components/atoms/UserAvatar'; // ✅ Import UserAvatar
+import UserAvatar from '../components/atoms/UserAvatar'; // âœ… Import UserAvatar
 import CreateTaskModal from '../components/organisms/CreateTaskModal';
 import { EmployeeKPIPanel, LiveLocationTracker, TaskManagementPanel } from '../components/organisms';
 import { useAuth } from '../contexts/AuthContext';
@@ -35,7 +35,7 @@ const UserListItem = ({ employee, isSelected, onClick, stats }) => (
       }`}
   >
     <div className="relative">
-      {/* ✅ Use UserAvatar Component instead of manual img tag */}
+      {/* âœ… Use UserAvatar Component instead of manual img tag */}
       <UserAvatar user={employee} size="md" />
 
       {employee?.role === 'admin' && (
@@ -181,7 +181,7 @@ const UserModal = ({ mode = 'add', user = null, onClose, onSuccess }) => {
     ...user
   });
   const [loading, setLoading] = useState(false);
-  // ✅ NEW: States for inline feedback
+  // âœ… NEW: States for inline feedback
   const [error, setError] = useState(null);
   const [showSuccess, setShowSuccess] = useState(false);
 
@@ -211,7 +211,7 @@ const UserModal = ({ mode = 'add', user = null, onClose, onSuccess }) => {
         await api.apiClient.put(`/users/${user.id}`, formData);
       }
 
-      // ✅ Show success view instead of closing immediately
+      // âœ… Show success view instead of closing immediately
       setShowSuccess(true);
       onSuccess(formData);
 
@@ -234,14 +234,14 @@ const UserModal = ({ mode = 'add', user = null, onClose, onSuccess }) => {
         errorMessage = error.message;
       }
 
-      // ✅ Set inline error instead of toast
+      // âœ… Set inline error instead of toast
       setError(errorMessage);
     } finally {
       setLoading(false);
     }
   };
 
-  // ✅ SUCCESS VIEW
+  // âœ… SUCCESS VIEW
   if (showSuccess) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
@@ -287,7 +287,7 @@ const UserModal = ({ mode = 'add', user = null, onClose, onSuccess }) => {
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
 
-          {/* ✅ INLINE ERROR ALERT */}
+          {/* âœ… INLINE ERROR ALERT */}
           {error && (
             <Alert type="error" message={error} />
           )}
@@ -327,7 +327,7 @@ const UserModal = ({ mode = 'add', user = null, onClose, onSuccess }) => {
               <Input
                 required
                 type="password"
-                placeholder="••••••••"
+                placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
                 value={formData.password}
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
               />
@@ -530,10 +530,10 @@ const AdminDashboard = () => {
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', message: '', type: 'info', onConfirm: null });
 
   // ---------------------------------------------------------------------------
-  // 🔔 NOTIFICATION STATE & LOGIC
+  // ðŸ”” NOTIFICATION STATE & LOGIC
   // ---------------------------------------------------------------------------
 
-  // ✅ Separate Alerts (Temporary Popups) from Notifications (Persistent History)
+  // âœ… Separate Alerts (Temporary Popups) from Notifications (Persistent History)
   const [alerts, setAlerts] = useState([]);
   const [notifications, setNotifications] = useState([]);
 
@@ -613,10 +613,10 @@ const AdminDashboard = () => {
 
     // Optional navigation logic
     if (notif.context.tab === 'tasks') {
-      toast('Navigated to Task #' + notif.context.itemId, { icon: '🔍' });
+      toast('Navigated to Task #' + notif.context.itemId, { icon: 'ðŸ”' });
     } else if (notif.context.tab === 'user_management') {
       setSearchTerm(notif.context.itemName || '');
-      toast('Navigated to User: ' + notif.context.itemName, { icon: '👤' });
+      toast('Navigated to User: ' + notif.context.itemName, { icon: 'ðŸ‘¤' });
     }
 
     // Mark as read (optional UI enhancement)
@@ -625,7 +625,7 @@ const AdminDashboard = () => {
     setShowNotifications(false);
   };
 
-  // ✅ FIX: Wrapped fetchData in useCallback to fix dependency warning
+  // âœ… FIX: Wrapped fetchData in useCallback to fix dependency warning
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -721,35 +721,35 @@ const AdminDashboard = () => {
             setAuditLogs(prev => [data.log, ...prev].slice(0, 50));
           }
 
-          // ✅ USE addNotification INSTEAD OF addAlert
+          // âœ… USE addNotification INSTEAD OF addAlert
           if (data.event === 'task_started' && data.task) {
             const task = JSON.parse(data.task);
-            addNotification('info', `🚀 ${task.assigned_user_name} started "${task.title}"`, { tab: 'tasks', itemId: task.id });
+            addNotification('info', `ðŸš€ ${task.assigned_user_name} started "${task.title}"`, { tab: 'tasks', itemId: task.id });
             setTasks(prev => prev.map(t => t.id === task.id ? task : t));
           }
 
           if (data.event === 'task_completed' && data.task_id) {
-            addNotification('success', `✅ Task #${data.task_id} completed`, { tab: 'tasks', itemId: data.task_id });
+            addNotification('success', `âœ… Task #${data.task_id} completed`, { tab: 'tasks', itemId: data.task_id });
             fetchData();
           }
 
           if (data.event === 'task_updated' && data.task) {
             const task = JSON.parse(data.task);
             if (task.status === 'DECLINED') {
-              addNotification('danger', `⛔ ${task.assigned_user_name} declined task`, { tab: 'tasks', itemId: task.id });
+              addNotification('danger', `â›” ${task.assigned_user_name} declined task`, { tab: 'tasks', itemId: task.id });
             } else if (task.status === 'QUEUED') {
-              addNotification('info', `📥 ${task.assigned_user_name} accepted task to queue`, { tab: 'tasks', itemId: task.id });
+              addNotification('info', `ðŸ“¥ ${task.assigned_user_name} accepted task to queue`, { tab: 'tasks', itemId: task.id });
             }
             setTasks(prev => prev.map(t => t.id === task.id ? task : t));
           }
 
           if (data.event === 'user_profile_updated') {
-            addNotification('warning', `👤 ${data.user_name} updated profile`, { tab: 'user_management', itemId: data.user_id, itemName: data.user_name });
+            addNotification('warning', `ðŸ‘¤ ${data.user_name} updated profile`, { tab: 'user_management', itemId: data.user_id, itemName: data.user_name });
             api.getUsers().then(res => setEmployees(res.data));
           }
 
           if (data.event === 'user_avatar_updated') {
-            addNotification('info', `📸 ${data.user_name} changed photo`, { tab: 'user_management', itemId: data.user_id, itemName: data.user_name });
+            addNotification('info', `ðŸ“¸ ${data.user_name} changed photo`, { tab: 'user_management', itemId: data.user_id, itemName: data.user_name });
             api.getUsers().then(res => setEmployees(res.data));
           }
         } catch (e) { console.error('WS Error', e); }
@@ -764,7 +764,7 @@ const AdminDashboard = () => {
     if (user && user.role === 'admin') {
       fetchData();
     }
-  }, [user, fetchData]); // ✅ Added fetchData to dependency array
+  }, [user, fetchData]); // âœ… Added fetchData to dependency array
 
   useEffect(() => {
     if (!selectedEmployee) {
@@ -856,7 +856,7 @@ const AdminDashboard = () => {
     } catch (err) {
       setRetrainStatus({
         loading: false,
-        logs: ['❌ Error contacting server', err.message],
+        logs: ['âŒ Error contacting server', err.message],
         success: false
       });
       toast.error("Failed to trigger retraining");
@@ -1022,7 +1022,7 @@ const AdminDashboard = () => {
     });
   };
 
-  // ✅ UPDATED: Helper for relative time with UTC enforcement
+  // âœ… UPDATED: Helper for relative time with UTC enforcement
   const getRelativeTime = (d) => {
     if (!d) return '';
     // Fix: Append 'Z' if missing to force UTC interpretation. 
@@ -1072,7 +1072,7 @@ const AdminDashboard = () => {
     return { totalUsers, totalSupervisors, activeTasks, completedToday };
   }, [employees, tasks]);
 
-  // ✅ NEW: Calculate per-employee task stats
+  // âœ… NEW: Calculate per-employee task stats
   const employeeStats = useMemo(() => {
     const stats = {};
     (employees || []).forEach(emp => {
@@ -1146,7 +1146,7 @@ const AdminDashboard = () => {
           <div className="bg-slate-800/50 rounded-lg p-3 border border-slate-700">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 flex-shrink-0 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center font-bold text-indigo-600 dark:text-indigo-300 overflow-hidden border border-slate-200 dark:border-slate-700">
-                {/* ✅ Use UserAvatar Component instead of manual img tag */}
+                {/* âœ… Use UserAvatar Component instead of manual img tag */}
                 <UserAvatar user={user} size="md" />
               </div>
               <div className="overflow-hidden">
@@ -1240,7 +1240,7 @@ const AdminDashboard = () => {
                 onClick={() => setShowUserMenu(!showUserMenu)}
                 className={`flex items-center gap-2 p-1 pl-3 pr-2 rounded-full transition-colors border ${showUserMenu ? 'bg-slate-100 dark:bg-slate-800 border-indigo-400 dark:border-indigo-600' : 'border-transparent hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
                 <div className="w-8 h-8 flex-shrink-0 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center font-bold text-indigo-600 dark:text-indigo-300 overflow-hidden border border-slate-200 dark:border-slate-700">
-                  {/* ✅ Use UserAvatar Component instead of manual img tag */}
+                  {/* âœ… Use UserAvatar Component instead of manual img tag */}
                   <UserAvatar user={user} size="md" />
                 </div>
                 <span className="text-sm font-medium text-slate-700 dark:text-slate-300 hidden sm:inline">{user?.full_name}</span>
@@ -1386,14 +1386,14 @@ const AdminDashboard = () => {
                         <div className="flex items-start justify-between">
                           <div className="flex gap-4">
                             <div className="w-24 h-24 flex-shrink-0 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center font-bold text-indigo-600 dark:text-indigo-300 overflow-hidden border border-slate-200 dark:border-slate-700">
-                              {/* ✅ Use UserAvatar Component instead of manual img tag */}
+                              {/* âœ… Use UserAvatar Component instead of manual img tag */}
                               <UserAvatar user={selectedEmployee} size="lg" />
                             </div>
                             <div>
                               <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">{selectedEmployee.full_name}</h2>
                               <div className="flex items-center gap-2 mt-1 text-slate-500 dark:text-slate-400">
                                 <span>{selectedEmployee.email}</span>
-                                <span>•</span>
+                                <span>â€¢</span>
                                 <span className="capitalize">{selectedEmployee.role}</span>
                               </div>
                             </div>
@@ -1478,7 +1478,7 @@ const AdminDashboard = () => {
                             <td className="px-6 py-4">
                               <div className="flex items-center gap-3">
                                 <div className="w-8 h-8 flex-shrink-0 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center font-bold text-indigo-600 dark:text-indigo-300 overflow-hidden border border-slate-200 dark:border-slate-700">
-                                  {/* ✅ Use UserAvatar Component instead of manual img tag */}
+                                  {/* âœ… Use UserAvatar Component instead of manual img tag */}
                                   <UserAvatar user={emp} size="sm" />
                                 </div>
                                 <div>
@@ -1565,69 +1565,120 @@ const AdminDashboard = () => {
                     <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">
                       Task Management
                     </h2>
-                    <div>
-                      <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                        System Audit Log
-                        <Badge text="Live" color="green" size="xs" className="animate-pulse" />
-                      </h3>
-                      <p className="text-sm text-slate-500">Track sensitive actions and system events in real-time.</p>
-                    </div>
-                    <Button variant="outline" onClick={fetchData} icon={FiRefreshCw}>Refresh</Button>
+                    <p className="text-slate-500">
+                      View, manage, and track all system tasks.
+                    </p>
                   </div>
-                  <div className="flex-1 overflow-auto border rounded-lg border-slate-200 dark:border-slate-700">
-                    <table className="w-full text-left border-collapse">
-                      <thead className="bg-slate-50 dark:bg-slate-800/50 sticky top-0 shadow-sm">
-                        <tr>
-                          <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Timestamp</th>
-                          <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">User</th>
-                          <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Action</th>
-                          <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Target</th>
-                          <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Details</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-                        <AnimatePresence initial={false}>
-                          {auditLogs.map((log) => (
-                            <motion.tr
-                              key={log.id}
-                              initial={{ opacity: 0, y: -10, backgroundColor: "rgba(99, 102, 241, 0.1)" }}
-                              animate={{ opacity: 1, y: 0, backgroundColor: "transparent" }}
-                              transition={{ duration: 0.5 }}
-                              className="hover:bg-slate-50 dark:hover:bg-slate-800/50"
-                            >
-                              <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-400 font-mono whitespace-nowrap">
-                                {new Date(log.timestamp).toLocaleString()}
-                              </td>
-                              <td className="px-4 py-3 text-sm font-medium text-slate-800 dark:text-slate-200">
-                                {log.user_email}
-                              </td>
-                              <td className="px-4 py-3">
-                                <Badge
-                                  text={log.action}
-                                  color={log.action.includes('DELETE') || log.action.includes('WIPE') ? 'red' : log.action.includes('RETRAIN') ? 'purple' : 'blue'}
-                                  size="xs"
-                                />
-                              </td>
-                              <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-400">
-                                {log.target_resource || '-'}
-                              </td>
-                              <td className="px-4 py-3 text-sm text-slate-500 truncate max-w-xs" title={log.details}>
-                                {log.details}
-                              </td>
-                            </motion.tr>
-                          ))}
-                        </AnimatePresence>
-                        {auditLogs.length === 0 && (
-                          <tr>
-                            <td colSpan="5" className="text-center py-8 text-slate-500">No audit logs found.</td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
+                  <div className="flex gap-3">
+                    <Button
+                      variant="outline"
+                      onClick={handleExportTasksCSV}
+                      icon={FiDatabase}
+                    >
+                      Export CSV
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={handleExportTasksPDF}
+                      icon={FiDownload}
+                    >
+                      Export PDF
+                    </Button>
+                    <Button
+                      variant="primary"
+                      onClick={() => setIsCreateTaskModalOpen(true)}
+                      icon={FiPlus}
+                    >
+                      Create Task
+                    </Button>
                   </div>
-                </Card>
-                    )}
+                </div>
 
+                <TaskManagementPanel
+                  isMapLoaded={isMapLoaded}
+                  mapLoadError={mapLoadError}
+                  onTaskCreated={handleTaskCreated}
+                  onTaskDeleted={(taskId) => {
+                    setTasks(prev => prev.filter(t => t.id !== taskId));
+                    addAlert('success', 'Task deleted from system');
+                  }}
+                  onTaskUpdated={(updated) => {
+                    setTasks(prev => prev.map(t => t.id === updated.id ? updated : t));
+                    addAlert('success', 'Task updated');
+                  }}
+                  tasks={tasks}
+                  users={employees}
+                  currentUser={user}
+                />
+              </div>
+            )}
+
+            {/* 5. AUDIT TRAIL TAB (NEW) */}
+            {activeTab === 'audit' && (
+              <Card className="h-[calc(100vh-8rem)] flex flex-col">
+                <div className="flex justify-between items-center mb-6">
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                      System Audit Log
+                      <Badge text="Live" color="green" size="xs" className="animate-pulse" />
+                    </h3>
+                    <p className="text-sm text-slate-500">Track sensitive actions and system events in real-time.</p>
+                  </div>
+                  <Button variant="outline" onClick={fetchData} icon={FiRefreshCw}>Refresh</Button>
+                </div>
+                <div className="flex-1 overflow-auto border rounded-lg border-slate-200 dark:border-slate-700">
+                  <table className="w-full text-left border-collapse">
+                    <thead className="bg-slate-50 dark:bg-slate-800/50 sticky top-0 shadow-sm">
+                      <tr>
+                        <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Timestamp</th>
+                        <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">User</th>
+                        <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Action</th>
+                        <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Target</th>
+                        <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Details</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+                      <AnimatePresence initial={false}>
+                        {auditLogs.map((log) => (
+                          <motion.tr
+                            key={log.id}
+                            initial={{ opacity: 0, y: -10, backgroundColor: "rgba(99, 102, 241, 0.1)" }}
+                            animate={{ opacity: 1, y: 0, backgroundColor: "transparent" }}
+                            transition={{ duration: 0.5 }}
+                            className="hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                          >
+                            <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-400 font-mono whitespace-nowrap">
+                              {new Date(log.timestamp).toLocaleString()}
+                            </td>
+                            <td className="px-4 py-3 text-sm font-medium text-slate-800 dark:text-slate-200">
+                              {log.user_email}
+                            </td>
+                            <td className="px-4 py-3">
+                              <Badge
+                                text={log.action}
+                                color={log.action.includes('DELETE') || log.action.includes('WIPE') ? 'red' : log.action.includes('RETRAIN') ? 'purple' : 'blue'}
+                                size="xs"
+                              />
+                            </td>
+                            <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-400">
+                              {log.target_resource || '-'}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-slate-500 truncate max-w-xs" title={log.details}>
+                              {log.details}
+                            </td>
+                          </motion.tr>
+                        ))}
+                      </AnimatePresence>
+                      {auditLogs.length === 0 && (
+                        <tr>
+                          <td colSpan="5" className="text-center py-8 text-slate-500">No audit logs found.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            )}
                 {/* 6. TRACKING TAB */}
                 {activeTab === 'tracking' && (
                   <LiveLocationTracker isMapLoaded={isMapLoaded} mapLoadError={mapLoadError} />
