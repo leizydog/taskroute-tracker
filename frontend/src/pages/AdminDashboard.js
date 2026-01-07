@@ -1613,7 +1613,12 @@ const AdminDashboard = () => {
               </div>
             )}
 
-            {/* 5. AUDIT TRAIL TAB (NEW) */}
+            {/* 5. REPORTS TAB */}
+            {activeTab === 'reports' && (
+              <ReportsPanel employees={employees} tasks={tasks} />
+            )}
+
+            {/* 6. AUDIT TRAIL TAB */}
             {activeTab === 'audit' && (
               <Card className="h-[calc(100vh-8rem)] flex flex-col">
                 <div className="flex justify-between items-center mb-6">
@@ -1679,151 +1684,151 @@ const AdminDashboard = () => {
                 </div>
               </Card>
             )}
-                {/* 6. TRACKING TAB */}
-                {activeTab === 'tracking' && (
-                  <LiveLocationTracker isMapLoaded={isMapLoaded} mapLoadError={mapLoadError} />
-                )}
+            {/* 6. TRACKING TAB */}
+            {activeTab === 'tracking' && (
+              <LiveLocationTracker isMapLoaded={isMapLoaded} mapLoadError={mapLoadError} />
+            )}
 
-                {/* 7. ANALYTICS TAB */}
-                {activeTab === 'analytics' && (
-                  <div className="space-y-6">
-                    <div className="bg-slate-900 rounded-xl p-8 text-white shadow-lg relative overflow-hidden">
-                      <div className="relative z-10">
-                        <h3 className="text-2xl font-bold mb-2">Predictive Intelligence</h3>
-                        <p className="text-slate-300 max-w-2xl">
-                          Our machine learning models analyze task patterns to identify critical success factors.
-                          Use this data to optimize workflow assignments.
-                        </p>
+            {/* 7. ANALYTICS TAB */}
+            {activeTab === 'analytics' && (
+              <div className="space-y-6">
+                <div className="bg-slate-900 rounded-xl p-8 text-white shadow-lg relative overflow-hidden">
+                  <div className="relative z-10">
+                    <h3 className="text-2xl font-bold mb-2">Predictive Intelligence</h3>
+                    <p className="text-slate-300 max-w-2xl">
+                      Our machine learning models analyze task patterns to identify critical success factors.
+                      Use this data to optimize workflow assignments.
+                    </p>
+                  </div>
+                  <div className="absolute right-0 top-0 w-64 h-64 bg-indigo-500 rounded-full blur-3xl opacity-20 transform translate-x-1/3 -translate-y-1/3"></div>
+                </div>
+
+                <Card className="p-6">
+                  <div className="mb-6 border-b border-slate-200 dark:border-slate-700 pb-4">
+                    <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                      <FiTrendingUp className="text-indigo-500" /> Feature Importance Analysis
+                    </h3>
+                    <p className="text-sm text-slate-500 mt-1">
+                      Determines which variables (e.g., location, time of day, employee experience) have the highest impact on task completion efficiency.
+                    </p>
+                  </div>
+                  <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-4 border border-slate-100 dark:border-slate-800">
+                    <FeatureImportanceChart />
+                  </div>
+                </Card>
+              </div>
+            )}
+
+            {/* 8. SETTINGS & MAINTENANCE TAB */}
+            {activeTab === 'settings' && (
+              <div className="space-y-6">
+                <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100 mb-4">System & Maintenance</h2>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {/* Service Status Card */}
+                  <Card>
+                    <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
+                      <FiActivity /> Service Status
+                    </h3>
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-900/50 rounded-lg">
+                        <div className="flex items-center gap-3">
+                          <FiDatabase className="text-blue-500" />
+                          <span className="text-sm font-medium">Database</span>
+                        </div>
+                        <Badge text="Connected" color="green" size="xs" />
                       </div>
-                      <div className="absolute right-0 top-0 w-64 h-64 bg-indigo-500 rounded-full blur-3xl opacity-20 transform translate-x-1/3 -translate-y-1/3"></div>
+                      {/* ML Prediction Service Status */}
+                      <div className="flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-900/50 rounded-lg">
+                        <div className="flex items-center gap-3">
+                          <FiCpu className="text-purple-500" />
+                          <span className="text-sm font-medium">ML Prediction Service</span>
+                        </div>
+                        <Badge
+                          text={systemHealth?.status === 'healthy' ? 'Operational' : 'Offline'}
+                          color={systemHealth?.status === 'healthy' ? 'green' : 'red'}
+                          size="xs"
+                        />
+                      </div>
+                      <div className="flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-900/50 rounded-lg">
+                        <div className="flex items-center gap-3">
+                          <FiMapPin className="text-orange-500" />
+                          <span className="text-sm font-medium">Google Maps API</span>
+                        </div>
+                        <Badge
+                          text={systemHealth?.google_api_configured ? 'Configured' : 'Missing Key'}
+                          color={systemHealth?.google_api_configured ? 'green' : 'red'}
+                          size="xs"
+                        />
+                      </div>
                     </div>
+                  </Card>
 
-                    <Card className="p-6">
-                      <div className="mb-6 border-b border-slate-200 dark:border-slate-700 pb-4">
+                  {/* AI Model Management (NEW) */}
+                  <Card className="border-indigo-100 dark:border-indigo-900/30 md:col-span-2 lg:col-span-1">
+                    <div className="flex justify-between items-start mb-4">
+                      <div>
                         <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                          <FiTrendingUp className="text-indigo-500" /> Feature Importance Analysis
+                          <FiCpu className="text-indigo-500" /> AI Model Management
                         </h3>
                         <p className="text-sm text-slate-500 mt-1">
-                          Determines which variables (e.g., location, time of day, employee experience) have the highest impact on task completion efficiency.
+                          Manually trigger the training pipeline using the latest task data.
                         </p>
                       </div>
-                      <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-4 border border-slate-100 dark:border-slate-800">
-                        <FeatureImportanceChart />
-                      </div>
-                    </Card>
-                  </div>
-                )}
-
-                {/* 8. SETTINGS & MAINTENANCE TAB */}
-                {activeTab === 'settings' && (
-                  <div className="space-y-6">
-                    <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100 mb-4">System & Maintenance</h2>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                      {/* Service Status Card */}
-                      <Card>
-                        <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
-                          <FiActivity /> Service Status
-                        </h3>
-                        <div className="space-y-4">
-                          <div className="flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-900/50 rounded-lg">
-                            <div className="flex items-center gap-3">
-                              <FiDatabase className="text-blue-500" />
-                              <span className="text-sm font-medium">Database</span>
-                            </div>
-                            <Badge text="Connected" color="green" size="xs" />
-                          </div>
-                          {/* ML Prediction Service Status */}
-                          <div className="flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-900/50 rounded-lg">
-                            <div className="flex items-center gap-3">
-                              <FiCpu className="text-purple-500" />
-                              <span className="text-sm font-medium">ML Prediction Service</span>
-                            </div>
-                            <Badge
-                              text={systemHealth?.status === 'healthy' ? 'Operational' : 'Offline'}
-                              color={systemHealth?.status === 'healthy' ? 'green' : 'red'}
-                              size="xs"
-                            />
-                          </div>
-                          <div className="flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-900/50 rounded-lg">
-                            <div className="flex items-center gap-3">
-                              <FiMapPin className="text-orange-500" />
-                              <span className="text-sm font-medium">Google Maps API</span>
-                            </div>
-                            <Badge
-                              text={systemHealth?.google_api_configured ? 'Configured' : 'Missing Key'}
-                              color={systemHealth?.google_api_configured ? 'green' : 'red'}
-                              size="xs"
-                            />
-                          </div>
-                        </div>
-                      </Card>
-
-                      {/* AI Model Management (NEW) */}
-                      <Card className="border-indigo-100 dark:border-indigo-900/30 md:col-span-2 lg:col-span-1">
-                        <div className="flex justify-between items-start mb-4">
-                          <div>
-                            <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                              <FiCpu className="text-indigo-500" /> AI Model Management
-                            </h3>
-                            <p className="text-sm text-slate-500 mt-1">
-                              Manually trigger the training pipeline using the latest task data.
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="bg-slate-900 rounded-lg p-4 font-mono text-xs text-green-400 h-40 overflow-y-auto shadow-inner mb-4">
-                          <div className="flex items-center gap-2 text-slate-500 border-b border-slate-800 pb-2 mb-2">
-                            <FiTerminal /> System Output
-                          </div>
-                          {retrainStatus.logs.length === 0 ? (
-                            <span className="text-slate-600 italic">Ready to start. Click 'Retrain Model Now' to begin.</span>
-                          ) : (
-                            retrainStatus.logs.map((log, i) => (
-                              <div key={i} className="mb-1">
-                                <span className="text-slate-500 mr-2">[{new Date().toLocaleTimeString()}]</span>
-                                {log}
-                              </div>
-                            ))
-                          )}
-                          {retrainStatus.loading && (
-                            <div className="animate-pulse">_</div>
-                          )}
-                        </div>
-
-                        <Button
-                          variant="primary"
-                          fullWidth
-                          onClick={handleRetrainModel}
-                          loading={retrainStatus.loading}
-                          icon={FiTerminal}
-                        >
-                          {retrainStatus.loading ? 'Training in Progress...' : 'Retrain Model Now'}
-                        </Button>
-                      </Card>
-
-                      {/* Data Management (Danger Zone) */}
-                      <Card className="border-red-200 dark:border-red-900/50">
-                        <h3 className="text-lg font-bold text-red-600 dark:text-red-400 mb-2 flex items-center gap-2">
-                          <FiAlertTriangle /> Danger Zone
-                        </h3>
-                        <p className="text-xs text-slate-500 mb-4">
-                          These actions are irreversible. Please proceed with caution.
-                        </p>
-                        <div className="space-y-3">
-                          <Button variant="danger" fullWidth onClick={handleWipeUsers} icon={FiTrash2}>
-                            Wipe All Users
-                          </Button>
-                          <Button variant="danger" fullWidth onClick={handleWipeTasks} icon={FiTrash2}>
-                            Wipe All Tasks & Location History
-                          </Button>
-                        </div>
-                      </Card>
                     </div>
-                  </div>
-                )}
-              </motion.div>
-                </main>
+
+                    <div className="bg-slate-900 rounded-lg p-4 font-mono text-xs text-green-400 h-40 overflow-y-auto shadow-inner mb-4">
+                      <div className="flex items-center gap-2 text-slate-500 border-b border-slate-800 pb-2 mb-2">
+                        <FiTerminal /> System Output
+                      </div>
+                      {retrainStatus.logs.length === 0 ? (
+                        <span className="text-slate-600 italic">Ready to start. Click 'Retrain Model Now' to begin.</span>
+                      ) : (
+                        retrainStatus.logs.map((log, i) => (
+                          <div key={i} className="mb-1">
+                            <span className="text-slate-500 mr-2">[{new Date().toLocaleTimeString()}]</span>
+                            {log}
+                          </div>
+                        ))
+                      )}
+                      {retrainStatus.loading && (
+                        <div className="animate-pulse">_</div>
+                      )}
+                    </div>
+
+                    <Button
+                      variant="primary"
+                      fullWidth
+                      onClick={handleRetrainModel}
+                      loading={retrainStatus.loading}
+                      icon={FiTerminal}
+                    >
+                      {retrainStatus.loading ? 'Training in Progress...' : 'Retrain Model Now'}
+                    </Button>
+                  </Card>
+
+                  {/* Data Management (Danger Zone) */}
+                  <Card className="border-red-200 dark:border-red-900/50">
+                    <h3 className="text-lg font-bold text-red-600 dark:text-red-400 mb-2 flex items-center gap-2">
+                      <FiAlertTriangle /> Danger Zone
+                    </h3>
+                    <p className="text-xs text-slate-500 mb-4">
+                      These actions are irreversible. Please proceed with caution.
+                    </p>
+                    <div className="space-y-3">
+                      <Button variant="danger" fullWidth onClick={handleWipeUsers} icon={FiTrash2}>
+                        Wipe All Users
+                      </Button>
+                      <Button variant="danger" fullWidth onClick={handleWipeTasks} icon={FiTrash2}>
+                        Wipe All Tasks & Location History
+                      </Button>
+                    </div>
+                  </Card>
+                </div>
+              </div>
+            )}
+          </motion.div>
+        </main>
       </div>
 
       {/* Modals */}
