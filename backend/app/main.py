@@ -142,6 +142,26 @@ def health_check():
 async def startup_event():
     print("🚀 FastAPI server starting...")
     print("📍 WebSocket endpoint available at: ws://localhost:8000/ws/location")
+    
+    # Add ARCHIVED to TaskStatus enum if it doesn't exist
+    # This is needed because SQLAlchemy's create_all doesn't update existing enums
+    try:
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            # Check if ARCHIVED already exists in the enum
+            result = conn.execute(text(
+                "SELECT 1 FROM pg_enum WHERE enumlabel = 'ARCHIVED' AND enumtypid = "
+                "(SELECT oid FROM pg_type WHERE typname = 'taskstatus')"
+            ))
+            if result.fetchone() is None:
+                # Add ARCHIVED to the enum
+                conn.execute(text("ALTER TYPE taskstatus ADD VALUE IF NOT EXISTS 'ARCHIVED'"))
+                conn.commit()
+                print("✅ Added ARCHIVED status to taskstatus enum")
+            else:
+                print("✅ ARCHIVED status already exists in taskstatus enum")
+    except Exception as e:
+        print(f"⚠️ Could not update taskstatus enum: {e}")
 
 @app.on_event("shutdown")
 async def shutdown_event():
