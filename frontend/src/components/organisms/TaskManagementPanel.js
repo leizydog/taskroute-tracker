@@ -197,6 +197,7 @@ const TaskManagementPanel = ({
                             onRestore={showArchived ? handleRestoreTask : undefined}
                             onDelete={showArchived ? handleDeleteTask : undefined}
                             onDownload={handleDownloadTaskPDF}
+                            isArchived={showArchived}
                         />
                     </motion.div>
                 ))}

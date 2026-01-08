@@ -1603,8 +1603,13 @@ const AdminDashboard = () => {
                     addAlert('success', 'Task deleted from system');
                   }}
                   onTaskUpdated={(updated) => {
-                    setTasks(prev => prev.map(t => t.id === updated.id ? updated : t));
-                    addAlert('success', 'Task updated');
+                    if (updated._deleted) {
+                      setTasks(prev => prev.filter(t => t.id !== updated.id));
+                      addAlert('success', 'Task deleted from system');
+                    } else {
+                      setTasks(prev => prev.map(t => t.id === updated.id ? updated : t));
+                      addAlert('success', 'Task updated');
+                    }
                   }}
                   tasks={tasks}
                   users={employees}
