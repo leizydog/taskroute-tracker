@@ -433,44 +433,83 @@ async def update_task(
         setattr(task, field, value)
 
     db.commit()
-    db.refresh(task)
+    
+    # Re-query the task to ensure fresh data with updated enum values
+    task = db.query(Task).options(
+        joinedload(Task.assigned_user),
+        joinedload(Task.created_user)
+    ).filter(Task.id == task_id).first()
 
     # Audit Log: Task Update
     if changes:
-        audit = AuditLog(
-            user_id=current_user.id,
-            action="TASK_UPDATE",
-            target_resource=f"Task #{task.id}",
-            details=", ".join(changes)[:500]
-        )
-        db.add(audit)
-        db.commit()
+        try:
+            audit = AuditLog(
+                user_id=current_user.id,
+                action="TASK_UPDATE",
+                target_resource=f"Task #{task.id}",
+                details=", ".join(changes)[:500]
+            )
+            db.add(audit)
+            db.commit()
 
-        # Real-time Audit Broadcast
+            # Real-time Audit Broadcast
+            await manager.broadcast_json({
+                "event": "audit_log_created",
+                "log": {
+                    "id": audit.id,
+                    "action": audit.action,
+                    "target_resource": audit.target_resource,
+                    "details": audit.details,
+                    "timestamp": audit.timestamp.isoformat(),
+                    "user_email": current_user.email
+                }
+            })
+        except Exception as e:
+            print(f"⚠️ Audit log error (non-fatal): {e}")
+
+    try:
+        response_task = TaskWithUsers(
+            **task.__dict__,
+            assigned_user_name=task.assigned_user.full_name if task.assigned_user else None,
+            created_user_name=task.created_user.full_name if task.created_user else None
+        )
+
         await manager.broadcast_json({
-            "event": "audit_log_created",
-            "log": {
-                "id": audit.id,
-                "action": audit.action,
-                "target_resource": audit.target_resource,
-                "details": audit.details,
-                "timestamp": audit.timestamp.isoformat(),
-                "user_email": current_user.email
-            }
+            "event": "task_updated",
+            "task": response_task.model_dump_json()
         })
 
-    response_task = TaskWithUsers(
-        **task.__dict__,
-        assigned_user_name=task.assigned_user.full_name,
-        created_user_name=task.created_user.full_name
-    )
-
-    await manager.broadcast_json({
-        "event": "task_updated",
-        "task": response_task.model_dump_json()
-    })
-
-    return response_task
+        return response_task
+    except Exception as e:
+        print(f"⚠️ Response serialization error: {e}")
+        # Return a minimal response on serialization error
+        return TaskWithUsers(
+            id=task.id,
+            title=task.title,
+            description=task.description,
+            priority=task.priority,
+            is_multi_destination=task.is_multi_destination,
+            destinations=task.destinations,
+            location_name=task.location_name,
+            latitude=task.latitude,
+            longitude=task.longitude,
+            address=task.address,
+            estimated_duration=task.estimated_duration,
+            due_date=task.due_date,
+            status=task.status,
+            assigned_to=task.assigned_to,
+            created_by=task.created_by,
+            actual_duration=task.actual_duration,
+            started_at=task.started_at,
+            completed_at=task.completed_at,
+            created_at=task.created_at,
+            updated_at=task.updated_at,
+            completion_notes=task.completion_notes,
+            quality_rating=task.quality_rating,
+            signature_url=task.signature_url,
+            assigned_user_name=task.assigned_user.full_name if task.assigned_user else None,
+            created_user_name=task.created_user.full_name if task.created_user else None
+        )
 
 
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
