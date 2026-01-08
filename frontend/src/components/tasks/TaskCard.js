@@ -187,7 +187,7 @@ const TaskCard = ({ task, currentUser, onUpdate, onView, onEdit, onArchive, onRe
             </button>
           )}
           {onDelete && isArchived && (
-            <button onClick={() => onDelete(task.id)} className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors" title="Delete Permanently">
+            <button onClick={() => onDelete(task)} className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors" title="Delete Permanently">
               <FiTrash2 size={16} />
             </button>
           )}
