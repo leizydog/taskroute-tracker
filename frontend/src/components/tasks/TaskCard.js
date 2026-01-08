@@ -177,7 +177,7 @@ const TaskCard = ({ task, currentUser, onUpdate, onView, onEdit, onArchive, onRe
             </button>
           )}
           {onArchive && !isArchived && (
-            <button onClick={() => onArchive(task.id)} className="p-1.5 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-full transition-colors" title="Archive Task">
+            <button onClick={() => onArchive(task)} className="p-1.5 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-full transition-colors" title="Archive Task">
               <FiArchive size={16} />
             </button>
           )}
