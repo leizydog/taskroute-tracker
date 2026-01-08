@@ -13,6 +13,7 @@ class TaskStatus(str, enum.Enum):
     CANCELLED = "CANCELLED"
     QUEUED = "QUEUED"
     DECLINED = "DECLINED"
+    ARCHIVED = "ARCHIVED"
 
 class TaskPriority(str, enum.Enum):
     LOW = "low"
