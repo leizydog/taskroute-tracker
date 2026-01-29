@@ -243,7 +243,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
         builder: (context, authProvider, _) {
           final user = authProvider.user;
           
-          if (!_isEditing && user != null) {
+          if (authProvider.isLoading) {
+             return const Center(child: CircularProgressIndicator());
+          }
+
+          if (user == null) {
+            return const Center(child: Text("User not found"));
+          }
+          
+          if (!_isEditing) {
             if (_nameController.text != user.displayName) {
               _nameController.text = user.displayName;
             }
@@ -270,9 +278,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             radius: 60,
                             backgroundColor: Theme.of(context).primaryColor,
                             backgroundImage: _getAvatarImage(user),
-                            child: _pickedImage == null && user?.avatarUrl == null
+                            onBackgroundImageError: (exception, stackTrace) {
+                              print('Avatar load error: $exception');
+                            },
+                            child: _pickedImage == null && user.avatarUrl == null
                                 ? Text(
-                                    user?.initials ?? 'U',
+                                    user.initials,
                                     style: const TextStyle(
                                       fontSize: 40,
                                       fontWeight: FontWeight.bold,
@@ -346,7 +357,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                   // Email Field (Read-only)
                   TextFormField(
-                    initialValue: user?.email ?? '',
+                    initialValue: user.email,
                     enabled: false,
                     readOnly: true,
                     style: TextStyle(color: Colors.grey[600]),
@@ -371,7 +382,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                   // Role (Read-only)
                   TextFormField(
-                    initialValue: user?.role.toUpperCase() ?? 'EMPLOYEE',
+                    initialValue: user.role.toUpperCase(),
                     enabled: false,
                     readOnly: true,
                     decoration: const InputDecoration(
@@ -438,8 +449,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             onPressed: _isUploading ? null : () {
                               setState(() {
                                 _isEditing = false;
-                                _nameController.text = user?.displayName ?? '';
-                                _phoneController.text = user?.phone ?? '';
+                                _nameController.text = user.displayName;
+                                _phoneController.text = user.phone ?? '';
                                 _pickedImage = null;
                               });
                             },
@@ -481,10 +492,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
     
     if (user?.avatarUrl != null && user.avatarUrl.isNotEmpty) {
+      final avatarUrl = user.avatarUrl as String;
+      
+      // If it's already a full URL (e.g. from Google/Facebook or external), use it
+      if (avatarUrl.startsWith('http')) {
+         return NetworkImage(avatarUrl);
+      }
+
       // ✅ Use ApiService.baseUrl which has the correct IP and port
       // Remove /api/v1 from the base URL for static files
       final baseUrlWithoutApi = ApiService.baseUrl.replaceAll('/api/v1', '');
-      final fullUrl = '$baseUrlWithoutApi${user.avatarUrl}';
+      
+      // Ensure we don't end up with double slashes or no slashes
+      final cleanBase = baseUrlWithoutApi.endsWith('/') 
+          ? baseUrlWithoutApi.substring(0, baseUrlWithoutApi.length - 1) 
+          : baseUrlWithoutApi;
+          
+      final cleanPath = avatarUrl.startsWith('/') 
+          ? avatarUrl 
+          : '/$avatarUrl';
+          
+      final fullUrl = '$cleanBase$cleanPath';
       print('Loading avatar from: $fullUrl');
       return NetworkImage(fullUrl);
     }
